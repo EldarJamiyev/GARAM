@@ -1,0 +1,15 @@
+# .gitignore
+# Operating System files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Temporary and log files
+*.log
+*.tmp
