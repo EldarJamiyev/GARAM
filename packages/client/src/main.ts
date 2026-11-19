@@ -25,6 +25,7 @@ import { RadarRenderer } from './ui/RadarRenderer.js';
 import { BotAISystem, BotDifficulty } from './match/BotAISystem.js';
 import { SettingsStore, settingsStore, PlayerFaction, GameMode } from './core/SettingsStore.js';
 import { CustomizerUI } from './ui/CustomizerUI.js';
+import { NetworkClient } from './net/NetworkClient.js';
 
 export class GaramGame {
   private canvas: HTMLCanvasElement;
@@ -44,6 +45,7 @@ export class GaramGame {
   private utilityManager: UtilityManager;
   private radar: RadarRenderer;
   private customizer: CustomizerUI;
+  private networkClient: NetworkClient;
 
   // Gameplay & Physics Systems
   private player: KinematicPlayerController;
@@ -300,6 +302,11 @@ export class GaramGame {
           this.throwUtilityGrenade('long');
           return;
         }
+        if (this.networkClient.isConnected) {
+          const forward = new THREE.Vector3();
+          this.worldCamera.getWorldDirection(forward);
+          this.networkClient.sendFire(this.worldCamera.position, forward, active.id);
+        }
         this.weaponController.handlePrimaryFire(
           this.worldCamera,
           this.player.getHorizontalSpeed(),
@@ -361,6 +368,12 @@ export class GaramGame {
     this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity * 0.001);
     this.worldCamera.fov = settingsStore.settings.fov;
     this.worldCamera.updateProjectionMatrix();
+
+    // 10. Authoritative 64-Tick Network Client
+    this.networkClient = new NetworkClient(this.worldScene, this.hud, this.colliders, {
+      onKillfeed: (text) => this.hud.addKillfeed(text),
+      onScoresUpdated: (ct, t) => this.hud.updateScores(ct, t),
+    });
 
     // Setup Lobby and Buy Menu UI listeners
     this.setupLobbyUI();
@@ -575,6 +588,17 @@ export class GaramGame {
     const spawnBtn = document.getElementById('spawn-btn');
     if (spawnBtn) {
       spawnBtn.addEventListener('click', () => {
+        if (settingsStore.settings.gameMode === 'multiplayer') {
+          if (!this.networkClient.isConnected) {
+            const urlInput = document.getElementById('server-url-input') as HTMLInputElement;
+            const nameInput = document.getElementById('player-callsign-input') as HTMLInputElement;
+            const url = urlInput?.value || 'ws://localhost:2567';
+            const name = nameInput?.value || 'Eldar Garamov';
+            this.networkClient.connect(url, name, settingsStore.settings.faction);
+          }
+        } else {
+          this.networkClient.disconnect();
+        }
         this.inputManager.requestPointerLock();
       });
     }
@@ -739,7 +763,14 @@ export class GaramGame {
     // 128Hz Fixed Physics Kinematics Accumulator
     while (this.accumulator >= this.FIXED_DT) {
       this.player.update(this.inputManager.input, this.FIXED_DT, activeWp.movementSpeed, this.colliders);
+      if (this.networkClient.isConnected) {
+        this.networkClient.sendInput(this.inputManager.input, this.FIXED_DT, activeWp.movementSpeed, this.player, activeWp.id);
+      }
       this.accumulator -= this.FIXED_DT;
+    }
+
+    if (this.networkClient.isConnected) {
+      this.networkClient.update(frameDelta);
     }
 
     // Footstep audio

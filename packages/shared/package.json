@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Testing shared package\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0"
