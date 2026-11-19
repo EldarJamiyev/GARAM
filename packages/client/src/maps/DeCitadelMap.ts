@@ -8,13 +8,16 @@ import {
   resolveHorizontalAABB,
   AABBCollider,
   KINEMATICS,
-  hasLineOfSight
+  hasLineOfSight,
+  SmokeOccluder
 } from '@garam/shared';
+import { OperatorRig } from '../render/OperatorRig.js';
 
 export interface BotEntity {
   id: string;
   name: string;
   mesh: THREE.Group;
+  rig?: OperatorRig;
   headCollider: THREE.Mesh;
   bodyCollider: THREE.Mesh;
   health: number;
@@ -33,25 +36,25 @@ export interface BotEntity {
   deaths: number;
 }
 
-export function createProceduralTextures() {
-  // 1. Tactical Concrete Ground (512x512 with expansion joints & grit)
+export function createProceduralTextures(maxAnisotropy = 8) {
+  // 1. Tactical Concrete Ground (High-albedo sunlit concrete #787e85)
   const canvasConcrete = document.createElement('canvas');
   canvasConcrete.width = 512;
   canvasConcrete.height = 512;
   const ctxC = canvasConcrete.getContext('2d')!;
 
-  ctxC.fillStyle = '#3a3f45';
+  ctxC.fillStyle = '#787e85';
   ctxC.fillRect(0, 0, 512, 512);
 
   for (let i = 0; i < 40000; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
     const val = Math.random();
-    ctxC.fillStyle = val > 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.14)';
+    ctxC.fillStyle = val > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.12)';
     ctxC.fillRect(x, y, 2, 2);
   }
 
-  ctxC.strokeStyle = 'rgba(12, 14, 18, 0.6)';
+  ctxC.strokeStyle = 'rgba(30, 34, 40, 0.4)';
   ctxC.lineWidth = 4;
   ctxC.strokeRect(0, 0, 512, 512);
   ctxC.strokeRect(0, 0, 256, 256);
@@ -61,6 +64,7 @@ export function createProceduralTextures() {
   concreteTex.wrapS = THREE.RepeatWrapping;
   concreteTex.wrapT = THREE.RepeatWrapping;
   concreteTex.repeat.set(16, 16);
+  concreteTex.anisotropy = maxAnisotropy;
 
   // 2. Fortified Citadel Wall
   const canvasWall = document.createElement('canvas');
@@ -89,6 +93,7 @@ export function createProceduralTextures() {
   const wallTex = new THREE.CanvasTexture(canvasWall);
   wallTex.wrapS = THREE.RepeatWrapping;
   wallTex.wrapT = THREE.RepeatWrapping;
+  wallTex.anisotropy = maxAnisotropy;
 
   // 3. Military Wooden Crate
   const canvasCrate = document.createElement('canvas');
@@ -118,6 +123,7 @@ export function createProceduralTextures() {
   ctxCr.fillText('GARAM SEC', 128, 140);
 
   const crateTex = new THREE.CanvasTexture(canvasCrate);
+  crateTex.anisotropy = maxAnisotropy;
 
   // 4. Industrial Hazard Stripes
   const canvasHazard = document.createElement('canvas');
@@ -142,6 +148,7 @@ export function createProceduralTextures() {
   hazardTex.wrapS = THREE.RepeatWrapping;
   hazardTex.wrapT = THREE.RepeatWrapping;
   hazardTex.repeat.set(4, 1);
+  hazardTex.anisotropy = maxAnisotropy;
 
   // 5. Corrugated Shipping Container
   const canvasCorrugated = document.createElement('canvas');
@@ -160,6 +167,7 @@ export function createProceduralTextures() {
   const containerBlueTex = new THREE.CanvasTexture(canvasCorrugated);
   containerBlueTex.wrapS = THREE.RepeatWrapping;
   containerBlueTex.wrapT = THREE.RepeatWrapping;
+  containerBlueTex.anisotropy = maxAnisotropy;
 
   return { concreteTex, wallTex, crateTex, hazardTex, containerBlueTex };
 }
@@ -283,71 +291,58 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   bMesh.position.set(BOMBSITES.B.center.x, 0.03, BOMBSITES.B.center.z);
   scene.add(bMesh);
 
-  // Spawn Full 5v5 Roster Bots
+  // Directional Wall Signage
+  const createSign = (text: string, pos: THREE.Vector3, rotY: number, color = '#ffffff') => {
+    const sCanvas = document.createElement('canvas');
+    sCanvas.width = 256; sCanvas.height = 64;
+    const sCtx = sCanvas.getContext('2d')!;
+    sCtx.fillStyle = 'rgba(10, 14, 20, 0.85)';
+    sCtx.fillRect(0, 0, 256, 64);
+    sCtx.strokeStyle = color;
+    sCtx.lineWidth = 4;
+    sCtx.strokeRect(2, 2, 252, 60);
+    sCtx.fillStyle = color;
+    sCtx.font = 'bold 24px sans-serif';
+    sCtx.textAlign = 'center';
+    sCtx.textBaseline = 'middle';
+    sCtx.fillText(text, 128, 32);
+    const sTex = new THREE.CanvasTexture(sCanvas);
+    const sMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 0.88), new THREE.MeshBasicMaterial({ map: sTex, transparent: true }));
+    sMesh.position.copy(pos);
+    sMesh.rotation.y = rotY;
+    scene.add(sMesh);
+  };
+
+  createSign('SITE A ->', new THREE.Vector3(-1.6, 3.8, 1.8), 0, '#ff3344');
+  createSign('<- SITE B', new THREE.Vector3(7.6, 3.8, 1.8), 0, '#3b9eff');
+  createSign('<- MID CHOKE ->', new THREE.Vector3(3.0, 5.8, 1.8), 0, '#00ff88');
+
+  // Covered B Tunnel Industrial Ceiling Lights
+  const tunnelLight1 = new THREE.PointLight(0xffb566, 1.8, 16);
+  tunnelLight1.position.set(44, 3.8, -14);
+  scene.add(tunnelLight1);
+
+  const tunnelLight2 = new THREE.PointLight(0xffb566, 1.8, 16);
+  tunnelLight2.position.set(44, 3.8, -4);
+  scene.add(tunnelLight2);
+
+  // Spawn Full 5v5 Roster Bots with Articulated Humanoid Operator Rigs
   const bots: BotEntity[] = [];
 
   for (const botDef of TACTICAL_BOTS) {
-    const botGroup = new THREE.Group();
-
-    const bodyGeo = new THREE.CylinderGeometry(0.3, 0.3, 1.15, 16);
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: botDef.team === 'Syndicate' ? 0x444950 : 0x181a1d,
-      roughness: 0.5,
-      metalness: 0.2,
-    });
-    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-    bodyMesh.position.y = 0.95;
-    bodyMesh.castShadow = true;
-    botGroup.add(bodyMesh);
-
-    const vestGeo = new THREE.BoxGeometry(0.66, 0.68, 0.46);
-    const vestMat = new THREE.MeshStandardMaterial({
-      color: botDef.team === 'Syndicate' ? 0x7a6245 : 0x22262a,
-      roughness: 0.7,
-    });
-    const vest = new THREE.Mesh(vestGeo, vestMat);
-    vest.position.set(0, 1.05, 0);
-    botGroup.add(vest);
-
-    const headGeo = new THREE.SphereGeometry(0.18, 16, 16);
-    const headMat = new THREE.MeshStandardMaterial({
-      color: 0x141618,
-      roughness: 0.3,
-      metalness: 0.85,
-    });
-    const headMesh = new THREE.Mesh(headGeo, headMat);
-    headMesh.position.y = 1.68;
-    headMesh.castShadow = true;
-    botGroup.add(headMesh);
-
-    const visorGeo = new THREE.BoxGeometry(0.24, 0.08, 0.15);
-    const visorMat = new THREE.MeshStandardMaterial({
-      color: botDef.team === 'Syndicate' ? 0xffaa00 : 0xd91438,
-      emissive: botDef.team === 'Syndicate' ? 0x664400 : 0x770011,
-      roughness: 0.1,
-      metalness: 0.9,
-    });
-    const visor = new THREE.Mesh(visorGeo, visorMat);
-    visor.position.set(0, 1.68, 0.12);
-    botGroup.add(visor);
-
-    const gunGeo = new THREE.BoxGeometry(0.06, 0.08, 0.5);
-    const gunMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.3 });
-    const gun = new THREE.Mesh(gunGeo, gunMat);
-    gun.position.set(0.22, 1.1, 0.25);
-    botGroup.add(gun);
-
-    botGroup.position.set(botDef.startPos.x, botDef.startPos.y, botDef.startPos.z);
-    scene.add(botGroup);
+    const rig = new OperatorRig(botDef.team, botDef.name);
+    rig.root.position.set(botDef.startPos.x, botDef.startPos.y, botDef.startPos.z);
+    scene.add(rig.root);
 
     const waypoints = botDef.waypoints.map((w: Vec3) => new THREE.Vector3(w.x, w.y, w.z));
 
     bots.push({
       id: botDef.id,
       name: botDef.name,
-      mesh: botGroup,
-      headCollider: headMesh,
-      bodyCollider: bodyMesh,
+      mesh: rig.root,
+      rig,
+      headCollider: rig.headCollider,
+      bodyCollider: rig.bodyCollider,
       health: 100,
       maxHealth: 100,
       armor: 100,
@@ -355,6 +350,14 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       isDead: false,
       team: botDef.team,
       vx: 0,
+      vz: 0,
+      patrolTarget: waypoints[0] || new THREE.Vector3(botDef.startPos.x, botDef.startPos.y, botDef.startPos.z),
+      lastShotTime: 0,
+      patrolWaypoints: waypoints,
+      waypointIndex: 0,
+      kills: 0,
+      deaths: 0,
+    });
       vz: 0,
       patrolTarget: waypoints[0] || new THREE.Vector3(botDef.startPos.x, botDef.startPos.y, botDef.startPos.z),
       lastShotTime: 0,

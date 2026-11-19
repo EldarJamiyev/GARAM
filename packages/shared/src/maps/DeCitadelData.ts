@@ -120,14 +120,32 @@ export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   makeBlock('wall_west', 'West Perimeter Wall (A Long)', -60, 0, 0, 3, 9, 120, 'CONCRETE'),
   makeBlock('wall_east', 'East Perimeter Wall (B Warehouse)', 60, 0, 0, 3, 9, 120, 'CONCRETE'),
 
-  // --- Bombsite A: Armory Courtyard ---
+  // --- Bombsite A: Armory Courtyard & A Heaven (+3.5m Elevation) ---
   makeBlock('site_a_back_wall', 'Armory Back Wall', -32, 0, -42, 28, 7, 3, 'CONCRETE'),
   makeBlock('site_a_long_wall', 'A Long Partition Wall', -44, 0, -25, 3, 6, 25, 'CONCRETE'),
+  // A Heaven Balcony (+3.5m overlook)
+  makeBlock('a_heaven_balcony', 'A Heaven Platform', -24, 0, -40, 8, 3.5, 10, 'CONCRETE'),
+  makeBlock('a_heaven_railing', 'A Heaven Safety Railing', -20.2, 3.5, -40, 0.4, 1.1, 10, 'METAL_SHEET'),
+  // A Heaven Walkable Stairs (10 steps, riser 0.35m each)
+  makeBlock('a_stairs_1', 'A Stairs Step 1', -24, 0.0, -34.5, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_2', 'A Stairs Step 2', -24, 0.35, -35.6, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_3', 'A Stairs Step 3', -24, 0.70, -36.7, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_4', 'A Stairs Step 4', -24, 1.05, -37.8, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_5', 'A Stairs Step 5', -24, 1.40, -38.9, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_6', 'A Stairs Step 6', -24, 1.75, -40.0, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_7', 'A Stairs Step 7', -24, 2.10, -41.1, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_8', 'A Stairs Step 8', -24, 2.45, -42.2, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_9', 'A Stairs Step 9', -24, 2.80, -43.3, 3.6, 0.35, 1.1, 'CONCRETE'),
+  makeBlock('a_stairs_10', 'A Stairs Step 10', -24, 3.15, -44.4, 3.6, 0.35, 1.1, 'CONCRETE'),
   // A Site Triple Stack Wood Crates (Wallbangable corners & edges)
   makeBlock('crate_a_low', 'A Site Wood Crate Low', -34, 0, -28, 3.2, 2.5, 3.2, 'WOOD_THIN'),
   makeBlock('crate_a_mid', 'A Site Wood Crate Mid', -30.5, 0, -28, 3.0, 2.0, 3.0, 'WOOD_THIN'),
   makeBlock('crate_a_high', 'A Site Wood Crate Top', -32.5, 2.2, -28, 2.5, 2.0, 2.5, 'WOOD_THIN'),
   makeBlock('site_a_catwalk', 'A Catwalk Ledge', -22, 0, -32, 4, 3.2, 14, 'CONCRETE'),
+
+  // --- A Connector & B Connector (Mid to Sites) ---
+  makeBlock('a_connector_wall', 'A Connector Partition', -18, 0, -14, 3, 6, 16, 'CONCRETE'),
+  makeBlock('b_connector_wall', 'B Connector Partition', 22, 0, -14, 3, 6, 16, 'CONCRETE'),
 
   // --- Mid: Double Doors & Archway Choke Point ---
   makeBlock('mid_wall_west', 'Mid West Wall', -12, 0, 0, 22, 7, 3, 'CONCRETE'),
@@ -141,9 +159,13 @@ export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   makeBlock('mid_crate_connector', 'Mid Connector Crate', 12, 0, 14, 4, 3, 4, 'WOOD_THIN'),
   makeBlock('mid_pallets', 'Mid Pallets Stack', -8, 0, 18, 3.5, 1.8, 3.5, 'WOOD_THIN'),
 
-  // --- Bombsite B: Reactor Vault ---
+  // --- Bombsite B: Reactor Vault & Covered B Tunnels ---
   makeBlock('site_b_back_wall', 'Reactor Back Wall', 35, 0, -45, 30, 8, 3, 'CONCRETE'),
   makeBlock('site_b_inner_wall', 'Reactor Inner Partition', 18, 0, -28, 3, 6, 20, 'CONCRETE'),
+  // Covered B Tunnels (Concrete Roof for ceiling & crouch tests)
+  makeBlock('b_tunnel_wall_l', 'B Tunnel West Wall', 40, 0, -10, 1.5, 4.2, 18, 'CONCRETE'),
+  makeBlock('b_tunnel_wall_r', 'B Tunnel East Wall', 48, 0, -10, 1.5, 4.2, 18, 'CONCRETE'),
+  makeBlock('b_tunnel_roof', 'B Tunnel Ceiling Roof', 44, 4.2, -10, 9.5, 0.6, 18, 'CONCRETE'),
   // Industrial Cargo Containers (Metal Sheet - Wallbangable across thin axes/edges)
   makeBlock('container_blue', 'B Site Blue Cargo Container', 32, 0, -32, 14, 4.2, 5.5, 'METAL_SHEET'),
   makeBlock('container_red', 'B Site Red Cargo Container', 42, 0, -20, 5.5, 4.2, 14, 'METAL_SHEET'),
