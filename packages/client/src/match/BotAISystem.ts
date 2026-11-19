@@ -113,6 +113,9 @@ interface BotInternalState {
   isLurking: boolean;
   lastDisplacementPos: THREE.Vector3;
   stuckTimer: number;
+  unstuckDuration: number;
+  unstuckDir: THREE.Vector3;
+  consecutiveStuckCount: number;
   soundInvestigateTarget: THREE.Vector3 | null;
   soundInvestigateTimer: number;
   hasThrownSmoke: boolean;
@@ -201,6 +204,9 @@ export class BotAISystem {
         isLurking: role === 'lurker',
         lastDisplacementPos: bot.mesh.position.clone(),
         stuckTimer: 0,
+        unstuckDuration: 0,
+        unstuckDir: new THREE.Vector3(),
+        consecutiveStuckCount: 0,
         soundInvestigateTarget: null,
         soundInvestigateTimer: 0,
         hasThrownSmoke: false,
@@ -270,6 +276,9 @@ export class BotAISystem {
         isLurking: false,
         lastDisplacementPos: bot.mesh.position.clone(),
         stuckTimer: 0,
+        unstuckDuration: 0,
+        unstuckDir: new THREE.Vector3(),
+        consecutiveStuckCount: 0,
         soundInvestigateTarget: null,
         soundInvestigateTimer: 0,
         hasThrownSmoke: false,
@@ -342,6 +351,9 @@ export class BotAISystem {
           isLurking: false,
           lastDisplacementPos: bot.mesh.position.clone(),
           stuckTimer: 0,
+          unstuckDuration: 0,
+          unstuckDir: new THREE.Vector3(),
+          consecutiveStuckCount: 0,
           soundInvestigateTarget: null,
           soundInvestigateTimer: 0,
           hasThrownSmoke: false,

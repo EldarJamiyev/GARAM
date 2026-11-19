@@ -174,8 +174,8 @@ export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   makeBlock('b_tunnel_wall_r', 'B Tunnel East Wall', 48, 0, -10, 1.5, 4.2, 18, 'CONCRETE'),
   makeBlock('b_tunnel_roof', 'B Tunnel Ceiling Roof', 44, 4.2, -10, 9.5, 0.6, 18, 'CONCRETE'),
   // Industrial Cargo Containers (Metal Sheet - Wallbangable across thin axes/edges)
-  makeBlock('container_blue', 'B Site Blue Cargo Container', 32, 0, -32, 14, 4.2, 5.5, 'METAL_SHEET'),
-  makeBlock('container_red', 'B Site Red Cargo Container', 42, 0, -20, 5.5, 4.2, 14, 'METAL_SHEET'),
+  makeBlock('container_blue', 'B Site Blue Cargo Container', 32, 0, -34, 14, 4.2, 5.5, 'METAL_SHEET'),
+  makeBlock('container_red', 'B Site Red Cargo Container', 37, 0, -25, 4.0, 4.2, 7.0, 'METAL_SHEET'),
   makeBlock('crate_b_stack', 'B Site Staging Crates', 26, 0, -18, 4.0, 3.0, 4.0, 'WOOD_THIN'),
   makeBlock('crate_b_corner', 'B Site Dark Corner Crate', 48, 0, -38, 3.2, 2.5, 3.2, 'WOOD_THIN'),
 
@@ -190,13 +190,13 @@ export const BOMBSITES: Record<'A' | 'B', BombsiteDef> = {
   A: {
     id: 'A',
     name: 'Bombsite A (Armory)',
-    center: { x: -32, y: 0, z: -30 },
+    center: { x: -30, y: 0, z: -22 },
     radius: 6.0,
   },
   B: {
     id: 'B',
     name: 'Bombsite B (Reactor)',
-    center: { x: 35, y: 0, z: -32 },
+    center: { x: 30, y: 0, z: -24 },
     radius: 6.0,
   },
 };
@@ -278,7 +278,7 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
     waypoints: [
       { x: 8, y: 0, z: 18 },
       { x: 3, y: 0, z: 8 },
-      { x: 12, y: 0, z: 12 },
+      { x: 8, y: 0, z: 12 },
     ],
   },
   {
@@ -288,8 +288,8 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
     startPos: { x: -6, y: 0, z: 36 },
     waypoints: [
       { x: -14, y: 0, z: 20 },
-      { x: -26, y: 0, z: -10 },
-      { x: -28, y: 0, z: -25 },
+      { x: -24, y: 0, z: -4 },
+      { x: -30, y: 0, z: -22 },
     ],
   },
   {
@@ -299,8 +299,8 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
     startPos: { x: 12, y: 0, z: 40 },
     waypoints: [
       { x: 22, y: 0, z: 20 },
-      { x: 32, y: 0, z: -10 },
-      { x: 34, y: 0, z: -25 },
+      { x: 30, y: 0, z: -12 },
+      { x: 30, y: 0, z: -24 },
     ],
   },
   {
@@ -324,18 +324,18 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
     waypoints: [
       { x: 2, y: 0, z: -25 },
       { x: 3, y: 0, z: -8 },
-      { x: 4, y: 0, z: 4 },
+      { x: 3, y: 0, z: -4 },
     ],
   },
   {
     id: 'bot_syndicate_2',
     name: 'Syndicate Ghost',
     team: 'Syndicate',
-    startPos: { x: -10, y: 0, z: -48 },
+    startPos: { x: -22, y: 0, z: -50 },
     waypoints: [
-      { x: -22, y: 0, z: -40 },
-      { x: -32, y: 0, z: -30 },
+      { x: -34, y: 0, z: -38 },
       { x: -30, y: 0, z: -22 },
+      { x: -38, y: 0, z: -22 },
     ],
   },
   {
@@ -344,9 +344,9 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
     team: 'Syndicate',
     startPos: { x: 10, y: 0, z: -48 },
     waypoints: [
-      { x: 26, y: 0, z: -38 },
-      { x: 35, y: 0, z: -32 },
-      { x: 32, y: 0, z: -18 },
+      { x: 22, y: 0, z: -40 },
+      { x: 30, y: 0, z: -24 },
+      { x: 30, y: 0, z: -18 },
     ],
   },
   {
@@ -356,8 +356,8 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
     startPos: { x: -6, y: 0, z: -44 },
     waypoints: [
       { x: -12, y: 0, z: -30 },
-      { x: -28, y: 0, z: -28 },
-      { x: -34, y: 0, z: -32 },
+      { x: -38, y: 0, z: -38 },
+      { x: -30, y: 0, z: -22 },
     ],
   },
   {
@@ -366,9 +366,9 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
     team: 'Syndicate',
     startPos: { x: 6, y: 0, z: -44 },
     waypoints: [
-      { x: 16, y: 0, z: -30 },
-      { x: 30, y: 0, z: -28 },
-      { x: 36, y: 0, z: -34 },
+      { x: 12, y: 0, z: -30 },
+      { x: 30, y: 0, z: -24 },
+      { x: 22, y: 0, z: -24 },
     ],
   },
 ];
