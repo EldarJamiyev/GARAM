@@ -15,6 +15,16 @@ import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
 import { settingsStore } from '../core/SettingsStore.js';
 
+// Pre-allocated scratch objects for zero-GC ballistics hot loop
+const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _rayDir = new THREE.Vector3();
+const _terminalPoint = new THREE.Vector3();
+const _hitVec = new THREE.Vector3();
+const _exitVec = new THREE.Vector3();
+const _hitNormal = new THREE.Vector3();
+const _reverseNormal = new THREE.Vector3();
+
 export interface WeaponCombatCallbacks {
   onKill: (killerName: string, victimBot: BotEntity, headshot: boolean, weaponName: string, reward: number) => void;
   onCameraPunch: (pitchKick: number) => void;
@@ -107,10 +117,9 @@ export class WeaponController {
     }
 
     // Eject spinning brass shell casing to the right
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    this.effects.spawnShellCasing(camera.position, forward, right);
+    camera.getWorldDirection(_forward);
+    _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    this.effects.spawnShellCasing(camera.position, _forward, _right);
 
     // Recoil spray calculation
     let sprayPitchDeg = 0;
@@ -142,7 +151,7 @@ export class WeaponController {
     const yawRad = inputYaw + (sprayYawDeg * Math.PI / 180) + spreadX;
 
     const eyePos = camera.position;
-    const rayDir = new THREE.Vector3(
+    _rayDir.set(
       -Math.sin(yawRad) * Math.cos(pitchRad),
       Math.sin(pitchRad),
       -Math.cos(yawRad) * Math.cos(pitchRad)
@@ -161,7 +170,7 @@ export class WeaponController {
 
     const sharedRay: Ray = {
       origin: { x: eyePos.x, y: eyePos.y, z: eyePos.z },
-      direction: { x: rayDir.x, y: rayDir.y, z: rayDir.z },
+      direction: { x: _rayDir.x, y: _rayDir.y, z: _rayDir.z },
     };
 
     // Execute distance-sorted raycast against solid world geometry first!
@@ -175,12 +184,12 @@ export class WeaponController {
       targets
     );
 
-    let terminalPoint = eyePos.clone().addScaledVector(rayDir, 160);
+    _terminalPoint.copy(eyePos).addScaledVector(_rayDir, 160);
 
     if (hits.length > 0) {
       for (const hit of hits) {
-        const hitVec = new THREE.Vector3(hit.point.x, hit.point.y, hit.point.z);
-        terminalPoint = hitVec;
+        _hitVec.set(hit.point.x, hit.point.y, hit.point.z);
+        _terminalPoint.copy(_hitVec);
 
         if (hit.targetId) {
           const victim = bots.find(b => b.id === hit.targetId);
@@ -200,7 +209,7 @@ export class WeaponController {
             this.callbacks.onHitmarker?.(!!hit.isHeadshot);
 
             victim.health = Math.max(0, victim.health - hit.awardedDamage);
-            this.effects.spawnDamagePopup(hitVec, hit.awardedDamage, !!hit.isHeadshot);
+            this.effects.spawnDamagePopup(_hitVec, hit.awardedDamage, !!hit.isHeadshot);
 
             if (victim.health <= 0) {
               victim.isDead = true;
@@ -209,20 +218,21 @@ export class WeaponController {
           }
         } else {
           // Spawn wall entry decal
-          this.effects.spawnBulletDecal(hitVec, new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z), hit.material);
+          _hitNormal.set(hit.normal.x, hit.normal.y, hit.normal.z);
+          this.effects.spawnBulletDecal(_hitVec, _hitNormal, hit.material);
 
           // If wall was penetrated, spawn exit decal on the other side!
           if (hit.exitPoint) {
-            const exitVec = new THREE.Vector3(hit.exitPoint.x, hit.exitPoint.y, hit.exitPoint.z);
-            const reverseNormal = new THREE.Vector3(-hit.normal.x, -hit.normal.y, -hit.normal.z);
-            this.effects.spawnBulletDecal(exitVec, reverseNormal, hit.material);
+            _exitVec.set(hit.exitPoint.x, hit.exitPoint.y, hit.exitPoint.z);
+            _reverseNormal.set(-hit.normal.x, -hit.normal.y, -hit.normal.z);
+            this.effects.spawnBulletDecal(_exitVec, _reverseNormal, hit.material);
           }
         }
       }
     }
 
     // Draw ONE continuous tracer beam to the terminal hit point
-    this.effects.spawnTracer(eyePos, terminalPoint, weapon.id);
+    this.effects.spawnTracer(eyePos, _terminalPoint, weapon.id);
   }
 
   public handleSecondaryFire(camera: THREE.PerspectiveCamera, blocks: MapBlockCollider[], bots: BotEntity[]): void {

@@ -26,6 +26,10 @@ import { BotAISystem, BotDifficulty } from './match/BotAISystem.js';
 import { SettingsStore, settingsStore, PlayerFaction, GameMode } from './core/SettingsStore.js';
 import { CustomizerUI } from './ui/CustomizerUI.js';
 import { NetworkClient } from './net/NetworkClient.js';
+import { PerfMonitor } from './core/PerfMonitor.js';
+
+// Pre-allocated scratch objects for zero-GC render hot loop
+const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
 
 export class GaramGame {
   private canvas: HTMLCanvasElement;
@@ -46,6 +50,7 @@ export class GaramGame {
   private radar: RadarRenderer;
   private customizer: CustomizerUI;
   private networkClient: NetworkClient;
+  private perfMonitor: PerfMonitor;
 
   // Gameplay & Physics Systems
   private player: KinematicPlayerController;
@@ -109,6 +114,7 @@ export class GaramGame {
     this.audio.setMasterVolume(settingsStore.settings.masterVolume);
     this.effects = new EffectsManager(this.worldScene, this.worldCamera);
     this.radar = new RadarRenderer();
+    this.perfMonitor = new PerfMonitor(this.renderer);
 
     this.utilityManager = new UtilityManager(this.worldScene, this.audio, {
       onFlashPlayer: (durationSec) => {
@@ -401,6 +407,9 @@ export class GaramGame {
   }
 
   private damagePlayer(dmg: number, attackerPos: THREE.Vector3 | null): void {
+    // Sprint E2: Apply bullet tagging deceleration (slows down to 0.58x, recovering exponentially)
+    this.player.applyTagging(0.58);
+
     if (attackerPos) {
       const pPos = this.worldCamera.position;
       const angle = Math.atan2(attackerPos.x - pPos.x, attackerPos.z - pPos.z) + this.inputManager.input.yaw;
@@ -762,6 +771,7 @@ export class GaramGame {
 
     // 128Hz Fixed Physics Kinematics Accumulator
     while (this.accumulator >= this.FIXED_DT) {
+      this.inputManager.update(this.FIXED_DT, this.player.state.isGrounded);
       this.player.update(this.inputManager.input, this.FIXED_DT, activeWp.movementSpeed, this.colliders);
       if (this.networkClient.isConnected) {
         this.networkClient.sendInput(this.inputManager.input, this.FIXED_DT, activeWp.movementSpeed, this.player, activeWp.id);
@@ -850,14 +860,13 @@ export class GaramGame {
 
     // Bot AI update with 4-Tier Objective FSM, Line of Sight, and AABB Collision (bypassed if Frozen)
     if (!this.customizer.freezeBots) {
-      const playerEye = this.worldCamera.position.clone();
       this.botAI.update(
         this.bots,
         frameDelta,
         this.colliders,
         this.blocks,
         this.worldCamera.position,
-        playerEye,
+        this.worldCamera.position,
         smokeOccluders,
         this.roundManager.isBombPlanted,
         this.roundManager.bombPlantSite
@@ -876,13 +885,14 @@ export class GaramGame {
       this.roundManager.isBombPlanted
     );
 
-    // Camera transform with view-punch
-    const eyeY = this.player.state.y + this.player.state.currentEyeHeight;
-    this.worldCamera.position.set(this.player.state.x, eyeY, this.player.state.z);
+    // Sub-tick position interpolation & camera view-punch (128Hz kinematics to monitor refresh)
+    const alpha = Math.min(1, Math.max(0, this.accumulator / this.FIXED_DT));
+    const interp = this.player.getInterpolatedPosition(alpha);
+    this.worldCamera.position.set(interp.x, interp.eyeY, interp.z);
 
     const effectivePitch = this.inputManager.input.pitch + this.cameraPunchPitch;
-    const euler = new THREE.Euler(effectivePitch, this.inputManager.input.yaw, 0, 'YXZ');
-    this.worldCamera.quaternion.setFromEuler(euler);
+    _euler.set(effectivePitch, this.inputManager.input.yaw, 0, 'YXZ');
+    this.worldCamera.quaternion.setFromEuler(_euler);
 
     const walkBob = Math.sin(this.distanceTraveled * 4) * 0.008 * (hozSpeed / 5.45);
     let strafeRoll = 0;
@@ -908,6 +918,9 @@ export class GaramGame {
     );
 
     this.hud.updateCrosshair(hozSpeed, this.weaponController.consecutiveShots, isPinpoint);
+
+    // Telemetry Perf Monitor [F3]
+    this.perfMonitor.recordFrame(frameDelta * 1000, this.networkClient.isConnected ? 14 : -1);
 
     // DUAL-PASS PBR RENDERING (World then Viewmodel without depth clipping)
     this.renderer.clear();

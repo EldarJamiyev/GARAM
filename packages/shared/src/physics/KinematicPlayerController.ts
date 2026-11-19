@@ -235,8 +235,17 @@ export function resolveHorizontalAABB(
 
 export class KinematicPlayerController {
   public state: PlayerState;
+  public prevState: { x: number; y: number; z: number; currentEyeHeight: number };
   public radius = KINEMATICS.CAPSULE_RADIUS;
   public actualCrouching = false;
+
+  // Sprint E2 Tournament Kinematics depth
+  public stepOffsetY = 0;              // Smooth vertical step camera damping
+  public taggingFactor = 1.0;          // Bullet tagging deceleration (0.55x-0.72x recovering to 1.0)
+  public landingSpeedFactor = 1.0;      // Hard touchdown recovery damping (0.82x recovering to 1.0)
+  public landingCameraDip = 0;         // Camera dip on landing (m)
+  public crouchStamina = 1.0;          // Crouch stamina (0.1 to 1.0) to prevent duck-spam
+  private prevCrouchInput = false;
 
   constructor(startX = 0, startY = 0, startZ = 25) {
     this.state = {
@@ -253,6 +262,34 @@ export class KinematicPlayerController {
       isWalking: false,
       currentEyeHeight: KINEMATICS.EYE_HEIGHT_STAND,
     };
+    this.prevState = {
+      x: startX,
+      y: startY,
+      z: startZ,
+      currentEyeHeight: KINEMATICS.EYE_HEIGHT_STAND,
+    };
+  }
+
+  /**
+   * Applies bullet tagging deceleration to the player
+   * @param tagPower fraction of max speed to retain (e.g. 0.55 for rifle hit, 0.65 for pistol hit)
+   */
+  public applyTagging(tagPower = 0.58): void {
+    this.taggingFactor = Math.min(this.taggingFactor, Math.max(0.40, tagPower));
+  }
+
+  /**
+   * Retrieves sub-tick interpolated camera & player position for zero-jitter rendering
+   * @param alpha interpolation factor between 0.0 (previous tick) and 1.0 (current tick)
+   */
+  public getInterpolatedPosition(alpha: number): { x: number; y: number; z: number; eyeY: number } {
+    const clampedAlpha = Math.max(0, Math.min(1, alpha));
+    const x = this.prevState.x + (this.state.x - this.prevState.x) * clampedAlpha;
+    const y = this.prevState.y + (this.state.y - this.prevState.y) * clampedAlpha;
+    const z = this.prevState.z + (this.state.z - this.prevState.z) * clampedAlpha;
+    const eyeHeight = this.prevState.currentEyeHeight + (this.state.currentEyeHeight - this.prevState.currentEyeHeight) * clampedAlpha;
+    const eyeY = y + eyeHeight + this.stepOffsetY - this.landingCameraDip;
+    return { x, y, z, eyeY };
   }
 
   public update(
@@ -261,9 +298,23 @@ export class KinematicPlayerController {
     weaponMaxSpeed = KINEMATICS.SPEED_RIFLE,
     colliders: AABBCollider[] = []
   ): void {
+    // Store previous physics state before ticking for sub-tick render interpolation
+    this.prevState.x = this.state.x;
+    this.prevState.y = this.state.y;
+    this.prevState.z = this.state.z;
+    this.prevState.currentEyeHeight = this.state.currentEyeHeight;
+
     this.state.yaw = input.yaw;
     this.state.pitch = input.pitch;
     this.state.isWalking = input.walk;
+
+    // Crouch stamina decay on crouch transition
+    if (input.crouch !== this.prevCrouchInput) {
+      this.crouchStamina = Math.max(0.15, this.crouchStamina - 0.28);
+      this.prevCrouchInput = input.crouch;
+    } else {
+      this.crouchStamina = Math.min(1.0, this.crouchStamina + dt * 0.75);
+    }
 
     // Headroom check when uncrouching
     if (input.crouch) {
@@ -276,16 +327,44 @@ export class KinematicPlayerController {
     }
     this.state.isCrouching = this.actualCrouching;
 
-    // Eye height interpolation
+    // Eye height interpolation with crouch stamina scaling
     const targetEyeHeight = this.actualCrouching ? KINEMATICS.EYE_HEIGHT_CROUCH : KINEMATICS.EYE_HEIGHT_STAND;
-    this.state.currentEyeHeight += (targetEyeHeight - this.state.currentEyeHeight) * (1 - Math.exp(-KINEMATICS.CROUCH_LERP_SPEED * dt));
+    const effectiveCrouchLerp = KINEMATICS.CROUCH_LERP_SPEED * (0.35 + 0.65 * this.crouchStamina);
+    this.state.currentEyeHeight += (targetEyeHeight - this.state.currentEyeHeight) * (1 - Math.exp(-effectiveCrouchLerp * dt));
 
-    // Stance speed
+    // Stance speed calculation with tagging and landing recovery multipliers
     let maxSpeed = weaponMaxSpeed;
     if (this.actualCrouching) {
       maxSpeed = KINEMATICS.SPEED_CROUCH;
     } else if (input.walk) {
       maxSpeed = KINEMATICS.SPEED_WALK_SILENT;
+    }
+
+    // Apply active tagging and landing recovery
+    maxSpeed *= this.taggingFactor * this.landingSpeedFactor;
+
+    // Recover tagging factor towards 1.0
+    if (this.taggingFactor < 1.0) {
+      this.taggingFactor += (1.0 - this.taggingFactor) * (1 - Math.exp(-4.2 * dt));
+      if (this.taggingFactor > 0.99) this.taggingFactor = 1.0;
+    }
+
+    // Recover landing speed factor towards 1.0
+    if (this.landingSpeedFactor < 1.0) {
+      this.landingSpeedFactor += (1.0 - this.landingSpeedFactor) * (1 - Math.exp(-12.0 * dt));
+      if (this.landingSpeedFactor > 0.99) this.landingSpeedFactor = 1.0;
+    }
+
+    // Relax step damping camera offset towards 0
+    if (Math.abs(this.stepOffsetY) > 0.0001) {
+      this.stepOffsetY += (0 - this.stepOffsetY) * (1 - Math.exp(-22.0 * dt));
+      if (Math.abs(this.stepOffsetY) < 0.001) this.stepOffsetY = 0;
+    }
+
+    // Relax landing camera dip towards 0
+    if (this.landingCameraDip > 0.0001) {
+      this.landingCameraDip += (0 - this.landingCameraDip) * (1 - Math.exp(-18.0 * dt));
+      if (this.landingCameraDip < 0.001) this.landingCameraDip = 0;
     }
 
     // Direction vector in local space
@@ -310,6 +389,10 @@ export class KinematicPlayerController {
       wishDirX = normX * cosYaw + normZ * sinYaw;
       wishDirZ = -normX * sinYaw + normZ * cosYaw;
     }
+
+    const wasGrounded = this.state.isGrounded;
+    const prevVy = this.state.vy;
+    const prevY = this.state.y;
 
     // Ground counter-strafing kinematics
     if (this.state.isGrounded) {
@@ -373,6 +456,11 @@ export class KinematicPlayerController {
       KINEMATICS.STEP_HEIGHT
     );
 
+    // If auto-stepped up onto a riser, offset stepOffsetY so camera glides smoothly up instead of jumping
+    if (horzRes.stepped && horzRes.y > prevY) {
+      this.stepOffsetY -= (horzRes.y - prevY);
+    }
+
     this.state.x = horzRes.x;
     this.state.y = horzRes.y;
     this.state.z = horzRes.z;
@@ -420,6 +508,15 @@ export class KinematicPlayerController {
           this.state.vy = 0;
           this.state.isGrounded = true;
         }
+      }
+    }
+
+    // Detect touchdown landing transition
+    if (!wasGrounded && this.state.isGrounded) {
+      if (prevVy < -3.5) {
+        // Hard touchdown: apply brief speed damping and camera dip
+        this.landingSpeedFactor = 0.82;
+        this.landingCameraDip = Math.min(0.08, Math.abs(prevVy) * 0.012);
       }
     }
 

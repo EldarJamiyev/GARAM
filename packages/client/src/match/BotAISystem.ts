@@ -58,6 +58,12 @@ export interface BotAISystemCallbacks {
   onEnemySpotted?: (bot: BotEntity) => void;
 }
 
+// Scratch objects for zero-GC bot AI hot loop
+const _botEye = new THREE.Vector3();
+const _otherEye = new THREE.Vector3();
+const _toTarget = new THREE.Vector3();
+const _siteTarget = new THREE.Vector3();
+
 export class BotAISystem {
   public difficulty: BotDifficulty = 'Veteran';
   private callbacks: BotAISystemCallbacks;
@@ -100,7 +106,7 @@ export class BotAISystem {
       }
 
       const botPos = bot.mesh.position;
-      const botEye = botPos.clone().add(new THREE.Vector3(0, 1.68, 0));
+      _botEye.set(botPos.x, botPos.y + 1.68, botPos.z);
 
       // 1. Check Line of Sight against Player
       let canSeePlayer = false;
@@ -108,7 +114,7 @@ export class BotAISystem {
 
       if (bot.team === 'Syndicate' && distToPlayer <= 42) {
         canSeePlayer = hasLineOfSight(
-          { x: botEye.x, y: botEye.y, z: botEye.z },
+          { x: _botEye.x, y: _botEye.y, z: _botEye.z },
           { x: playerEye.x, y: playerEye.y, z: playerEye.z },
           blocks,
           smokeOccluders
@@ -158,10 +164,10 @@ export class BotAISystem {
         if (other.team === enemyTeam && !other.isDead) {
           const distToOther = botPos.distanceTo(other.mesh.position);
           if (distToOther <= 34) {
-            const otherEye = other.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
+            _otherEye.set(other.mesh.position.x, other.mesh.position.y + 1.68, other.mesh.position.z);
             const los = hasLineOfSight(
-              { x: botEye.x, y: botEye.y, z: botEye.z },
-              { x: otherEye.x, y: otherEye.y, z: otherEye.z },
+              { x: _botEye.x, y: _botEye.y, z: _botEye.z },
+              { x: _otherEye.x, y: _otherEye.y, z: _otherEye.z },
               blocks,
               smokeOccluders
             );
@@ -202,12 +208,13 @@ export class BotAISystem {
       // Retake objective: if bomb is planted, Vanguard bots redirect towards the active bomb site!
       if (isBombArmed && bot.team === 'Vanguard' && bombTargetSite) {
         const sitePos = bombTargetSite === 'A' ? BOMBSITES.A.center : BOMBSITES.B.center;
-        currentTarget = new THREE.Vector3(sitePos.x, sitePos.y, sitePos.z);
+        _siteTarget.set(sitePos.x, sitePos.y, sitePos.z);
+        currentTarget = _siteTarget;
       }
 
-      const toTarget = new THREE.Vector3().subVectors(currentTarget, botPos);
-      toTarget.y = 0;
-      const distToTarget = toTarget.length();
+      _toTarget.subVectors(currentTarget, botPos);
+      _toTarget.y = 0;
+      const distToTarget = _toTarget.length();
       let isMoving = false;
       let actualSpeed = 0;
 
@@ -217,10 +224,10 @@ export class BotAISystem {
           bot.patrolTarget = bot.patrolWaypoints[bot.waypointIndex];
         }
       } else {
-        toTarget.normalize();
+        _toTarget.normalize();
         const patrolSpeed = config.patrolSpeed;
-        const vx = toTarget.x * patrolSpeed;
-        const vz = toTarget.z * patrolSpeed;
+        const vx = _toTarget.x * patrolSpeed;
+        const vz = _toTarget.z * patrolSpeed;
 
         // Strict AABB Wall sliding so bots NEVER pass through walls
         const resolved = resolveHorizontalAABB(

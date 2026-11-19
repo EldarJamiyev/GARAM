@@ -20,6 +20,9 @@ export interface InputCallbacks {
   onToggleCustomizer?: () => void; // F2 key for live customizer lab
 }
 
+// Source engine standard m_yaw: 0.022 degrees per mouse count
+const SOURCE_M_YAW_RAD = 0.022 * (Math.PI / 180);
+
 export class InputManager {
   public input: PlayerInput = {
     forward: false,
@@ -39,10 +42,19 @@ export class InputManager {
   public uiState: GameUIState = 'PAUSED';
   public isInteracting = false; // E key hold
 
+  // Source-calibrated mouse sensitivity
+  public mouseSensitivity = SOURCE_M_YAW_RAD * 2.2;
+
+  // Jump buffer (100ms window)
+  private jumpBufferRemaining = 0;
+  private spaceKeyHeld = false;
+
+  // Lock acquisition frame guard (filters first 2 frame spike deltas)
+  private lockAcquiredFrames = 0;
+
   private canvas: HTMLCanvasElement;
   private blocker: HTMLElement;
   private callbacks: InputCallbacks;
-  public mouseSensitivity = 0.0022;
 
   constructor(canvas: HTMLCanvasElement, blocker: HTMLElement, callbacks: InputCallbacks) {
     this.canvas = canvas;
@@ -50,6 +62,30 @@ export class InputManager {
     this.callbacks = callbacks;
 
     this.bindEvents();
+  }
+
+  public resetMovementInputs(): void {
+    this.input.forward = false;
+    this.input.backward = false;
+    this.input.left = false;
+    this.input.right = false;
+    this.input.jump = false;
+    this.input.crouch = false;
+    this.input.walk = false;
+    this.spaceKeyHeld = false;
+    this.jumpBufferRemaining = 0;
+  }
+
+  public update(dt: number, isGrounded: boolean): void {
+    if (this.jumpBufferRemaining > 0) {
+      this.jumpBufferRemaining -= dt;
+      if (isGrounded) {
+        this.input.jump = true;
+        this.jumpBufferRemaining = 0;
+      }
+    } else if (!this.spaceKeyHeld) {
+      this.input.jump = false;
+    }
   }
 
   private bindEvents(): void {
@@ -60,30 +96,53 @@ export class InputManager {
       }
     });
 
+    // PointerLock state synchronization
     document.addEventListener('pointerlockchange', () => {
       this.isLocked = document.pointerLockElement === this.canvas;
       const overlay = document.getElementById('ui-overlay');
+
       if (this.isLocked) {
         this.uiState = 'PLAYING';
+        this.lockAcquiredFrames = 2; // Filter first 2 frames after lock acquisition
         this.blocker.style.display = 'none';
         if (overlay) overlay.style.display = 'block';
       } else {
+        this.resetMovementInputs();
+        if (overlay) overlay.style.display = 'none';
         if (this.uiState === 'PLAYING') {
           this.uiState = 'PAUSED';
           this.blocker.style.display = 'flex';
-          if (overlay) overlay.style.display = 'none';
         }
       }
     });
 
+    // Window blur safety: release all keys
+    window.addEventListener('blur', () => {
+      this.resetMovementInputs();
+    });
+
+    // Raw mouse movement with delta spike filtering
     window.addEventListener('mousemove', (e) => {
       if (!this.isLocked) return;
+
+      // Filter transient pointer lock re-centering jump
+      if (this.lockAcquiredFrames > 0) {
+        this.lockAcquiredFrames--;
+        return;
+      }
+
+      // Filter extreme browser mouse teleport spikes (> 350px per event)
+      if (Math.abs(e.movementX) > 350 || Math.abs(e.movementY) > 350) {
+        return;
+      }
+
       this.mouseDeltaX = e.movementX;
       this.mouseDeltaY = e.movementY;
 
       this.input.yaw -= e.movementX * this.mouseSensitivity;
       this.input.pitch -= e.movementY * this.mouseSensitivity;
 
+      // Pitch clamping (-88 deg to +88 deg)
       const maxPitch = (Math.PI / 2) - 0.02;
       this.input.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.input.pitch));
     });
@@ -141,12 +200,19 @@ export class InputManager {
         return;
       }
 
+      // Space key with 100ms Jump Buffer
+      if (e.code === 'Space') {
+        this.spaceKeyHeld = true;
+        this.input.jump = true;
+        this.jumpBufferRemaining = 0.10; // 100ms buffer
+        return;
+      }
+
       switch (e.code) {
         case 'KeyW': this.input.forward = true; break;
         case 'KeyS': this.input.backward = true; break;
         case 'KeyA': this.input.left = true; break;
         case 'KeyD': this.input.right = true; break;
-        case 'Space': this.input.jump = true; break;
         case 'ControlLeft': this.input.crouch = true; break;
         case 'ShiftLeft': this.input.walk = true; break;
         case 'KeyR': this.callbacks.onReload(); break;
@@ -182,12 +248,19 @@ export class InputManager {
         return;
       }
 
+      if (e.code === 'Space') {
+        this.spaceKeyHeld = false;
+        if (this.jumpBufferRemaining <= 0) {
+          this.input.jump = false;
+        }
+        return;
+      }
+
       switch (e.code) {
         case 'KeyW': this.input.forward = false; break;
         case 'KeyS': this.input.backward = false; break;
         case 'KeyA': this.input.left = false; break;
         case 'KeyD': this.input.right = false; break;
-        case 'Space': this.input.jump = false; break;
         case 'ControlLeft': this.input.crouch = false; break;
         case 'ShiftLeft': this.input.walk = false; break;
       }
@@ -221,8 +294,34 @@ export class InputManager {
     window.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  /**
+   * Requests pointer lock with unadjusted movement (raw input) with robust fallback
+   * and catches unhandled promise rejections cleanly.
+   */
   public requestPointerLock(): void {
-    this.canvas.requestPointerLock();
+    if (this.isLocked) return;
+
+    try {
+      const opts = { unadjustedMovement: true };
+      const promise = (this.canvas.requestPointerLock as any)(opts);
+      if (promise && typeof promise.catch === 'function') {
+        promise.catch(() => {
+          try {
+            const fallback = this.canvas.requestPointerLock();
+            if (fallback && typeof fallback.catch === 'function') {
+              fallback.catch(() => {});
+            }
+          } catch {}
+        });
+      }
+    } catch {
+      try {
+        const fallback = this.canvas.requestPointerLock();
+        if (fallback && typeof fallback.catch === 'function') {
+          fallback.catch(() => {});
+        }
+      } catch {}
+    }
   }
 
   public exitPointerLock(): void {
@@ -231,7 +330,11 @@ export class InputManager {
     }
   }
 
-  public setSensitivity(sens: number): void {
-    this.mouseSensitivity = sens;
+  /**
+   * Sets mouse sensitivity scaled to Source standard m_yaw
+   * @param multiplier user sensitivity slider value (e.g. 2.2)
+   */
+  public setSensitivity(multiplier: number): void {
+    this.mouseSensitivity = SOURCE_M_YAW_RAD * multiplier;
   }
 }

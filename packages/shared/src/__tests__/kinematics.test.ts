@@ -138,4 +138,97 @@ describe('Kinematics & SAT Collision Resolution', () => {
     expect(res.x).toBeLessThanOrEqual(58.05);
     expect(res.z).toBeGreaterThanOrEqual(-58.05);
   });
+
+  it('sub-tick position interpolation smoothly blends prevState and state', () => {
+    const player = new KinematicPlayerController(0, 0, 0);
+    player.prevState = { x: 0, y: 0, z: 0, currentEyeHeight: KINEMATICS.EYE_HEIGHT_STAND };
+    player.state.x = 10;
+    player.state.y = 2;
+    player.state.z = -5;
+
+    const mid = player.getInterpolatedPosition(0.5);
+    expect(mid.x).toBeCloseTo(5.0);
+    expect(mid.y).toBeCloseTo(1.0);
+    expect(mid.z).toBeCloseTo(-2.5);
+  });
+
+  it('bullet tagging decelerates max speed and recovers exponentially', () => {
+    const player = new KinematicPlayerController(0, 0, 0);
+    expect(player.taggingFactor).toBe(1.0);
+
+    // Apply rifle tagging (0.55x)
+    player.applyTagging(0.55);
+    expect(player.taggingFactor).toBe(0.55);
+
+    const input = {
+      forward: true,
+      backward: false,
+      left: false,
+      right: false,
+      jump: false,
+      crouch: false,
+      walk: false,
+      yaw: 0,
+      pitch: 0,
+    };
+
+    // Update 30 ticks (approx 234ms)
+    for (let i = 0; i < 30; i++) {
+      player.update(input, 1 / 128, KINEMATICS.SPEED_RIFLE, []);
+    }
+
+    // Tagging factor must recover towards 1.0
+    expect(player.taggingFactor).toBeGreaterThan(0.70);
+  });
+
+  it('hard touchdown triggers landing speed recovery and camera dip', () => {
+    const player = new KinematicPlayerController(0, 0.02, 0);
+    player.state.vy = -6.0; // Hard fall speed > 3.5 m/s
+    player.state.isGrounded = false;
+
+    const input = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false,
+      jump: false,
+      crouch: false,
+      walk: false,
+      yaw: 0,
+      pitch: 0,
+    };
+
+    // Landing on ground at y = 0
+    player.update(input, 1 / 128, KINEMATICS.SPEED_RIFLE, []);
+
+    expect(player.state.isGrounded).toBe(true);
+    expect(player.landingSpeedFactor).toBeCloseTo(0.82);
+    expect(player.landingCameraDip).toBeGreaterThan(0.04);
+  });
+
+  it('rapid crouch toggling drains crouch stamina', () => {
+    const player = new KinematicPlayerController(0, 0, 0);
+    expect(player.crouchStamina).toBe(1.0);
+
+    const inputCrouch = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false,
+      jump: false,
+      crouch: true,
+      walk: false,
+      yaw: 0,
+      pitch: 0,
+    };
+
+    const inputStand = { ...inputCrouch, crouch: false };
+
+    // Rapid spam: crouch -> stand -> crouch -> stand
+    player.update(inputCrouch, 1 / 128, KINEMATICS.SPEED_RIFLE, []);
+    player.update(inputStand, 1 / 128, KINEMATICS.SPEED_RIFLE, []);
+    player.update(inputCrouch, 1 / 128, KINEMATICS.SPEED_RIFLE, []);
+
+    expect(player.crouchStamina).toBeLessThan(0.60);
+  });
 });
