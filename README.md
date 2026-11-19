@@ -1,150 +1,171 @@
-# GARAM: ZERO HOUR — Game Systems & Architecture Specification
+# GARAM: ZERO HOUR — Competitive 5v5 Browser Tactical FPS
 
-> **Official Repository:** [https://github.com/EldarJamiyev/GARAM](https://github.com/EldarJamiyev/GARAM)  
-> **Architecture:** Three.js (WebGL2/WebGPU) + Rapier3D WASM + Colyseus 64-Tick Server + TypeScript (npm workspaces)  
-> **Design Target:** Tournament-Grade 5v5 Tactical FPS (CS:GO / CS2 Feel with Total Sandbox Modularity)
+<p align="center">
+  <img src="docs/assets/hero-banner.svg" alt="GARAM: ZERO HOUR Hero Banner" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
+  <img src="https://img.shields.io/badge/Tickrate-128Hz%20Fixed%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
+  <img src="https://img.shields.io/badge/Netcode-64--Tick%20Rewind-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
+  <img src="https://img.shields.io/badge/Tests-40%20Passing-D4AF37?style=for-the-badge" alt="40 Vitest Tests">
+  <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
+</p>
 
 ---
 
 ## 1. High-Level Vision & Tactical Philosophy
 
-**GARAM: ZERO HOUR** is a tactical competitive first-person shooter featuring high-skill gunplay, deterministic movement, and total sandbox flexibility.
+**GARAM: ZERO HOUR** is an authentic, browser-native competitive 5v5 tactical first-person shooter engineered to deliver Counter-Strike 2 mechanical fidelity, sub-millimeter movement responsiveness, and esports visual clarity directly in any modern WebGL2/WebGPU browser.
 
 - **Lead Operator:** Eldar Garamov (Callsign: Sovereign-1), Supreme Commander of the GARAM Vanguard.
 - **The Conflict:** **GARAM Vanguard** (Defenders / CT) vs. **The Obsidian Syndicate** (Attackers / T).
 - **Core Directives:**
-  1. **Strict Tactical Focus:** Pure firearms, ballistic simulation, tactical utility, economy management, and bomb defusal.
-  2. **Zero Standing Spread RNG:** Clean counter-strafing or stationary shooting produces 100% deterministic pinpoint first-shot accuracy.
-  3. **Authoritative Server Architecture:** 64-tick server simulation with Rapier3D physics, client-side prediction, and timestamped circular hitbox history rewind (bounded to 80ms) for cheat-resistant, lag-compensated hit registration.
-  4. **Sandbox & Customizer Suite:** In-game live JSON editor for weapon stats, recoil tables, bot behaviors, crosshairs, and match rules.
+  1. **Strict 128Hz Kinematic Determinism:** Pure mathematical kinematics with Circle-AABB Separating Axis Theorem (SAT) wall deflection. Zero wall stick, zero corner kickback.
+  2. **Zero Standing Spread RNG:** Stationary rifle shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy.
+  3. **A\* Tactical Bot Brain:** Connected 32-waypoint tactical navigation graph with dynamic per-round team strategies, real raycast ballistics, sound awareness, anti-stuck steering, and bot separation.
+  4. **Dual-Pass PBR Rendering:** Depth-isolated viewmodel rendering (65° FOV) with procedural PMREM Image-Based Lighting (IBL) reflections and zero world-geometry clipping.
+  5. **64-Tick Lag-Compensated Netcode:** Authoritative 64-tick server simulation with 80ms historical hitbox ring buffer rewind, sub-tick spherical interpolation, and client-side prediction reconciliation.
 
 ---
 
-## 2. Launch Scope vs. Future Vision
+## 2. Monorepo & System Architecture
 
+<p align="center">
+  <img src="docs/assets/architecture-diagram.svg" alt="GARAM Architecture Diagram" width="100%">
+</p>
+
+The project is structured as an npm workspaces monorepo enforcing strict boundaries:
+
+- **`@garam/shared`**: Pure, deterministic TypeScript kernel with **zero DOM or Three.js dependencies**. Implements 128Hz kinematics, Circle-AABB SAT collision resolution, 5-zone raycast ballistics, the 32-node `TacticalNavGraph` with A\* pathfinding, economy state rules, and network schemas.
+- **`@garam/client`**: Client application running Three.js (WebGL2/WebGPU), dual-pass viewmodels, procedural PMREM IBL materials, Web Audio DSP convolver reverb, 2D radar, dropped weapon physics, spectator system, and lightweight orchestrator (`main.ts <= 650 lines`).
+- **`@garam/server`**: Authoritative 64-tick Node.js server running shared physics verification, 80ms historical hitbox rewind, and match round transitions.
+
+---
+
+## 3. DE_CITADEL — Tactical Map Blueprint
+
+<p align="center">
+  <img src="docs/assets/decitadel-tactical-map.svg" alt="DE_CITADEL Tactical Radar Blueprint" width="100%">
+</p>
+
+`DE_CITADEL` is a tournament-grade 120m x 120m three-lane competitive defusal map designed for 5v5 tactical engagements:
+
+- **Bombsite A (Armory Vault):** Wide exterior lane with long-range rifle sightlines, elevated `A Heaven` balcony, high-ground stairs, and quick rotation through `A Connector`.
+- **Bombsite B (Reactor Vault):** Close-quarters industrial zone with blue/red cargo containers, acoustic concrete `B Tunnels` (0.38s convolver reverb), and `B Connector` rotation.
+- **Mid Courtyard:** Crucial tactical hub connecting both spawns with double doors, sniper sightlines, and split execution lanes.
+- **Dynamic 11-Zone Callout HUD:** Real-time spatial tracking (`CT SPAWN`, `T SPAWN`, `A SITE`, `A LONG`, `A HEAVEN`, `A CONNECTOR`, `B SITE`, `B MAIN`, `B TUNNELS`, `B CONNECTOR`, `MID COURTYARD`).
+
+---
+
+## 4. Competitive Arsenal & Ballistics
+
+<p align="center">
+  <img src="docs/assets/arsenal-ballistics.svg" alt="GARAM Arsenal and Ballistics Telemetry" width="100%">
+</p>
+
+### Weapon Specifications & CS2 Recoil Patterns
+
+| Weapon | Slot | Cost | Damage (Body / Head) | RPM | Mag / Reserve | Unique Mechanical Features |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Garam-47** | 1 | $2,700 | 36 / 144 HP | 600 | 30 / 90 | CS2 '7' recoil spray curve, 1-shot headshot kill, authentic curved banana magazine. |
+| **Vanguard M4A1-S** | 1 | $2,900 | 38 / 140 HP | 600 | 20 / 80 | Perforated suppressor, 11m muffled gunshot radius, tight laser spray grouping. |
+| **Sovereign AWP** | 1 | $4,750 | 115 / 450 HP | 41 | 5 / 30 | 1-shot lethal torso kill, dual-stage 28°/10° optical zoom, flared scope with emerald tint. |
+| **Desert Eagle** | 2 | $700 | 53 / 159 HP | 267 | 7 / 35 | Heavy handgun pocket cannon, serrated cocking slide, lethal 1-shot headshot at close/mid. |
+| **Crimson Karambit** | 3 | $0 | 40 / 90 (180 Backstab) | — | 1 / 0 | True `ExtrudeGeometry` curved hawkbill blade, 360° ring-spin draw `[3]`/`[Q]`, `[F]` inspect twirl. |
+
+### 5-Zone Raycast Ballistics Multipliers
+- **Head (`HEAD`):** 4.00x multiplier (Instant lethal rifle/sniper hit)
+- **Neck (`NECK`):** 2.25x multiplier
+- **Chest (`CHEST`):** 1.00x baseline damage
+- **Stomach (`STOMACH`):** 1.25x multiplier
+- **Arms & Hands (`ARMS`):** 1.00x baseline damage
+- **Legs & Feet (`LEGS`):** 0.75x multiplier (Applies 58% tagging deceleration)
+
+---
+
+## 5. Controls & Keybindings Reference
+
+| Action | Primary Input | Secondary / Alternate | Notes |
+| :--- | :---: | :---: | :--- |
+| **Move Forward / Back / Strafe** | `W`, `S`, `A`, `D` | — | 128Hz fixed kinematics with instant counter-strafing. |
+| **Jump / Crouch-Jump** | `Space` | — | Air strafing enabled (`wishDir` acceleration). |
+| **Crouch (Duck)** | `ControlLeft` | `C` | Smooth eye height transition ($1.72\text{m} \to 1.16\text{m}$). |
+| **Walk (Silent Movement)** | `ShiftLeft` | — | Restricts speed to $3.30\text{m/s}$, eliminates all footstep audio cues. |
+| **Primary Fire / Slash** | `Mouse 1 (Left)` | — | Automatic or semi-auto fire / Karambit alternating slashes. |
+| **Secondary Fire / Scope / Stab** | `Mouse 2 (Right)` | — | AWP dual-stage zoom / Karambit heavy hook thrust. |
+| **Reload Weapon** | `R` | — | Full animation timer with ammo reserve replenishment. |
+| **Quick Switch Weapon** | `Q` | — | Instantly flips to previous weapon slot with draw animation. |
+| **Weapon Slot Selection** | `1`, `2`, `3`, `4`, `5` | `Scroll Wheel` | Primary (1), Secondary (2), Knife (3), Utility (4), Bomb (5). |
+| **Drop Active Weapon** | `G` | — | Tosses active firearm into 3D world with physical drop arc. |
+| **Interact / Defuse / Loot Floor** | `E` | — | Hold to defuse (5s kit, 10s raw) or press aiming at dropped weapon. |
+| **Inspect Weapon & Knife Spin** | `F` | — | Continuous CS2 finger-ring spin on Karambit, sway inspect on guns. |
+| **Tactical Buy Menu** | `B` | — | Available in buy zones during freeze time or first 20s. |
+| **Performance Monitor Overlay** | `F3` | — | Real-time FPS, frame time, latency, draw calls, triangles. |
+| **Sandbox Customizer Panel** | `F2` | — | Live crosshairs, infinite ammo, bot freeze, and practice cash. |
+| **Scoreboard / Combat Status** | `Tab` | — | Displays live player stats, K/D/A, ping, and bot rosters. |
+| **Spectator Teammate Cycle** | `Mouse 1` / `Mouse 2` | — | Active on death to spectate living allies in third-person. |
+
+---
+
+## 6. Development Roadmap & Verification
+
+<p align="center">
+  <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
+</p>
+
+### Test Suite Coverage (40 Passing Tests)
+Run the automated test suite across all packages:
+```bash
+npm test
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        LAUNCH SCOPE (Phases 1 - 4)                     │
-├────────────────────────────────────────────────────────────────────────┤
-│ • 128Hz Fixed Accumulator Kinematics & 112ms Counter-Strafing          │
-│ • Dual-Pass Depth-Isolated Viewmodel (FOV 68°, zero wall clipping)     │
-│ • 5 Core Weapons: Garam-47, Vanguard M4A1-S, Sovereign AWP,           │
-│   Eldar's Custom Desert Eagle, Garam Tactical Karambit                 │
-│ • Tactical Utility: Volumetric Smoke, Flashbang (afterimage), HE, Fire │
-│ • Competitive Map: DE_CITADEL (3-lane: Armory A, Mid, Reactor Vault B) │
-│ • 5v5 Bomb Defusal Loop: Pulse Core (40s), Buy Menu (B), Scoreboard    │
-│ • 4-Tier State-Machine Bot AI (Recruit, Veteran, Elite, Sovereign)     │
-│ • 64-Tick Authoritative Colyseus Server with 80ms Hitbox Rewind        │
-│ • Live In-Game Crosshair & JSON Weapon Customizer                      │
-└────────────────────────────────────┬───────────────────────────────────┘
-                                     │
-                                     ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                        FUTURE VISION (Phases 5 - 8)                    │
-├────────────────────────────────────────────────────────────────────────┤
-│ • Additional Maps: DE_BAKU_TERMINAL (Caspian port), DE_METRO, DE_DISTRICT│
-│ • Extended Modes: 1v1 Aim Arena (Proving Grounds), Horde Wave Defense, │
-│   Gun Game, Arms Race, 2v2 Wingman                                     │
-│ • In-Engine 3D Map Maker & .garam Content Package Export/Import        │
-│ • Full Operator Studio (Visors, Armor Plates, Glove Styles, Hex Camo)  │
-│ • Cloud Persistence: Supabase PostgreSQL (ELO, Profiles), Upstash Redis│
-│ • LiveKit Proximity WebRTC Squad Voice Comms                           │
-└────────────────────────────────────────────────────────────────────────┘
+```text
+ ✓ packages/shared/src/__tests__/kinematics.test.ts  (9 tests)
+ ✓ packages/shared/src/__tests__/ballistics.test.ts  (7 tests)
+ ✓ packages/shared/src/__tests__/navgraph.test.ts    (7 tests)
+ ✓ packages/shared/src/__tests__/callout.test.ts     (9 tests)
+ ✓ packages/shared/src/__tests__/economy.test.ts     (4 tests)
+ ✓ packages/shared/src/__tests__/lagcomp.test.ts     (4 tests)
+
+ Test Files  6 passed (6)
+      Tests  40 passed (40)
 ```
 
 ---
 
-## 3. Condensed Executable Milestones
+## 7. Quick Start & Developer Guide
 
-| Milestone | Deliverables | Verification Gate |
-| :--- | :--- | :--- |
-| **Milestone 1: Monorepo & Physics Kernel** | Scaffolding (`packages/client`, `packages/server`, `packages/shared`), 128Hz accumulator, Rapier3D kinematic character controller, PointerLock, counter-strafing. | Horizontal speed drops $< 0.38\,\text{m/s}$ in $\le 115\,\text{ms}$; 0.42m auto-step climbs stairs without camera jitter. |
-| **Milestone 2: Ballistics & Dual-Pass Viewmodel** | Dual-pass rendering (`clearDepth`), 6-DOF weapon springs, Garam-47, M4A1-S, AWP, Desert Eagle, 30-round spray tables, multi-material wall penetration. | Weapon never clips walls; 30 bullets trace exact spray pattern; wood penetrates with entry/exit decals. |
-| **Milestone 3: DE_CITADEL & Tactical Utility** | 3-lane geometry, PBR materials, HDR sky, volumetric smoke grid, flashbang blindness angle calculation, HE grenade clearing smoke. | HE grenade clears 2.6s hole in smoke; flashbang whiteout fades smoothly; Mid contact at ~4.8s. |
-| **Milestone 4: 5v5 Defusal & Authoritative Netcode** | Colyseus 64-tick server, Rapier3D sensor hitboxes (Head 4x, Torso 1x, Limbs 0.75x), 80ms rewind, Pulse Core plant/defuse, economy engine, bot AI. | 2 independent browser tabs play in a 5v5 match; hits validated by server; round state cycle executes cleanly. |
-| **Milestone 5: In-Game Customizer & Audio DSP** | Esc customizer (recoil, bot stats, crosshair JSON), procedural Web Audio gunshots/headshot dinks, HRTF spatial panner, lowpass wall occlusion. | Muffled footsteps behind concrete; crisp helmet dinks; live JSON tweaks update weapon stats instantly. |
-| **Milestone 6: Production Hardening & CI** | Zero TypeScript errors (`npx tsc --noEmit`), headless automated physics unit tests, GitHub sync. | Clean build across all packages; GitHub remote completely in sync. |
+### Prerequisites
+- Node.js >= 18.0.0
+- npm >= 9.0.0
 
----
+### Installation & Launch
+```bash
+# Clone the repository
+git clone https://github.com/EldarJamiyev/GARAM.git
+cd GARAM
 
-## 4. Movement Kinematics & Counter-Strafing Mathematics
+# Install monorepo dependencies
+npm install
 
-Physics simulation runs on a fixed timestep accumulator at 128Hz ($dt = 0.0078125\,\text{s}$).
+# Verify TypeScript across all workspaces (0 errors required)
+npm run typecheck
 
-### Movement Constants
-- Eye Heights: $\text{Stand} = 1.72\,\text{m}$, $\text{Crouch} = 1.16\,\text{m}$ (interpolated via exponential decay $\text{lerp}(h_{\text{curr}}, h_{\text{target}}, 1 - e^{-18 \cdot dt})$)
-- Maximum Speeds:
-  - Knife / Melee: $6.35\,\text{m/s}$ (250 units/s)
-  - Pistol: $6.10\,\text{m/s}$
-  - Assault Rifle: $5.45\,\text{m/s}$ (215 units/s)
-  - AWP: $5.08\,\text{m/s}$
-  - Silent Walk (Shift): $3.30\,\text{m/s}$
-  - Crouch (Ctrl): $2.15\,\text{m/s}$
-- Ground Acceleration: $a = 5.6$
-- Ground Friction: $f = 5.2$
-- Air Acceleration: $a_{\text{air}} = 12.0$ (Max air wish speed: $0.76\,\text{m/s}$)
+# Execute unit and integration tests
+npm test
 
-### Counter-Strafing Equation
-When traveling at $v_x = +5.45\,\text{m/s}$ and reversing input ($wishDir = -1$):
-$$\Delta v = - \left( v_x \cdot f + a \cdot v_{\text{max}} \right) \cdot dt$$
-Speed drops below the pinpoint threshold ($0.38\,\text{m/s}$) in $112\,\text{ms}$, resetting spread instantly to 0.
+# Build all packages
+npm run build
+
+# Start the local development server (Client on http://localhost:3000)
+npm run dev
+```
+
+Alternatively, on Windows, double-click **`PLAY_GARAM.bat`** in the project root for one-click launch.
 
 ---
 
-## 5. Ballistics, Recoil Patterns & Penetration
+## 8. License & Credits
 
-### Spread Calculation
-$$\theta_{\text{spread}} = \theta_{\text{base}} + \theta_{\text{move}} \cdot \left(\frac{\max(0, v_{\text{horiz}} - 0.38)}{v_{\text{max}}}\right)^2 + \theta_{\text{air}} \cdot \mathbb{I}_{\text{airborne}} + \theta_{\text{bloom}}$$
-Stationary rifle fire ($\theta_{\text{base}} = 0$) achieves zero spread (laser accuracy).
-
-### 30-Shot Spray Tables
-- **Garam-47:** Shots 1–5 pull straight up ($+0.35^\circ \to +1.8^\circ$ pitch); shots 6–12 drift right ($+1.1^\circ$ yaw); shots 13–22 sweep left ($-1.9^\circ$ yaw); shots 23–30 swing right ($+1.6^\circ$ yaw).
-- **Vanguard M4A1-S:** Tighter vertical pull, suppressed muzzle signature, laser-tight 3-round bursts.
-
-### Multi-Layer Wall Penetration
-Raycasts perform forward intersection, followed by a reverse raycast from $\mathbf{p}_{\text{hit}} + \mathbf{d}_{\text{ray}} \cdot 1.5\,\text{m}$ to measure wall thickness $T$:
-$$\text{Damage}_{\text{exit}} = \text{Damage}_{\text{entry}} \cdot \mu_{\text{mat}} - T \cdot \text{Cost}_{\text{mat}}$$
-- `WOOD_THIN`: $\mu = 0.75$, $\text{Cost} = 18\,\text{dmg/m}$
-- `DRYWALL`: $\mu = 0.70$, $\text{Cost} = 22\,\text{dmg/m}$
-- `METAL_SHEET`: $\mu = 0.45$, $\text{Cost} = 45\,\text{dmg/m}$
-- `CONCRETE`: Impenetrable ($\text{Cost} = \infty$)
-
----
-
-## 6. Viewmodel Rendering & 6-DOF Coupled Springs
-
-1. **Dual-Pass Rendering:**
-   - Pass 1: Render `worldScene` with player FOV ($90^\circ - 110^\circ$).
-   - Pass 2: Invoke `renderer.clearDepth()`, then render `viewmodelScene` with locked FOV ($68^\circ$) and near-clip $0.005\,\text{m}$.
-2. **Coupled 3D Springs (Hooke's Law: $F = -kx - cv$):**
-   - Mouse Lag / Inertia: Rotational lag proportional to mouse delta ($k = 180, c = 18$).
-   - Strafe Banking: $\pm 0.035\,\text{rad}$ roll during strafing.
-   - Recoil Impulse: $+0.045\,\text{m}$ Z-pushback, $+0.055\,\text{rad}$ muzzle pitch.
-   - Walk Bob: Figure-8 bob cycle scaled by horizontal velocity.
-
----
-
-## 7. Authoritative Server & Lag Compensation
-
-- **State Sync:** Colyseus room running at 64 ticks/second with binary schema delta compression.
-- **Hitbox Rewind:** 1000ms ring buffer storing 5 articulated sensor colliders per operator:
-  - Head (Sphere $r = 0.115\,\text{m}$, 4.0x damage, helmet dink audio)
-  - Upper Chest (Capsule, 1.0x damage, Kevlar mitigation)
-  - Stomach/Pelvis (Capsule, 1.15x damage, Kevlar mitigation)
-  - Arms (Capsules, 0.75x damage)
-  - Legs (Capsules, 0.75x damage)
-- On shot arrival, the server rewinds colliders by $\Delta t = \min(80\,\text{ms}, \text{ServerNow} - \text{ClientTimestamp})$, performs authoritative raycasts, and restores live state in $<0.2\,\text{ms}$.
-
----
-
-## 8. Web Audio Procedural Sound DSP
-
-- **Binaural Spatialization:** `PannerNode` with `HRTF` panning model.
-- **Wall Occlusion:**
-  - Clear line of sight: Filter cutoff at 20,000 Hz.
-  - 1 wall obstruction: Low-pass cutoff at 750 Hz ($0.55\times$ gain).
-  - 2+ wall obstructions: Low-pass cutoff at 320 Hz ($0.25\times$ gain).
-- **Procedural Synthesizers:**
-  - Gunshot punch: 110Hz $\to$ 38Hz sine oscillator + 1200Hz bandpass noise crack.
-  - Headshot dink: High-frequency metallic resonator ring (3200Hz).
-  - Flash tinnitus: High-pitched pure sine wave (2800Hz) decaying over 4.5s.
+Built with precision by **Eldar Jamiyev** & the GARAM Systems Team.  
+All gameplay systems, deterministic kinematics, and architectural specifications are maintained under the MIT License.
