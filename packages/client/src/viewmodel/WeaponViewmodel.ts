@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { AssetManager } from '../render/AssetManager.js';
 
 export class WeaponViewmodel {
   public mesh: THREE.Group;
@@ -179,6 +180,50 @@ export class WeaponViewmodel {
     this.weaponContainer.add(awpGroup);
     this.weaponContainer.add(deagleGroup);
     this.weaponContainer.add(karambitGroup);
+
+    // Asynchronously load external .glb models via AssetManager with graceful procedural fallback
+    this.loadExternalModels();
+  }
+
+  private async loadExternalModels(): Promise<void> {
+    const assetManager = AssetManager.getInstance();
+    const modelSpecs: { weaponId: string; path: string; targetLength: number }[] = [
+      { weaponId: 'garam-47', path: '/models/garam47.glb', targetLength: 0.88 },
+      { weaponId: 'vanguard-m4', path: '/models/m4a1s.glb', targetLength: 0.84 },
+      { weaponId: 'sovereign-awp', path: '/models/awp.glb', targetLength: 1.22 },
+      { weaponId: 'desert-eagle', path: '/models/deagle.glb', targetLength: 0.27 },
+      { weaponId: 'garam-karambit', path: '/models/karambit.glb', targetLength: 0.22 },
+    ];
+
+    for (const spec of modelSpecs) {
+      try {
+        const loadedModel = await assetManager.loadModel(spec.path, {
+          targetLength: spec.targetLength,
+          envMapIntensity: 1.8,
+        });
+
+        if (loadedModel) {
+          if (spec.weaponId === 'garam-karambit' && this.karambitSpinPivot) {
+            this.karambitSpinPivot.children.forEach((c) => {
+              c.visible = false;
+            });
+            loadedModel.name = `${spec.weaponId}-glb-mesh`;
+            this.karambitSpinPivot.add(loadedModel);
+          } else {
+            const proceduralGroup = this.weaponMeshes.get(spec.weaponId);
+            if (proceduralGroup) {
+              proceduralGroup.children.forEach((c) => {
+                c.visible = false;
+              });
+              loadedModel.name = `${spec.weaponId}-glb-mesh`;
+              proceduralGroup.add(loadedModel);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn(`[WeaponViewmodel] Failed to bind GLB model for ${spec.weaponId}, retaining procedural fallback.`);
+      }
+    }
   }
 
   public setWeapon(weaponId: string): void {
