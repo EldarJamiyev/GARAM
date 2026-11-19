@@ -5,7 +5,8 @@ import {
   TACTICAL_BOTS,
   BotSpawnDef,
   BOMBSITES,
-  SurfaceMaterial
+  SurfaceMaterial,
+  Vec3
 } from '@garam/shared';
 
 export interface BotEntity {
@@ -345,7 +346,7 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     botGroup.position.set(botDef.startPos.x, botDef.startPos.y, botDef.startPos.z);
     scene.add(botGroup);
 
-    const waypoints = botDef.waypoints.map(w => new THREE.Vector3(w.x, w.y, w.z));
+    const waypoints = botDef.waypoints.map((w: Vec3) => new THREE.Vector3(w.x, w.y, w.z));
 
     bots.push({
       id: botDef.id,
