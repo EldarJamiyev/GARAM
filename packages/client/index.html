@@ -384,7 +384,8 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(4, 6, 9, 0.82);
+      background: rgba(8, 11, 15, 0.58);
+      backdrop-filter: blur(4px);
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -652,6 +653,14 @@
       <div class="title-banner">GARAM</div>
       <div class="subtitle">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
 
+      <!-- Faction Selection -->
+      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">STARTING FACTION</div>
+      <div class="lobby-row" id="faction-selector">
+        <button class="lobby-btn active" data-faction="Vanguard" style="border-color: #3b9eff; color: #3b9eff;">VANGUARD (DEFENDERS)</button>
+        <button class="lobby-btn" data-faction="Syndicate" style="border-color: #ffaa00; color: #ffaa00;">SYNDICATE (ATTACKERS)</button>
+      </div>
+
+      <!-- AI Difficulty -->
       <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">AI DIFFICULTY TIER</div>
       <div class="lobby-row" id="diff-selector">
         <button class="lobby-btn" data-diff="Recruit">RECRUIT</button>
@@ -660,25 +669,46 @@
         <button class="lobby-btn" data-diff="Sovereign">SOVEREIGN</button>
       </div>
 
+      <!-- Game Mode -->
+      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">GAME MODE</div>
+      <div class="lobby-row" id="mode-selector">
+        <button class="lobby-btn active" data-mode="offline">OFFLINE 5V5 PRACTICE</button>
+        <button class="lobby-btn" data-mode="multiplayer">ONLINE MULTIPLAYER (64-TICK)</button>
+      </div>
+
+      <!-- Tactical Settings -->
       <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin: 4px 0 2px; text-transform: uppercase;">TACTICAL SETTINGS</div>
+      <div class="lobby-slider-row">
+        <span>MASTER VOLUME</span>
+        <input type="range" class="lobby-slider" id="vol-slider" min="0" max="100" step="1" value="85">
+        <span id="vol-val" style="color: #fff; width: 44px; text-align: right;">85%</span>
+      </div>
       <div class="lobby-slider-row">
         <span>MOUSE SENSITIVITY</span>
         <input type="range" class="lobby-slider" id="sens-slider" min="0.5" max="4.0" step="0.1" value="2.2">
-        <span id="sens-val" style="color: #fff; width: 40px; text-align: right;">2.2</span>
+        <span id="sens-val" style="color: #fff; width: 44px; text-align: right;">2.2</span>
+      </div>
+      <div class="lobby-slider-row">
+        <span>SCOPED SENSITIVITY MULTIPLIER</span>
+        <input type="range" class="lobby-slider" id="scoped-sens-slider" min="0.2" max="1.5" step="0.05" value="0.8">
+        <span id="scoped-sens-val" style="color: #fff; width: 44px; text-align: right;">0.80x</span>
       </div>
       <div class="lobby-slider-row">
         <span>FIELD OF VIEW</span>
         <input type="range" class="lobby-slider" id="fov-slider" min="75" max="105" step="1" value="90">
-        <span id="fov-val" style="color: #fff; width: 40px; text-align: right;">90°</span>
+        <span id="fov-val" style="color: #fff; width: 44px; text-align: right;">90°</span>
       </div>
 
-      <button class="start-prompt" id="spawn-btn" style="margin-top: 18px; width: 100%;">DEPLOY OPERATOR (ELDAR GARAMOV)</button>
+      <div style="display: flex; gap: 12px; width: 100%; margin-top: 14px;">
+        <button class="start-prompt" id="spawn-btn" style="flex: 2;">DEPLOY OPERATOR</button>
+        <button class="lobby-btn" id="open-customizer-btn" style="flex: 1; background: rgba(59, 158, 255, 0.2); border-color: #3b9eff; color: #fff; font-size: 12px;">[F2] SANDBOX</button>
+      </div>
 
       <div class="controls-help">
         [WASD] Move &nbsp;|&nbsp; [A / D Tap] Counter-Strafe &nbsp;|&nbsp; [SPACE] Jump &nbsp;|&nbsp; [CTRL] Crouch &nbsp;|&nbsp; [SHIFT] Silent Walk<br>
         [MOUSE 1] Fire / Light Slash &nbsp;|&nbsp; [MOUSE 2] Scope (1x/2x) / Heavy Stab &nbsp;|&nbsp; [HOLD E] Plant / Defuse<br>
         [Q] Quick-Switch &nbsp;|&nbsp; [1-5] Weapons &nbsp;|&nbsp; [F] Inspect Weapon &nbsp;|&nbsp; [R] Reload &nbsp;|&nbsp; [Z/X/C/V] Quick Utility<br>
-        [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [P] Practice $16K &nbsp;|&nbsp; [ESC] Settings / Pause
+        [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [F2] Customizer Lab &nbsp;|&nbsp; [P] Practice $16K &nbsp;|&nbsp; [ESC] Settings / Pause
       </div>
     </div>
   </div>

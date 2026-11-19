@@ -19,3 +19,8 @@ Desktop.ini
 # Temporary and log files
 *.log
 *.tmp
+
+# Environment and secrets
+.env
+.env.*
+*.env

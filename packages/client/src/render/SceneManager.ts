@@ -46,16 +46,16 @@ export class SceneManager {
     this.sunLight.shadow.camera.bottom = -d;
     this.worldScene.add(this.sunLight);
 
-    // Viewmodel lighting
-    const vmHemi = new THREE.HemisphereLight(0xffffff, 0x555555, 0.95);
+    // Viewmodel crisp 3-point lighting rig (Key + Rim + Hemisphere Fill)
+    const vmHemi = new THREE.HemisphereLight(0xddeeff, 0x444b54, 1.05);
     this.viewmodelScene.add(vmHemi);
 
-    const vmKey = new THREE.DirectionalLight(0xfffaed, 1.1);
-    vmKey.position.set(3, 5, 2);
+    const vmKey = new THREE.DirectionalLight(0xfffaed, 1.45);
+    vmKey.position.set(2.5, 4.5, 3.0);
     this.viewmodelScene.add(vmKey);
 
-    const vmRim = new THREE.DirectionalLight(0x88bbff, 0.45);
-    vmRim.position.set(-3, -2, -2);
+    const vmRim = new THREE.DirectionalLight(0x88ccff, 0.95);
+    vmRim.position.set(-3.5, 2.5, -2.5);
     this.viewmodelScene.add(vmRim);
 
     // 5. Atmospheric Gradient Sky Dome with Sun Disc

@@ -32,8 +32,8 @@ export class WeaponViewmodel {
   public reloadProgress = 0;
 
   // Spring physics states
-  private targetPos = new THREE.Vector3(0.24, -0.22, -0.45);
-  private currentPos = new THREE.Vector3(0.24, -0.22, -0.45);
+  private targetPos = new THREE.Vector3(0.20, -0.20, -0.38);
+  private currentPos = new THREE.Vector3(0.20, -0.20, -0.38);
   private velPos = new THREE.Vector3();
 
   private targetRot = new THREE.Euler(0, 0, 0);
@@ -145,18 +145,18 @@ export class WeaponViewmodel {
       // 2-handed Weaver pistol grip
       this.rightArm.position.set(0.08, -0.16, 0.08);
       this.leftArm.visible = true;
-      this.leftArm.position.set(-0.04, -0.22, 0.04);
+      this.leftArm.position.set(-0.02, -0.18, -0.04);
       this.leftArm.rotation.set(0.2, -0.3, 0);
     } else if (weaponId === 'garam-karambit') {
       // 1-handed knife stance
       this.rightArm.position.set(0.08, -0.14, 0.08);
       this.leftArm.visible = false;
     } else {
-      // 2-handed rifle support
+      // 2-handed rifle support with visible gloved left hand holding handguard
       this.rightArm.position.set(0.12, -0.18, 0.08);
       this.leftArm.visible = true;
-      this.leftArm.position.set(-0.16, -0.20, -0.06);
-      this.leftArm.rotation.set(0, 0, 0);
+      this.leftArm.position.set(-0.10, -0.16, -0.16);
+      this.leftArm.rotation.set(-0.15, 0.25, -0.08);
     }
   }
 

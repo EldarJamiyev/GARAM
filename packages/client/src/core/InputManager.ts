@@ -17,6 +17,7 @@ export interface InputCallbacks {
   onPracticeToggle: () => void; // P key for $16K dev test
   onInspectWeapon?: () => void; // F key for inspect
   onUtilityQuickSelect?: (type: 'smoke' | 'flash' | 'he' | 'molotov') => void;
+  onToggleCustomizer?: () => void; // F2 key for live customizer lab
 }
 
 export class InputManager {
@@ -88,6 +89,13 @@ export class InputManager {
     });
 
     window.addEventListener('keydown', (e) => {
+      // F2 Sandbox Customizer
+      if (e.code === 'F2') {
+        e.preventDefault();
+        this.callbacks.onToggleCustomizer?.();
+        return;
+      }
+
       // Practice Dev Toggle
       if (e.code === 'KeyP') {
         this.callbacks.onPracticeToggle();
@@ -144,8 +152,8 @@ export class InputManager {
         case 'KeyR': this.callbacks.onReload(); break;
         case 'KeyQ': this.callbacks.onQuickSwitch(); break;
         case 'KeyF': this.callbacks.onInspectWeapon?.(); break;
-        case 'KeyZ': this.callbacks.onUtilityQuickSelect?.('flash'); break;
-        case 'KeyX': this.callbacks.onUtilityQuickSelect?.('smoke'); break;
+        case 'KeyZ': this.callbacks.onUtilityQuickSelect?.('smoke'); break;
+        case 'KeyX': this.callbacks.onUtilityQuickSelect?.('flash'); break;
         case 'KeyC': this.callbacks.onUtilityQuickSelect?.('he'); break;
         case 'KeyV': this.callbacks.onUtilityQuickSelect?.('molotov'); break;
         case 'Digit1': this.callbacks.onSlotSelect(1); break;

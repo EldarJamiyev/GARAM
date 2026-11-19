@@ -23,6 +23,8 @@ import { HUDManager } from './ui/HUDManager.js';
 import { UtilityManager, UtilityType } from './utility/UtilityManager.js';
 import { RadarRenderer } from './ui/RadarRenderer.js';
 import { BotAISystem, BotDifficulty } from './match/BotAISystem.js';
+import { SettingsStore, settingsStore, PlayerFaction, GameMode } from './core/SettingsStore.js';
+import { CustomizerUI } from './ui/CustomizerUI.js';
 
 export class GaramGame {
   private canvas: HTMLCanvasElement;
@@ -41,6 +43,7 @@ export class GaramGame {
   private effects: EffectsManager;
   private utilityManager: UtilityManager;
   private radar: RadarRenderer;
+  private customizer: CustomizerUI;
 
   // Gameplay & Physics Systems
   private player: KinematicPlayerController;
@@ -99,8 +102,9 @@ export class GaramGame {
     this.viewmodel = new WeaponViewmodel();
     this.viewmodelScene.add(this.viewmodel.mesh);
 
-    // 2. Audio, Effects, Utility & Radar
+    // 2. Audio with Master Chain & Dynamics Compressor
     this.audio = new ProceduralAudio();
+    this.audio.setMasterVolume(settingsStore.settings.masterVolume);
     this.effects = new EffectsManager(this.worldScene, this.worldCamera);
     this.radar = new RadarRenderer();
 
@@ -123,13 +127,13 @@ export class GaramGame {
       onKillfeed: (text) => this.hud.addKillfeed(text),
     });
 
-    // 3. Core Combat & Inventory
+    // 3. Core Combat, Inventory & Settings
     this.inventory = new InventoryManager();
     this.economy = new EconomyManager();
     this.hud = new HUDManager();
 
-    // Spawn player at Vanguard Defender Spawn
-    const spawnPos = SPAWN_POINTS.VANGUARD_CT;
+    // Spawn player at chosen Faction Spawn
+    const spawnPos = settingsStore.settings.faction === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
     this.player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
     // 4. Build Multi-Elevation Map
@@ -159,7 +163,7 @@ export class GaramGame {
           }
         },
       },
-      'Veteran'
+      settingsStore.settings.botDifficulty
     );
 
     // 6. Weapon Controller
@@ -183,7 +187,8 @@ export class GaramGame {
           this.worldCamera.fov = fov;
           this.worldCamera.updateProjectionMatrix();
           this.hud.setScopeOverlay(zoomStage > 0);
-          this.inputManager.setSensitivity(sens);
+          const scopedSens = sens * settingsStore.settings.scopedSensitivityMultiplier;
+          this.inputManager.setSensitivity(scopedSens);
         },
         onUtilityThrown: () => {
           this.hud.addKillfeed('💨 Tactical Smoke Deployed');
@@ -194,7 +199,39 @@ export class GaramGame {
       }
     );
 
-    // 7. Round Manager (MR12 Competitive Format)
+    // 7. Live In-Game Sandbox & Crosshair Customizer [F2]
+    this.customizer = new CustomizerUI({
+      onCrosshairChanged: (cfg) => {
+        const bars = document.querySelectorAll('.crosshair-bar, .crosshair-dot');
+        bars.forEach((el) => {
+          (el as HTMLElement).style.background = cfg.color;
+        });
+      },
+      onGrantCash: () => {
+        this.economy.devPracticeMoney();
+        this.hud.addKillfeed('🛠️ Practice Mode: $16,000 Cash Granted');
+      },
+      onToggleInfiniteAmmo: (enabled) => {
+        this.hud.addKillfeed(`Infinite Ammo: ${enabled ? 'ENABLED' : 'DISABLED'}`);
+      },
+      onToggleShowImpacts: (enabled) => {
+        this.hud.addKillfeed(`Show Bullet Impacts: ${enabled ? 'ENABLED' : 'DISABLED'}`);
+      },
+      onToggleFreezeBots: (frozen) => {
+        this.hud.addKillfeed(`Bot Freeze: ${frozen ? 'FROZEN' : 'ACTIVE'}`);
+      },
+      onRespawnBots: () => {
+        this.respawnAllBots();
+        this.hud.addKillfeed('Respawned all bots to tactical spawn positions');
+      },
+      onExit: () => {
+        if (this.inputManager.uiState === 'PLAYING') {
+          this.inputManager.requestPointerLock();
+        }
+      },
+    });
+
+    // 8. Round Manager (MR12 Competitive Format)
     this.roundManager = new RoundManager(this.worldScene, this.audio, {
       onPhaseChanged: (phase, round) => {
         if (phase === 'FREEZE_TIME') {
@@ -234,19 +271,9 @@ export class GaramGame {
         this.playerHealth = 100;
         this.economy.armor = 100;
 
-        // Reset bots
-        for (const bot of this.bots) {
-          bot.isDead = false;
-          bot.health = bot.maxHealth;
-          bot.armor = 100;
-          if (bot.patrolWaypoints.length > 0) {
-            bot.waypointIndex = 0;
-            bot.patrolTarget = bot.patrolWaypoints[0];
-            bot.mesh.position.set(bot.patrolTarget.x, 0, bot.patrolTarget.z);
-          }
-        }
+        this.respawnAllBots();
 
-        // Restock ammo in current weapons
+        // Restock ammo
         for (let s = 1; s <= 3; s++) {
           const state = this.inventory.slots[s as SlotNumber];
           if (state && WEAPONS[state.weaponId]) {
@@ -263,7 +290,7 @@ export class GaramGame {
       }
     });
 
-    // 8. Input Manager
+    // 9. Input Manager
     const blocker = document.getElementById('blocker')!;
     this.inputManager = new InputManager(this.canvas, blocker, {
       onFireDown: () => {
@@ -317,9 +344,20 @@ export class GaramGame {
       onPracticeToggle: () => this.handlePracticeToggle(),
       onInspectWeapon: () => this.weaponController.inspectWeapon(),
       onUtilityQuickSelect: (type) => this.handleQuickUtility(type),
+      onToggleCustomizer: () => {
+        this.customizer.toggle();
+        if (this.customizer.isOpen) {
+          this.inputManager.exitPointerLock();
+        }
+      },
       onInteractDown: () => { this.isInteracting = true; },
       onInteractUp: () => { this.isInteracting = false; }
     });
+
+    // Apply stored sensitivity & FOV
+    this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity * 0.001);
+    this.worldCamera.fov = settingsStore.settings.fov;
+    this.worldCamera.updateProjectionMatrix();
 
     // Setup Lobby and Buy Menu UI listeners
     this.setupLobbyUI();
@@ -331,6 +369,19 @@ export class GaramGame {
 
     window.addEventListener('resize', this.onResize.bind(this));
     requestAnimationFrame(this.loop.bind(this));
+  }
+
+  private respawnAllBots(): void {
+    for (const bot of this.bots) {
+      bot.isDead = false;
+      bot.health = bot.maxHealth;
+      bot.armor = 100;
+      if (bot.patrolWaypoints.length > 0) {
+        bot.waypointIndex = 0;
+        bot.patrolTarget = bot.patrolWaypoints[0];
+        bot.mesh.position.set(bot.patrolTarget.x, 0, bot.patrolTarget.z);
+      }
+    }
   }
 
   private damagePlayer(dmg: number, attackerPos: THREE.Vector3 | null): void {
@@ -352,8 +403,9 @@ export class GaramGame {
       this.hud.addKillfeed('💀 Eldar Garamov was eliminated');
       this.playerHealth = 100;
       this.economy.armor = 100;
-      this.player.state.x = SPAWN_POINTS.VANGUARD_CT.x;
-      this.player.state.z = SPAWN_POINTS.VANGUARD_CT.z;
+      const spawn = settingsStore.settings.faction === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
+      this.player.state.x = spawn.x;
+      this.player.state.z = spawn.z;
     }
   }
 
@@ -393,6 +445,24 @@ export class GaramGame {
   }
 
   private setupLobbyUI(): void {
+    // Faction Selector
+    const factionBtns = document.querySelectorAll('#faction-selector .lobby-btn');
+    factionBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        factionBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const faction = btn.getAttribute('data-faction') as PlayerFaction;
+        if (faction) {
+          settingsStore.update('faction', faction);
+          const spawn = faction === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
+          this.player.state.x = spawn.x;
+          this.player.state.z = spawn.z;
+          this.hud.addKillfeed(`Faction Selected: ${faction.toUpperCase()}`);
+        }
+      });
+    });
+
     // Difficulty Tier Selector
     const diffBtns = document.querySelectorAll('#diff-selector .lobby-btn');
     diffBtns.forEach((btn) => {
@@ -402,21 +472,70 @@ export class GaramGame {
         btn.classList.add('active');
         const diff = btn.getAttribute('data-diff') as BotDifficulty;
         if (diff) {
+          settingsStore.update('botDifficulty', diff);
           this.botAI.setDifficulty(diff);
           this.hud.addKillfeed(`Bot Difficulty Set: ${diff.toUpperCase()}`);
         }
       });
     });
 
-    // Sensitivity Slider
+    // Game Mode Selector
+    const modeBtns = document.querySelectorAll('#mode-selector .lobby-btn');
+    modeBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modeBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const mode = btn.getAttribute('data-mode') as GameMode;
+        if (mode) {
+          settingsStore.update('gameMode', mode);
+          this.hud.addKillfeed(`Mode: ${mode.toUpperCase()}`);
+        }
+      });
+    });
+
+    // Master Volume Slider
+    const volSlider = document.getElementById('vol-slider') as HTMLInputElement;
+    const volVal = document.getElementById('vol-val');
+    if (volSlider && volVal) {
+      volSlider.value = Math.round(settingsStore.settings.masterVolume * 100).toString();
+      volVal.innerText = `${volSlider.value}%`;
+      volSlider.addEventListener('input', (e) => {
+        e.stopPropagation();
+        const val = parseInt(volSlider.value, 10);
+        volVal.innerText = `${val}%`;
+        const ratio = val / 100;
+        this.audio.setMasterVolume(ratio);
+        settingsStore.update('masterVolume', ratio);
+      });
+    }
+
+    // Mouse Sensitivity Slider
     const sensSlider = document.getElementById('sens-slider') as HTMLInputElement;
     const sensVal = document.getElementById('sens-val');
     if (sensSlider && sensVal) {
+      sensSlider.value = settingsStore.settings.mouseSensitivity.toString();
+      sensVal.innerText = settingsStore.settings.mouseSensitivity.toFixed(1);
       sensSlider.addEventListener('input', (e) => {
         e.stopPropagation();
         const val = parseFloat(sensSlider.value);
         sensVal.innerText = val.toFixed(1);
         this.inputManager.setSensitivity(val * 0.001);
+        settingsStore.update('mouseSensitivity', val);
+      });
+    }
+
+    // Scoped Sensitivity Multiplier Slider
+    const scopedSlider = document.getElementById('scoped-sens-slider') as HTMLInputElement;
+    const scopedVal = document.getElementById('scoped-sens-val');
+    if (scopedSlider && scopedVal) {
+      scopedSlider.value = settingsStore.settings.scopedSensitivityMultiplier.toString();
+      scopedVal.innerText = `${settingsStore.settings.scopedSensitivityMultiplier.toFixed(2)}x`;
+      scopedSlider.addEventListener('input', (e) => {
+        e.stopPropagation();
+        const val = parseFloat(scopedSlider.value);
+        scopedVal.innerText = `${val.toFixed(2)}x`;
+        settingsStore.update('scopedSensitivityMultiplier', val);
       });
     }
 
@@ -424,12 +543,24 @@ export class GaramGame {
     const fovSlider = document.getElementById('fov-slider') as HTMLInputElement;
     const fovVal = document.getElementById('fov-val');
     if (fovSlider && fovVal) {
+      fovSlider.value = settingsStore.settings.fov.toString();
+      fovVal.innerText = `${settingsStore.settings.fov}°`;
       fovSlider.addEventListener('input', (e) => {
         e.stopPropagation();
         const val = parseInt(fovSlider.value, 10);
         fovVal.innerText = `${val}°`;
         this.worldCamera.fov = val;
         this.worldCamera.updateProjectionMatrix();
+        settingsStore.update('fov', val);
+      });
+    }
+
+    // Open Customizer Button
+    const custBtn = document.getElementById('open-customizer-btn');
+    if (custBtn) {
+      custBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.customizer.toggle(true);
       });
     }
 
@@ -446,10 +577,10 @@ export class GaramGame {
     const active = this.inventory.getActiveWeapon();
     if (this.weaponController.zoomStage > 0 && active.id !== 'sovereign-awp') {
       this.weaponController.zoomStage = 0;
-      this.worldCamera.fov = 90;
+      this.worldCamera.fov = settingsStore.settings.fov;
       this.worldCamera.updateProjectionMatrix();
       this.hud.setScopeOverlay(false);
-      this.inputManager.setSensitivity(0.0022);
+      this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity * 0.001);
     }
     this.viewmodel.setWeapon(active.id);
   }
@@ -609,10 +740,13 @@ export class GaramGame {
     if (this.player.state.isGrounded && hozSpeed > 0.8 && !this.inputManager.input.walk) {
       this.distanceTraveled += hozSpeed * frameDelta;
       if (this.distanceTraveled - this.lastStepDist > 2.2) {
-        this.audio.playFootstep();
+        this.audio.playFootstep('CONCRETE');
         this.lastStepDist = this.distanceTraveled;
       }
     }
+
+    // Continuous 3D Web Audio Listener Sync with Camera
+    this.audio.updateListener(this.worldCamera);
 
     // Weapon Inventory Timers Tick
     const invUpdate = this.inventory.update(frameDelta);
@@ -626,8 +760,11 @@ export class GaramGame {
       this.hud.updateReloadProgress(true, progress);
     }
 
-    // Continuous fire for automatic weapons
+    // Continuous fire for automatic weapons (with Infinite Ammo sandbox override if enabled)
     if (this.isFiring && this.inputManager.isLocked && activeWp.fireMode === 'auto') {
+      if (this.customizer.infiniteAmmo) {
+        activeSlotState.currentAmmo = activeWp.magCapacity;
+      }
       this.weaponController.handlePrimaryFire(
         this.worldCamera,
         hozSpeed,
@@ -673,19 +810,21 @@ export class GaramGame {
     // Live Smoke Occluders for Bot LOS and Radar
     const smokeOccluders = this.utilityManager.getActiveSmokeOccluders();
 
-    // Bot AI update with 4-Tier Objective FSM, Line of Sight, and AABB Collision
-    const playerEye = this.worldCamera.position.clone();
-    this.botAI.update(
-      this.bots,
-      frameDelta,
-      this.colliders,
-      this.blocks,
-      this.worldCamera.position,
-      playerEye,
-      smokeOccluders,
-      this.roundManager.isBombPlanted,
-      this.roundManager.bombPlantSite
-    );
+    // Bot AI update with 4-Tier Objective FSM, Line of Sight, and AABB Collision (bypassed if Frozen)
+    if (!this.customizer.freezeBots) {
+      const playerEye = this.worldCamera.position.clone();
+      this.botAI.update(
+        this.bots,
+        frameDelta,
+        this.colliders,
+        this.blocks,
+        this.worldCamera.position,
+        playerEye,
+        smokeOccluders,
+        this.roundManager.isBombPlanted,
+        this.roundManager.bombPlantSite
+      );
+    }
 
     // Update 2D Tactical Radar
     const bombPos = this.roundManager.bombPosition;
