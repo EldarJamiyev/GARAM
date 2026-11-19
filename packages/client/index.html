@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GARAM: ZERO HOUR</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0c0d0e;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #fff;
+    }
+    #game-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    /* Crosshair */
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+    .crosshair-bar {
+      position: absolute;
+      background: #00ff66;
+      box-shadow: 0 0 1px #000;
+    }
+    .crosshair-top {
+      width: 2px;
+      height: 8px;
+      left: -1px;
+      top: -12px;
+    }
+    .crosshair-bottom {
+      width: 2px;
+      height: 8px;
+      left: -1px;
+      top: 4px;
+    }
+    .crosshair-left {
+      width: 8px;
+      height: 2px;
+      top: -1px;
+      left: -12px;
+    }
+    .crosshair-right {
+      width: 8px;
+      height: 2px;
+      top: -1px;
+      left: 4px;
+    }
+    .crosshair-dot {
+      width: 2px;
+      height: 2px;
+      background: #00ff66;
+      position: absolute;
+      top: -1px;
+      left: -1px;
+    }
+    /* Tactical HUD */
+    #hud-bottom {
+      position: absolute;
+      bottom: 24px;
+      left: 32px;
+      right: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-weight: 700;
+    }
+    .hud-block {
+      background: rgba(10, 12, 14, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 12px 20px;
+      border-radius: 4px;
+      backdrop-filter: blur(8px);
+    }
+    .hud-label {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      color: #8e959e;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .hud-val {
+      font-size: 32px;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+    .hud-val.hp {
+      color: #ff334b;
+    }
+    .hud-val.armor {
+      color: #3b9eff;
+    }
+    .hud-val.ammo {
+      color: #ffb833;
+    }
+    .hud-val.speed {
+      font-size: 16px;
+      color: #00ff88;
+    }
+    /* Click to Play Screen */
+    #blocker {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    .title-banner {
+      font-size: 56px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      color: #fff;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      text-shadow: 0 0 20px rgba(255, 51, 75, 0.6);
+    }
+    .subtitle {
+      font-size: 14px;
+      letter-spacing: 3px;
+      color: #a0aab5;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+    .start-prompt {
+      padding: 12px 28px;
+      background: #ff2a44;
+      border: 1px solid #ff596f;
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+    .start-prompt:hover {
+      background: #e01b33;
+      transform: scale(1.04);
+    }
+    .controls-help {
+      margin-top: 28px;
+      font-size: 12px;
+      color: #7b8590;
+      line-height: 1.8;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="ui-overlay">
+    <div id="crosshair">
+      <div class="crosshair-bar crosshair-top" id="ch-top"></div>
+      <div class="crosshair-bar crosshair-bottom" id="ch-bottom"></div>
+      <div class="crosshair-bar crosshair-left" id="ch-left"></div>
+      <div class="crosshair-bar crosshair-right" id="ch-right"></div>
+      <div class="crosshair-dot"></div>
+    </div>
+
+    <div id="hud-bottom">
+      <div style="display: flex; gap: 16px;">
+        <div class="hud-block">
+          <div class="hud-label">+ HEALTH</div>
+          <div class="hud-val hp" id="hud-hp">100</div>
+        </div>
+        <div class="hud-block">
+          <div class="hud-label">&#x25C6; ARMOR</div>
+          <div class="hud-val armor" id="hud-armor">100</div>
+        </div>
+        <div class="hud-block">
+          <div class="hud-label">VELOCITY</div>
+          <div class="hud-val speed" id="hud-speed">0.0 m/s</div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 16px;">
+        <div class="hud-block" style="text-align: right;">
+          <div class="hud-label" id="hud-weapon-name">GARAM-47</div>
+          <div class="hud-val ammo"><span id="hud-ammo-cur">30</span> <span style="font-size: 18px; color: #8e959e;">/ <span id="hud-ammo-res">90</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="blocker">
+    <div class="title-banner">GARAM</div>
+    <div class="subtitle">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
+    <div class="start-prompt">CLICK TO SPAWN (ELDAR GARAMOV)</div>
+    <div class="controls-help">
+      [WASD] Move &nbsp;|&nbsp; [A / D Tap] Counter-Strafe &nbsp;|&nbsp; [SPACE] Jump &nbsp;|&nbsp; [CTRL] Crouch &nbsp;|&nbsp; [SHIFT] Silent Walk<br>
+      [MOUSE 1] Fire with Recoil &nbsp;|&nbsp; [1, 2, 3] Switch Weapon &nbsp;|&nbsp; [R] Reload &nbsp;|&nbsp; [ESC] Release Cursor
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

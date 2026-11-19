@@ -1,0 +1,21 @@
+{
+  "name": "garam-fps",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GARAM: ZERO HOUR - Competitive 5v5 Tactical FPS",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:client": "npm --workspace=@garam/client run dev",
+    "dev:server": "npm --workspace=@garam/server run dev",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build": "npm run build --workspaces",
+    "typecheck": "tsc -b",
+    "test": "npm run test --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,4 +1,10 @@
 # .gitignore
+# Dependencies & build outputs
+node_modules/
+dist/
+build/
+.cache/
+
 # Operating System files
 Thumbs.db
 Desktop.ini

@@ -1,0 +1,161 @@
+export interface WeaponDef {
+  id: string;
+  name: string;
+  category: 'rifle' | 'sniper' | 'pistol' | 'smg' | 'melee';
+  price: number;
+  damage: number;
+  fireRateRpm: number;
+  magCapacity: number;
+  reserveAmmo: number;
+  reloadTime: number;
+  movementSpeed: number;
+  penetrationPower: number;
+  baseSpread: number;
+  sprayPattern: Array<[number, number]>; // [pitchDeg, yawDeg]
+}
+
+// 30-round spray pattern for Garam-47 (AK variant)
+const GARAM_47_SPRAY: Array<[number, number]> = [
+  [0.35, 0.0],
+  [0.70, 0.05],
+  [1.10, 0.10],
+  [1.45, -0.05],
+  [1.80, -0.15],
+  [2.10, 0.40],
+  [2.35, 0.75],
+  [2.55, 1.10],
+  [2.70, 1.30],
+  [2.80, 1.20],
+  [2.85, 0.85],
+  [2.85, 0.30],
+  [2.80, -0.40],
+  [2.75, -1.10],
+  [2.70, -1.65],
+  [2.65, -1.90],
+  [2.65, -1.85],
+  [2.70, -1.50],
+  [2.75, -0.90],
+  [2.80, -0.20],
+  [2.85, 0.50],
+  [2.90, 1.10],
+  [2.90, 1.50],
+  [2.85, 1.65],
+  [2.80, 1.55],
+  [2.75, 1.20],
+  [2.70, 0.70],
+  [2.65, 0.10],
+  [2.60, -0.50],
+  [2.55, -0.80],
+];
+
+// Vanguard M4A1-S pattern (tighter, laser precision)
+const VANGUARD_M4_SPRAY: Array<[number, number]> = [
+  [0.25, 0.0],
+  [0.55, 0.0],
+  [0.85, 0.05],
+  [1.15, -0.05],
+  [1.40, -0.10],
+  [1.65, 0.25],
+  [1.85, 0.50],
+  [2.00, 0.65],
+  [2.10, 0.70],
+  [2.15, 0.55],
+  [2.15, 0.20],
+  [2.10, -0.20],
+  [2.05, -0.65],
+  [2.00, -0.95],
+  [1.95, -1.10],
+  [1.95, -0.95],
+  [2.00, -0.60],
+  [2.05, -0.15],
+  [2.10, 0.30],
+  [2.15, 0.70],
+  [2.15, 0.90],
+  [2.10, 0.85],
+  [2.05, 0.60],
+  [2.00, 0.20],
+  [1.95, -0.25],
+];
+
+export const WEAPONS: Record<string, WeaponDef> = {
+  'garam-47': {
+    id: 'garam-47',
+    name: 'Garam-47',
+    category: 'rifle',
+    price: 2700,
+    damage: 36,
+    fireRateRpm: 600,
+    magCapacity: 30,
+    reserveAmmo: 90,
+    reloadTime: 2.4,
+    movementSpeed: 5.45,
+    penetrationPower: 200,
+    baseSpread: 0.0,
+    sprayPattern: GARAM_47_SPRAY,
+  },
+  'vanguard-m4': {
+    id: 'vanguard-m4',
+    name: 'Vanguard M4A1-S',
+    category: 'rifle',
+    price: 2900,
+    damage: 33,
+    fireRateRpm: 666,
+    magCapacity: 25,
+    reserveAmmo: 75,
+    reloadTime: 2.1,
+    movementSpeed: 5.55,
+    penetrationPower: 180,
+    baseSpread: 0.0,
+    sprayPattern: VANGUARD_M4_SPRAY,
+  },
+  'sovereign-awp': {
+    id: 'sovereign-awp',
+    name: 'Sovereign AWP',
+    category: 'sniper',
+    price: 4750,
+    damage: 115,
+    fireRateRpm: 45,
+    magCapacity: 5,
+    reserveAmmo: 30,
+    reloadTime: 3.5,
+    movementSpeed: 5.08,
+    penetrationPower: 300,
+    baseSpread: 0.0,
+    sprayPattern: [[2.5, 0.0]],
+  },
+  'desert-eagle': {
+    id: 'desert-eagle',
+    name: "Eldar's Custom Desert Eagle",
+    category: 'pistol',
+    price: 700,
+    damage: 53,
+    fireRateRpm: 260,
+    magCapacity: 7,
+    reserveAmmo: 35,
+    reloadTime: 1.9,
+    movementSpeed: 6.10,
+    penetrationPower: 220,
+    baseSpread: 0.0,
+    sprayPattern: [
+      [1.2, 0.0],
+      [2.2, 0.15],
+      [3.0, -0.2],
+      [3.6, 0.3],
+    ],
+  },
+  'garam-karambit': {
+    id: 'garam-karambit',
+    name: 'Garam Crimson Karambit',
+    category: 'melee',
+    price: 0,
+    damage: 55,
+    fireRateRpm: 120,
+    magCapacity: 1,
+    reserveAmmo: 0,
+    reloadTime: 0.1,
+    movementSpeed: 6.35,
+    penetrationPower: 0,
+    baseSpread: 0.0,
+    sprayPattern: [],
+  },
+};
