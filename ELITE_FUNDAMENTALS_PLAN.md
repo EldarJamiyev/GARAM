@@ -30,32 +30,32 @@ This document tracks the technical execution of the **Elite Fundamentals Overhau
   - [x] E4.3: Articulated dual-hand tactical gloved rig & weapon PBR overhaul
 
 ### Checkpoint 3: Tactical Bot Brain, True Weapon Geometry, Sprints E5–E7 & Living SVG README
-- [ ] **Part 1: Karambit & Weapon Geometry Overhaul**
-  - [ ] P1.1: Rebuild Garam Crimson Karambit with `THREE.Shape` + `THREE.ExtrudeGeometry` (curved hawkbill talon blade, beveled edge, crimson metallic + chrome razor edge, contoured G10 handle, integrated gold retention ring)
-  - [ ] P1.2: Reverse-grip right-hand pose, left-hand martial guard, 360° ring-spin draw `[3]`/`[Q]`, continuous `[F]` inspect twirl, alternating M1 slashes & M2 heavy stab
-  - [ ] P1.3: Weapon silhouette upgrade for Garam-47 (curved banana mag, stock heel, muzzle brake), M4A1-S (perforated suppressor, carry handle), AWP (flared bell, emerald lens, bipod), and Desert Eagle (triangular shroud, slide serrations)
-- [ ] **Sprint E5: Tactical Bot Brain (Roam, Execute, Flank, Real Ballistics)**
-  - [ ] E5.1: 28+ node connected tactical waypoint graph + A* pathfinding covering all lanes & elevations of `DE_CITADEL`
-  - [ ] E5.2: Anti-stuck displacement monitor (0.6s / 0.25m check, perpendicular sidestep repath) & bot-to-bot separation
-  - [ ] E5.3: Per-round Tactical Director: 5 Syndicate strategies (`RUSH_A_LONG`, `SPLIT_A_MID`, `RUSH_B_TUNNELS`, `MID_TO_B_SPLIT`, `DEFAULT_PICKS_AND_LATE_EXEC`) & 4 Vanguard setups (`STANDARD_2_1_2`, `AGGRESSIVE_MID_CONTROL`, `HEAVY_A_STACK`, `RETAKE_ANCHOR`)
-  - [ ] E5.4: Dynamic bot roles: silent lurker/flanker (`[SHIFT]`), post-plant crossfire defense, coordinated site retake & defuse
-  - [ ] E5.5: Real ballistic bot gunplay via `executeTacticalRaycast()` (no fake random hits, real recoil, 5-zone hitboxes, burst firing, counter-strafing to 0 m/s, jiggle-peeking)
-  - [ ] E5.6: Sound event awareness (footsteps, unsuppressed, suppressed M4A1-S, reloads, bomb plant/defuse)
-  - [ ] E5.7: Bot utility deployment (smokes at Mid Doors / bomb, flashbang site executes, defensive choke molotovs)
-- [ ] **Sprint E6: Competitive Match UX, Weapon Dropping, Spectator & Audio Ecology**
-  - [ ] E6.1: Teammate Spectator Camera on death (`M1`/`M2` cycle living allies, spectator HUD banner)
-  - [ ] E6.2: CS2 / Valorant Combat Report card (Damage Given / Taken, hit & headshot breakdown) + killfeed badges (`🎯`, `🧱`, `☁️`, `🗡️`)
-  - [ ] E6.3: Physical weapon dropping `[G]` & floor looting (`[E]` swap / walk-over pickup, dropped Pulse Core)
-  - [ ] E6.4: Acoustic zone reverb (`ConvolverNode` indoor room impulse in B Tunnels/Connectors vs open Mid/Site A)
-  - [ ] E6.5: Low-ammo metallic spring click (last 5 rounds) & Buy Menu rejection feedback (audio error + red pulse)
-  - [ ] E6.6: Pre-Match Lobby controls footer update (`[G] Drop Weapon`, `[F3] Perf Graph`) & `main.ts` architecture trim (<= 650 lines)
-- [ ] **Sprint E7: 64-Tick Netcode Hardening & 28+ Vitest Suite**
-  - [ ] E7.1: Server-side bot fill in `GameRoom.ts` sharing navgraph and `executeTacticalRaycast()`
-  - [ ] E7.2: Sync combat report, badges, and smooth client error-correction reconciliation over 80ms
-  - [ ] E7.3: Expand Vitest suite to 28+ tests (`navgraph.test.ts`, `lagcomp.test.ts`, `callout.test.ts`)
-- [ ] **Part 5: Living README with Custom Vector SVG Visuals**
-  - [ ] P5.1: Create 5 high-craft SVGs in `docs/assets/` (`hero-banner.svg`, `architecture-diagram.svg`, `decitadel-tactical-map.svg`, `arsenal-ballistics.svg`, `roadmap-progress.svg`)
-  - [ ] P5.2: Rewrite `README.md` embedding all 5 SVGs with comprehensive documentation and verified KPIs
+- [x] **Part 1: Karambit & Weapon Geometry Overhaul**
+  - [x] P1.1: Rebuild Garam Crimson Karambit with `THREE.Shape` + `THREE.ExtrudeGeometry` (curved hawkbill talon blade, beveled edge, crimson metallic + chrome razor edge, contoured G10 handle, integrated gold retention ring)
+  - [x] P1.2: Reverse-grip right-hand pose, left-hand martial guard, 360° ring-spin draw `[3]`/`[Q]`, continuous `[F]` inspect twirl, alternating M1 slashes & M2 heavy stab
+  - [x] P1.3: Weapon silhouette upgrade for Garam-47 (curved banana mag, stock heel, muzzle brake), M4A1-S (perforated suppressor, carry handle), AWP (flared bell, emerald lens, bipod), and Desert Eagle (triangular shroud, slide serrations)
+- [x] **Sprint E5: Tactical Bot Brain (Roam, Execute, Flank, Real Ballistics)**
+  - [x] E5.1: 28+ node connected tactical waypoint graph + A* pathfinding covering all lanes & elevations of `DE_CITADEL`
+  - [x] E5.2: Anti-stuck displacement monitor (0.6s / 0.25m check, perpendicular sidestep repath) & bot-to-bot separation
+  - [x] E5.3: Per-round Tactical Director: 5 Syndicate strategies (`RUSH_A_LONG`, `SPLIT_A_MID`, `RUSH_B_TUNNELS`, `MID_TO_B_SPLIT`, `DEFAULT_PICKS_AND_LATE_EXEC`) & 4 Vanguard setups (`STANDARD_2_1_2`, `AGGRESSIVE_MID_CONTROL`, `HEAVY_A_STACK`, `RETAKE_ANCHOR`)
+  - [x] E5.4: Dynamic bot roles: silent lurker/flanker (`[SHIFT]`), post-plant crossfire defense, coordinated site retake & defuse
+  - [x] E5.5: Real ballistic bot gunplay via `executeTacticalRaycast()` (no fake random hits, real recoil, 5-zone hitboxes, burst firing, counter-strafing to 0 m/s, jiggle-peeking)
+  - [x] E5.6: Sound event awareness (footsteps, unsuppressed, suppressed M4A1-S, reloads, bomb plant/defuse)
+  - [x] E5.7: Bot utility deployment (smokes at Mid Doors / bomb, flashbang site executes, defensive choke molotovs)
+- [x] **Sprint E6: Competitive Match UX, Weapon Dropping, Spectator & Audio Ecology**
+  - [x] E6.1: Teammate Spectator Camera on death (`M1`/`M2` cycle living allies, spectator HUD banner)
+  - [x] E6.2: CS2 / Valorant Combat Report card (Damage Given / Taken, hit & headshot breakdown) + killfeed badges (`🎯`, `🧱`, `☁️`, `🗡️`)
+  - [x] E6.3: Physical weapon dropping `[G]` & floor looting (`[E]` swap / walk-over pickup, dropped Pulse Core)
+  - [x] E6.4: Acoustic zone reverb (`ConvolverNode` indoor room impulse in B Tunnels/Connectors vs open Mid/Site A)
+  - [x] E6.5: Low-ammo metallic spring click (last 5 rounds) & Buy Menu rejection feedback (audio error + red pulse)
+  - [x] E6.6: Pre-Match Lobby controls footer update (`[G] Drop Weapon`, `[F3] Perf Graph`) & `main.ts` architecture trim (<= 650 lines)
+- [x] **Sprint E7: 64-Tick Netcode Hardening & 28+ Vitest Suite**
+  - [x] E7.1: Server-side bot fill in `GameRoom.ts` sharing navgraph and `executeTacticalRaycast()`
+  - [x] E7.2: Sync combat report, badges, and smooth client error-correction reconciliation over 80ms
+  - [x] E7.3: Expand Vitest suite to 28+ tests (`navgraph.test.ts`, `lagcomp.test.ts`, `callout.test.ts` — 40 total passing)
+- [x] **Part 5: Living README with Custom Vector SVG Visuals**
+  - [x] P5.1: Create 5 high-craft SVGs in `docs/assets/` (`hero-banner.svg`, `architecture-diagram.svg`, `decitadel-tactical-map.svg`, `arsenal-ballistics.svg`, `roadmap-progress.svg`)
+  - [x] P5.2: Rewrite `README.md` embedding all 5 SVGs with comprehensive documentation and verified KPIs
 
 ---
 
