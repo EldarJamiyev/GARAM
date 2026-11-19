@@ -3,5 +3,7 @@ export * from './constants/weapons.js';
 export * from './constants/economy.js';
 export * from './physics/KinematicPlayerController.js';
 export * from './maps/DeCitadelData.js';
+export * from './maps/TacticalNavGraph.js';
 export * from './physics/RaycastEngine.js';
 export * from './net/Protocol.js';
+export * from './net/LagCompensation.js';

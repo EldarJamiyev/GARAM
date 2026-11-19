@@ -16,6 +16,7 @@ export interface InputCallbacks {
   onInteractUp: () => void;
   onPracticeToggle: () => void; // P key for $16K dev test
   onInspectWeapon?: () => void; // F key for inspect
+  onDropWeapon?: () => void; // G key for drop weapon
   onUtilityQuickSelect?: (type: 'smoke' | 'flash' | 'he' | 'molotov') => void;
   onToggleCustomizer?: () => void; // F2 key for live customizer lab
 }
@@ -243,6 +244,7 @@ export class InputManager {
         case 'KeyR': this.callbacks.onReload(); break;
         case 'KeyQ': this.callbacks.onQuickSwitch(); break;
         case 'KeyF': this.callbacks.onInspectWeapon?.(); break;
+        case 'KeyG': this.callbacks.onDropWeapon?.(); break;
         case 'KeyZ': this.callbacks.onUtilityQuickSelect?.('smoke'); break;
         case 'KeyX': this.callbacks.onUtilityQuickSelect?.('flash'); break;
         case 'KeyC': this.callbacks.onUtilityQuickSelect?.('he'); break;

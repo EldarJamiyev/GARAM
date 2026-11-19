@@ -224,22 +224,36 @@ export interface CalloutZone {
   maxX: number;
   minZ: number;
   maxZ: number;
+  minY?: number;
+  maxY?: number;
 }
 
 export const CALLOUT_ZONES: CalloutZone[] = [
-  { name: 'A SITE', minX: 16, maxX: 45, minZ: -36, maxZ: -6 },
-  { name: 'B SITE', minX: -45, maxX: -16, minZ: -36, maxZ: -6 },
-  { name: 'MID COURTYARD', minX: -16, maxX: 16, minZ: -18, maxZ: 18 },
-  { name: 'MID DOORS', minX: -8, maxX: 8, minZ: -4, maxZ: 8 },
-  { name: 'A LONG', minX: 16, maxX: 45, minZ: -6, maxZ: 28 },
-  { name: 'B TUNNEL', minX: -45, maxX: -16, minZ: -6, maxZ: 28 },
-  { name: 'VANGUARD SPAWN', minX: -30, maxX: 30, minZ: 24, maxZ: 58 },
-  { name: 'SYNDICATE SPAWN', minX: -30, maxX: 30, minZ: -58, maxZ: -28 },
+  // Elevated zones checked first
+  { name: 'A HEAVEN', minX: -28, maxX: -18, minZ: -46, maxZ: -34, minY: 2.0 },
+  { name: 'A SITE', minX: -55, maxX: -16, minZ: -45, maxZ: -16 },
+  { name: 'A LONG', minX: -55, maxX: -38, minZ: -16, maxZ: 28 },
+  { name: 'A CONNECTOR', minX: -26, maxX: -10, minZ: -18, maxZ: 2 },
+  { name: 'MID DOORS', minX: -4, maxX: 8, minZ: -4, maxZ: 4 },
+  { name: 'MID COURTYARD', minX: -16, maxX: 16, minZ: -16, maxZ: 20 },
+  { name: 'T MID', minX: -12, maxX: 12, minZ: -36, maxZ: -16 },
+  { name: 'B CONNECTOR', minX: 10, maxX: 26, minZ: -18, maxZ: 2 },
+  { name: 'B TUNNELS', minX: 36, maxX: 55, minZ: -20, maxZ: 26 },
+  { name: 'B SITE', minX: 16, maxX: 55, minZ: -46, maxZ: -18 },
+  { name: 'VANGUARD SPAWN', minX: -30, maxX: 30, minZ: 22, maxZ: 58 },
+  { name: 'SYNDICATE SPAWN', minX: -30, maxX: 30, minZ: -58, maxZ: -34 },
 ];
 
-export function getCalloutName(x: number, _y: number, z: number): string {
+export function getCalloutName(x: number, y: number, z: number): string {
   for (const zone of CALLOUT_ZONES) {
-    if (x >= zone.minX && x <= zone.maxX && z >= zone.minZ && z <= zone.maxZ) {
+    if (
+      x >= zone.minX &&
+      x <= zone.maxX &&
+      z >= zone.minZ &&
+      z <= zone.maxZ &&
+      (zone.minY === undefined || y >= zone.minY) &&
+      (zone.maxY === undefined || y <= zone.maxY)
+    ) {
       return zone.name;
     }
   }

@@ -205,6 +205,21 @@ export class HUDManager {
     setTimeout(() => banner.remove(), durationMs);
   }
 
+  public triggerFlashEffect(durationSec: number): void {
+    const whiteout = document.createElement('div');
+    whiteout.style.position = 'fixed';
+    whiteout.style.inset = '0';
+    whiteout.style.background = '#ffffff';
+    whiteout.style.pointerEvents = 'none';
+    whiteout.style.zIndex = '95';
+    whiteout.style.transition = `opacity ${durationSec.toFixed(2)}s ease-out`;
+    document.body.appendChild(whiteout);
+    requestAnimationFrame(() => {
+      whiteout.style.opacity = '0';
+      setTimeout(() => whiteout.remove(), durationSec * 1000);
+    });
+  }
+
   public updateInteractionBar(progressRatio: number, label: string): void {
     let barContainer = document.getElementById('interaction-progress-container');
     if (!barContainer) {

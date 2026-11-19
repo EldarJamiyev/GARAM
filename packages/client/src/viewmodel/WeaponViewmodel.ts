@@ -10,23 +10,26 @@ export class WeaponViewmodel {
   private flashTimer = 0;
   private currentWeaponId = 'garam-47';
 
-  // Cached 5 Weapon Groups
+  // Cached Weapon Groups & Animated Parts
   private weaponMeshes: Map<string, THREE.Group> = new Map();
   private slideMeshes: Map<string, THREE.Mesh> = new Map();
   private boltMeshes: Map<string, THREE.Mesh> = new Map();
   private magMeshes: Map<string, THREE.Mesh> = new Map();
+  private karambitSpinPivot: THREE.Group | null = null;
+  private bladeTrailMesh: THREE.Mesh | null = null;
 
   // Animation triggers & timers
   private slideKick = 0;
   private boltKick = 0;
   private isSlashing = false;
   private slashTime = 0;
+  private slashDirection: 1 | -1 = 1;
   private isStabbing = false;
   private stabTime = 0;
   private isInspecting = false;
   private inspectTime = 0;
 
-  // Draw transition (0 to 1 over 0.25s)
+  // Draw transition (0 to 1 over 0.42s)
   private drawProgress = 1.0;
 
   // Reload state
@@ -190,7 +193,7 @@ export class WeaponViewmodel {
     this.isSlashing = false;
     this.isStabbing = false;
     this.isInspecting = false;
-    this.drawProgress = 0.0;
+    this.drawProgress = 0.0; // Trigger draw animation
 
     // Adjust left & right arms depending on weapon type
     if (weaponId === 'desert-eagle') {
@@ -201,10 +204,13 @@ export class WeaponViewmodel {
       this.leftArm.position.set(-0.03, -0.08, -0.05);
       this.leftArm.rotation.set(0.26, 0.40, -0.16);
     } else if (weaponId === 'garam-karambit') {
-      // 1-handed reverse tactical knife grip through index ring
-      this.rightArm.position.set(0.04, -0.06, -0.06);
-      this.rightArm.rotation.set(0.30, -0.15, 0.20);
-      this.leftArm.visible = false;
+      // Reverse tactical knife grip: right arm holds handle with index finger through gold retention ring
+      this.rightArm.position.set(0.06, -0.06, -0.06);
+      this.rightArm.rotation.set(0.32, -0.22, 0.26);
+      // Left arm in open tactical martial guard stance on the left side of screen
+      this.leftArm.visible = true;
+      this.leftArm.position.set(-0.16, -0.13, -0.16);
+      this.leftArm.rotation.set(-0.16, 0.46, -0.26);
     } else {
       // 2-handed rifle support with visible gloved left hand holding handguard
       this.rightArm.position.set(0.03, -0.07, 0.04);
@@ -215,7 +221,7 @@ export class WeaponViewmodel {
     }
   }
 
-  // 1. ELDAR'S CUSTOM DESERT EAGLE (.50 AE)
+  // 1. ELDAR'S CUSTOM DESERT EAGLE (.50 AE) - TRIANGULAR SHROUD & SERRATED SLIDE
   private createDesertEagleMesh(): THREE.Group {
     const group = new THREE.Group();
 
@@ -246,13 +252,17 @@ export class WeaponViewmodel {
     medallion.position.set(0, -0.045, 0.01);
     group.add(medallion);
 
-    // Trigger Guard & Trigger
-    const triggerGuard = new THREE.Mesh(
-      new THREE.BoxGeometry(0.02, 0.04, 0.05),
-      new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.4, metalness: 0.8 })
-    );
+    // Trigger Guard & Curved Trigger
+    const tgGeo = new THREE.BoxGeometry(0.02, 0.04, 0.05);
+    const triggerGuard = new THREE.Mesh(tgGeo, frameMat);
     triggerGuard.position.set(0, -0.03, -0.04);
     group.add(triggerGuard);
+
+    const triggerGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.024, 8);
+    triggerGeo.rotateX(0.4);
+    const triggerMesh = new THREE.Mesh(triggerGeo, medMat);
+    triggerMesh.position.set(0, -0.025, -0.035);
+    group.add(triggerMesh);
 
     // Chamfered Slide (.50 AE Heavy Blowback)
     const slideGeo = new THREE.BoxGeometry(0.042, 0.055, 0.22);
@@ -262,11 +272,30 @@ export class WeaponViewmodel {
     group.add(slide);
     this.slideMeshes.set('desert-eagle', slide);
 
-    // Crimson Top Stripe
-    const topGeo = new THREE.BoxGeometry(0.044, 0.01, 0.20);
+    // Rear Slide Cocking Serrations
+    for (let s = 0; s < 5; s++) {
+      const serration = new THREE.Mesh(
+        new THREE.BoxGeometry(0.043, 0.045, 0.004),
+        new THREE.MeshStandardMaterial({ color: 0x22262b, metalness: 0.95, roughness: 0.4 })
+      );
+      serration.position.set(0, 0.005, 0.06 - s * 0.009);
+      slide.add(serration);
+    }
+
+    // Triangular Tapered Barrel Shroud Top Profile
+    const shroudTop = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.024, 0.12, 3),
+      new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.3, metalness: 0.9 })
+    );
+    shroudTop.rotation.x = Math.PI / 2;
+    shroudTop.position.set(0, 0.026, -0.07);
+    slide.add(shroudTop);
+
+    // Crimson Top Inlaid Rib
+    const topGeo = new THREE.BoxGeometry(0.018, 0.008, 0.20);
     const topMat = new THREE.MeshStandardMaterial({ color: 0xd91438, roughness: 0.25, metalness: 0.65 });
     const topStripe = new THREE.Mesh(topGeo, topMat);
-    topStripe.position.set(0, 0.03, 0);
+    topStripe.position.set(0, 0.038, 0);
     slide.add(topStripe);
 
     // Rear Combat Sights with Dual Tritium Dots
@@ -323,7 +352,7 @@ export class WeaponViewmodel {
     return group;
   }
 
-  // 2. GARAM-47 (TACTICAL AK-47 WITH CRIMSON TRIM)
+  // 2. GARAM-47 (CURVED BANANA MAG, ANGLED STOCK HEEL, SLANTED AKM BRAKE)
   private createGaram47Mesh(): THREE.Group {
     const group = new THREE.Group();
 
@@ -333,38 +362,61 @@ export class WeaponViewmodel {
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     group.add(body);
 
+    // Beveled Dust Cover Ribs
+    for (let r = 0; r < 4; r++) {
+      const rib = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.004, 0.004, 0.048, 8),
+        new THREE.MeshStandardMaterial({ color: 0xd91438, metalness: 0.7, roughness: 0.3 })
+      );
+      rib.rotation.z = Math.PI / 2;
+      rib.position.set(0, 0.052, -0.12 + r * 0.06);
+      group.add(rib);
+    }
+
     // Picatinny Top Rail
     const railGeo = new THREE.BoxGeometry(0.036, 0.014, 0.34);
     const railMat = new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.3, metalness: 0.9 });
     const rail = new THREE.Mesh(railGeo, railMat);
-    rail.position.set(0, 0.052, -0.04);
+    rail.position.set(0, 0.056, -0.04);
     group.add(rail);
 
-    // Crimson Ribbed Dust Cover
-    const dustGeo = new THREE.BoxGeometry(0.054, 0.022, 0.26);
-    const dustMat = new THREE.MeshStandardMaterial({ color: 0xd91438, roughness: 0.25, metalness: 0.65 });
-    const dust = new THREE.Mesh(dustGeo, dustMat);
-    dust.position.set(0, 0.058, -0.04);
-    group.add(dust);
+    // True ExtrudeGeometry Curved Banana Magazine
+    const magShape = new THREE.Shape();
+    magShape.moveTo(-0.018, 0);
+    magShape.lineTo(0.018, 0);
+    magShape.quadraticCurveTo(0.024, -0.10, 0.046, -0.22);
+    magShape.lineTo(0.012, -0.23);
+    magShape.quadraticCurveTo(-0.010, -0.11, -0.018, 0);
+    magShape.closePath();
 
-    // Curved Banana Magazine
-    const magGeo = new THREE.BoxGeometry(0.038, 0.22, 0.095);
+    const magGeo = new THREE.ExtrudeGeometry(magShape, {
+      depth: 0.038,
+      bevelEnabled: true,
+      bevelThickness: 0.002,
+      bevelSize: 0.002,
+      bevelSegments: 2,
+    });
     const magMat = new THREE.MeshStandardMaterial({ color: 0x24282c, roughness: 0.5, metalness: 0.75 });
     const mag = new THREE.Mesh(magGeo, magMat);
-    mag.position.set(0, -0.13, -0.07);
-    mag.rotation.x = -0.32;
-    mag.userData.baseY = -0.13;
+    mag.position.set(-0.019, -0.04, -0.06);
+    mag.userData.baseY = -0.04;
     group.add(mag);
     this.magMeshes.set('garam-47', mag);
 
+    // Angled Stock Heel
+    const stockMat = new THREE.MeshStandardMaterial({ color: 0x2a1c14, roughness: 0.65, metalness: 0.1 });
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.11, 0.22), stockMat);
+    stock.position.set(0, -0.02, 0.28);
+    stock.rotation.x = 0.10;
+    group.add(stock);
+
     // Textured Polymer Handguard
-    const gripGeo = new THREE.BoxGeometry(0.05, 0.065, 0.20);
     const gripMat = new THREE.MeshStandardMaterial({ color: 0x282b30, roughness: 0.85 });
-    const handguard = new THREE.Mesh(gripGeo, gripMat);
+    const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.065, 0.20), gripMat);
     handguard.position.set(0, -0.01, -0.26);
     group.add(handguard);
 
-    // Gas Block & Tube
+    // Vented Gas Tube
     const gasGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.22, 12);
     gasGeo.rotateX(Math.PI / 2);
     const gasTube = new THREE.Mesh(gasGeo, bodyMat);
@@ -378,17 +430,18 @@ export class WeaponViewmodel {
     barrel.position.set(0, 0.015, -0.44);
     group.add(barrel);
 
-    // Muzzle Compensator
-    const compGeo = new THREE.BoxGeometry(0.026, 0.026, 0.06);
-    const compMat = new THREE.MeshStandardMaterial({ color: 0xd91438, metalness: 0.85, roughness: 0.3 });
-    const comp = new THREE.Mesh(compGeo, compMat);
-    comp.position.set(0, 0.015, -0.58);
-    group.add(comp);
+    // Slanted AKM Muzzle Brake (45° angle cut)
+    const brakeMat = new THREE.MeshStandardMaterial({ color: 0xd91438, metalness: 0.85, roughness: 0.3 });
+    const brake = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.06, 12), brakeMat);
+    brake.rotation.x = Math.PI / 2 + 0.24;
+    brake.position.set(0, 0.018, -0.58);
+    group.add(brake);
 
     // Front Iron Sight Post
-    const sightGeo = new THREE.BoxGeometry(0.008, 0.032, 0.012);
-    const sightMat = new THREE.MeshBasicMaterial({ color: 0x00ff66 });
-    const sight = new THREE.Mesh(sightGeo, sightMat);
+    const sight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.008, 0.032, 0.012),
+      new THREE.MeshBasicMaterial({ color: 0x00ff66 })
+    );
     sight.position.set(0, 0.048, -0.54);
     group.add(sight);
 
@@ -403,7 +456,7 @@ export class WeaponViewmodel {
     return group;
   }
 
-  // 3. VANGUARD M4A1-S (SUPPRESSED TACTICAL CARBINE)
+  // 3. VANGUARD M4A1-S (PERFORATED SUPPRESSOR, CARRY HANDLE, BOLT PADDLE)
   private createVanguardM4Mesh(): THREE.Group {
     const group = new THREE.Group();
 
@@ -414,15 +467,28 @@ export class WeaponViewmodel {
     const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.09, 0.36), bodyMat);
     group.add(receiver);
 
+    // Bolt-Release Paddle on Left Receiver
+    const boltPaddle = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.022, 0.016), cyanMat);
+    boltPaddle.position.set(-0.026, 0.015, -0.04);
+    group.add(boltPaddle);
+
     // Cyan Vanguard Upper Stripe
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.014, 0.32), cyanMat);
     stripe.position.set(0, 0.05, 0);
     group.add(stripe);
 
-    // Carry Handle & Optic Mount
-    const carry = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.035, 0.18), bodyMat);
-    carry.position.set(0, 0.075, 0.02);
+    // Angled Carry Handle & Rear Aperture
+    const carry = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.038, 0.18), bodyMat);
+    carry.position.set(0, 0.076, 0.02);
     group.add(carry);
+
+    const aperture = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.008, 0.008, 0.032, 12),
+      new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 1.2 })
+    );
+    aperture.rotation.x = Math.PI / 2;
+    aperture.position.set(0, 0.086, 0.09);
+    group.add(aperture);
 
     // Straight STANAG Magazine
     const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.17, 0.075), bodyMat);
@@ -437,14 +503,24 @@ export class WeaponViewmodel {
     handguard.position.set(0, 0.01, -0.26);
     group.add(handguard);
 
-    // Monolithic Cylindrical Sound Suppressor
+    // Perforated Monolithic Suppressor with Cobalt Collar
+    const supGroup = new THREE.Group();
     const supGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.28, 16);
     supGeo.rotateX(Math.PI / 2);
-    const sup = new THREE.Mesh(supGeo, cyanMat);
-    sup.position.set(0, 0.01, -0.48);
-    group.add(sup);
+    const supMat = new THREE.MeshStandardMaterial({ color: 0x181c22, roughness: 0.3, metalness: 0.9 });
+    const sup = new THREE.Mesh(supGeo, supMat);
+    supGroup.add(sup);
 
-    // Pistol Grip
+    // Cobalt Accent Collar Ring
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.035, 16), cyanMat);
+    collar.rotation.x = Math.PI / 2;
+    collar.position.set(0, 0, 0.12);
+    supGroup.add(collar);
+
+    supGroup.position.set(0, 0.01, -0.48);
+    group.add(supGroup);
+
+    // Contoured Ergonomic Pistol Grip
     const pGrip = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.12, 0.055), bodyMat);
     pGrip.position.set(0, -0.09, 0.10);
     pGrip.rotation.x = -0.32;
@@ -455,7 +531,7 @@ export class WeaponViewmodel {
     return group;
   }
 
-  // 4. SOVEREIGN AWP (HIGH-PRECISION BOLT-ACTION SNIPER)
+  // 4. SOVEREIGN AWP (FLARED OBJECTIVE BELL, EMERALD LENS, FOLDED BIPOD)
   private createSovereignAWPMesh(): THREE.Group {
     const group = new THREE.Group();
 
@@ -464,9 +540,23 @@ export class WeaponViewmodel {
     const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0a0c0e, metalness: 0.95, roughness: 0.15 });
     const goldMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.95, roughness: 0.2 });
 
-    // Chassis / Stock
+    // Chassis / Stock with Cheek-Rest Riser
     const stock = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.095, 0.58), stockMat);
     group.add(stock);
+
+    const cheekRest = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.022, 0.16), stockMat);
+    cheekRest.position.set(0, 0.058, 0.16);
+    group.add(cheekRest);
+
+    // Folded Bipod Legs under forend
+    const bipodL = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.20, 8), metalMat);
+    bipodL.rotation.x = Math.PI / 2;
+    bipodL.position.set(-0.026, -0.055, -0.22);
+    group.add(bipodL);
+    const bipodR = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.20, 8), metalMat);
+    bipodR.rotation.x = Math.PI / 2;
+    bipodR.position.set(0.026, -0.055, -0.22);
+    group.add(bipodR);
 
     // .338 Lapua Magnum Steel Magazine
     const awpMag = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.14, 0.09), metalMat);
@@ -487,24 +577,44 @@ export class WeaponViewmodel {
     barrel.position.set(0, 0.02, -0.52);
     group.add(barrel);
 
-    // Heavy Muzzle Brake
+    // Heavy Fluted Muzzle Compensator
     const brake = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.034, 0.08), metalMat);
     brake.position.set(0, 0.02, -0.74);
     group.add(brake);
 
-    // Optical Sniper Scope & Mount
-    const scopeTubeGeo = new THREE.CylinderGeometry(0.024, 0.028, 0.32, 16);
+    // Optical Sniper Scope with Flared Objective Bell
+    const scopeTubeGeo = new THREE.CylinderGeometry(0.024, 0.028, 0.26, 16);
     scopeTubeGeo.rotateX(Math.PI / 2);
     const scopeTube = new THREE.Mesh(scopeTubeGeo, scopeMat);
-    scopeTube.position.set(0, 0.095, -0.06);
+    scopeTube.position.set(0, 0.095, -0.04);
     group.add(scopeTube);
+
+    // Flared Objective Bell & Emerald Lens
+    const bellGeo = new THREE.CylinderGeometry(0.036, 0.028, 0.08, 16);
+    bellGeo.rotateX(Math.PI / 2);
+    const bell = new THREE.Mesh(bellGeo, scopeMat);
+    bell.position.set(0, 0.095, -0.21);
+    group.add(bell);
+
+    const lensGeo = new THREE.CircleGeometry(0.032, 16);
+    const lensMat = new THREE.MeshStandardMaterial({
+      color: 0x00cc88,
+      roughness: 0.08,
+      metalness: 0.92,
+      emissive: 0x003322,
+      emissiveIntensity: 0.4,
+    });
+    const lens = new THREE.Mesh(lensGeo, lensMat);
+    lens.position.set(0, 0.095, -0.251);
+    lens.rotation.y = Math.PI;
+    group.add(lens);
 
     // Scope Mount Rings
     const ring1 = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.045, 0.03), goldMat);
     ring1.position.set(0, 0.075, 0.04);
     group.add(ring1);
     const ring2 = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.045, 0.03), goldMat);
-    ring2.position.set(0, 0.075, -0.16);
+    ring2.position.set(0, 0.075, -0.14);
     group.add(ring2);
 
     // Interactive Bolt Handle with Sphere Knob
@@ -527,39 +637,158 @@ export class WeaponViewmodel {
     return group;
   }
 
-  // 5. GARAM CRIMSON KARAMBIT
+  // 5. GARAM CRIMSON TACTICAL KARAMBIT (CS2 HAWKBILL TALON EXTRUSION & REVERSE GRIP)
   private createKarambitMesh(): THREE.Group {
-    const group = new THREE.Group();
+    const root = new THREE.Group();
 
-    // Ergonomic Finger-Groove Handle
-    const handleGeo = new THREE.CylinderGeometry(0.022, 0.024, 0.16, 16);
-    handleGeo.rotateX(Math.PI / 3);
-    const handleMat = new THREE.MeshStandardMaterial({ color: 0x101214, roughness: 0.85 });
-    const handle = new THREE.Mesh(handleGeo, handleMat);
-    group.add(handle);
+    // Pivot for 360° ring-spin draw and inspect twirl
+    const spinPivot = new THREE.Group();
+    this.karambitSpinPivot = spinPivot;
+    root.add(spinPivot);
 
-    // Gold Index Finger Ring
-    const ringGeo = new THREE.TorusGeometry(0.025, 0.007, 12, 24);
-    const ringMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.95, roughness: 0.15 });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.set(0, -0.07, 0.09);
-    group.add(ring);
-
-    // Curved Anodized Crimson Talon Blade
-    const bladeGeo = new THREE.ConeGeometry(0.036, 0.19, 16);
-    bladeGeo.rotateX(-Math.PI / 2.4);
-    const bladeMat = new THREE.MeshStandardMaterial({
-      color: 0xee153a,
-      roughness: 0.12,
-      metalness: 0.88,
+    // 1. Integrated Gold Retention Ring (Centered at pivot origin)
+    const ringGeo = new THREE.TorusGeometry(0.022, 0.006, 16, 32);
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: 0xd4af37,
+      metalness: 0.95,
+      roughness: 0.15,
+      envMapIntensity: 2.2,
     });
-    const blade = new THREE.Mesh(bladeGeo, bladeMat);
-    blade.position.set(0, 0.048, -0.12);
-    group.add(blade);
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    spinPivot.add(ringMesh);
 
-    group.position.set(0.05, -0.04, -0.15);
-    group.visible = false;
-    return group;
+    // Retention ring gold pommel collar
+    const collar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.016, 0.016, 0.024),
+      ringMat
+    );
+    collar.position.set(0, 0.022, 0);
+    spinPivot.add(collar);
+
+    // 2. Contoured Ergonomic G10 Tactical Handle with 3 Finger Grooves
+    const handleShape = new THREE.Shape();
+    handleShape.moveTo(0.014, 0.02);
+    handleShape.lineTo(0.018, 0.045);
+    // 3 sculpted finger grooves
+    handleShape.quadraticCurveTo(0.009, 0.060, 0.018, 0.078);
+    handleShape.quadraticCurveTo(0.008, 0.095, 0.018, 0.112);
+    handleShape.quadraticCurveTo(0.007, 0.128, 0.016, 0.145);
+    // Choil & thumb ramp
+    handleShape.lineTo(0.004, 0.155);
+    handleShape.lineTo(-0.014, 0.148);
+    // Outer spine curve
+    handleShape.quadraticCurveTo(-0.022, 0.085, -0.016, 0.02);
+    handleShape.closePath();
+
+    const handleGeo = new THREE.ExtrudeGeometry(handleShape, {
+      depth: 0.022,
+      bevelEnabled: true,
+      bevelThickness: 0.003,
+      bevelSize: 0.003,
+      bevelSegments: 2,
+    });
+    const handleMat = new THREE.MeshStandardMaterial({
+      color: 0x17191d,
+      roughness: 0.82,
+      metalness: 0.25,
+      envMapIntensity: 1.4,
+    });
+    const handleMesh = new THREE.Mesh(handleGeo, handleMat);
+    handleMesh.position.set(0, 0, -0.011);
+    spinPivot.add(handleMesh);
+
+    // Exposed Brushed Steel Tang Pins
+    const pinMat = new THREE.MeshStandardMaterial({ color: 0xd8dde3, metalness: 0.92, roughness: 0.18 });
+    for (let p = 0; p < 3; p++) {
+      const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.0028, 0.0028, 0.026, 12), pinMat);
+      pin.rotation.x = Math.PI / 2;
+      pin.position.set(0, 0.06 + p * 0.035, 0);
+      spinPivot.add(pin);
+    }
+
+    // 3. Curved Hawkbill Talon Blade (ExtrudeGeometry with razor bevels)
+    const bladeShape = new THREE.Shape();
+    bladeShape.moveTo(0.002, 0.152);
+    // Sweeping convex spine curving out and forward to razor needle tip
+    bladeShape.bezierCurveTo(0.010, 0.19, 0.036, 0.24, 0.078, 0.285);
+    // Needle tip
+    bladeShape.lineTo(0.081, 0.281);
+    // Razor concave inner cutting edge
+    bladeShape.bezierCurveTo(0.038, 0.23, 0.006, 0.18, -0.012, 0.146);
+    // Choil notch & spine jimping serrations
+    bladeShape.lineTo(-0.008, 0.148);
+    bladeShape.lineTo(-0.003, 0.150);
+    bladeShape.closePath();
+
+    const bladeGeo = new THREE.ExtrudeGeometry(bladeShape, {
+      depth: 0.005,
+      bevelEnabled: true,
+      bevelThickness: 0.0022,
+      bevelSize: 0.0025,
+      bevelSegments: 3,
+    });
+    const bladeMat = new THREE.MeshStandardMaterial({
+      color: 0xc8102e, // Anodized Crimson Metallic
+      roughness: 0.18,
+      metalness: 0.88,
+      envMapIntensity: 2.4,
+    });
+    const bladeMesh = new THREE.Mesh(bladeGeo, bladeMat);
+    bladeMesh.position.set(0, 0, -0.0025);
+    spinPivot.add(bladeMesh);
+
+    // Mirror-Chrome Razor Edge Highlight Strip
+    const edgeShape = new THREE.Shape();
+    edgeShape.moveTo(0.081, 0.281);
+    edgeShape.bezierCurveTo(0.038, 0.23, 0.006, 0.18, -0.012, 0.146);
+    edgeShape.lineTo(-0.006, 0.148);
+    edgeShape.bezierCurveTo(0.010, 0.182, 0.042, 0.232, 0.080, 0.280);
+    edgeShape.closePath();
+
+    const edgeGeo = new THREE.ExtrudeGeometry(edgeShape, {
+      depth: 0.0052,
+      bevelEnabled: true,
+      bevelThickness: 0.001,
+      bevelSize: 0.001,
+      bevelSegments: 2,
+    });
+    const edgeMat = new THREE.MeshStandardMaterial({
+      color: 0xe8eef5, // Mirror Chrome Edge Strip
+      roughness: 0.08,
+      metalness: 0.98,
+      envMapIntensity: 2.8,
+    });
+    const edgeMesh = new THREE.Mesh(edgeGeo, edgeMat);
+    edgeMesh.position.set(0, 0, -0.0026);
+    spinPivot.add(edgeMesh);
+
+    // Recessed Dark Fuller Groove
+    const fuller = new THREE.Mesh(
+      new THREE.BoxGeometry(0.003, 0.08, 0.006),
+      new THREE.MeshStandardMaterial({ color: 0x111317, metalness: 0.92, roughness: 0.3 })
+    );
+    fuller.position.set(0.018, 0.21, 0);
+    fuller.rotation.z = -0.32;
+    spinPivot.add(fuller);
+
+    // Blade Trail Sweep Mesh (Flashes during slashes)
+    const trailGeo = new THREE.RingGeometry(0.18, 0.28, 16, 1, 0, Math.PI / 2);
+    const trailMat = new THREE.MeshBasicMaterial({
+      color: 0xff3355,
+      transparent: true,
+      opacity: 0.0,
+      side: THREE.DoubleSide,
+    });
+    this.bladeTrailMesh = new THREE.Mesh(trailGeo, trailMat);
+    this.bladeTrailMesh.rotation.x = Math.PI / 2;
+    this.bladeTrailMesh.position.set(0.05, 0.18, 0);
+    spinPivot.add(this.bladeTrailMesh);
+
+    // Position Karambit in front of camera
+    root.position.set(0.05, -0.08, -0.16);
+    root.rotation.set(-0.25, 0.15, -0.30);
+    root.visible = false;
+    return root;
   }
 
   public fireRecoil(pitchKick = 0.07, zKick = 0.05): void {
@@ -598,6 +827,7 @@ export class WeaponViewmodel {
   public triggerSlash(): void {
     this.isSlashing = true;
     this.slashTime = 0;
+    this.slashDirection = this.slashDirection === 1 ? -1 : 1; // Alternate left/right
   }
 
   public triggerStab(): void {
@@ -622,11 +852,24 @@ export class WeaponViewmodel {
     }
     this.mesh.visible = true;
 
-    // Equip draw raise animation (0 to 1 over 0.25s)
+    // Equip draw raise animation (0 to 1 over 0.42s)
     let drawY = 0;
     if (this.drawProgress < 1.0) {
-      this.drawProgress = Math.min(1.0, this.drawProgress + dt * 4.0);
+      this.drawProgress = Math.min(1.0, this.drawProgress + dt * 2.38);
       drawY = (1.0 - this.drawProgress) * -0.22;
+    }
+
+    // CS2 Karambit Ring-Spin on Draw & Inspect
+    if (this.currentWeaponId === 'garam-karambit' && this.karambitSpinPivot) {
+      if (this.drawProgress < 1.0) {
+        // Spin 360° around gold retention ring pivot as hand sweeps up
+        this.karambitSpinPivot.rotation.z = (1.0 - this.drawProgress) * Math.PI * 2;
+      } else if (this.isInspecting) {
+        // Continuous CS2 finger-ring twirl
+        this.karambitSpinPivot.rotation.z = this.inspectTime * 8.5;
+      } else {
+        this.karambitSpinPivot.rotation.z = 0;
+      }
     }
 
     // Slide blowback recovery
@@ -643,32 +886,49 @@ export class WeaponViewmodel {
       bolt.position.z = 0.08 + this.boltKick;
     }
 
-    // Melee animations
+    // Melee animations: M1 Alternating Slash vs M2 Heavy Hook-Stab
     let meleeYaw = 0;
     let meleePitch = 0;
     let meleeZ = 0;
 
     if (this.isSlashing) {
-      this.slashTime += dt * 5.0;
+      this.slashTime += dt * (Math.PI / 0.32); // 0.32s duration
       if (this.slashTime >= Math.PI) {
         this.isSlashing = false;
         this.slashTime = 0;
+        if (this.bladeTrailMesh) (this.bladeTrailMesh.material as THREE.MeshBasicMaterial).opacity = 0;
       } else {
-        meleeYaw = -Math.sin(this.slashTime) * 0.45;
-        meleePitch = Math.sin(this.slashTime) * 0.35;
+        const arc = Math.sin(this.slashTime);
+        meleeYaw = this.slashDirection * arc * 0.54;
+        meleePitch = -arc * 0.32;
+        meleeZ = -arc * 0.06;
+        if (this.bladeTrailMesh) {
+          (this.bladeTrailMesh.material as THREE.MeshBasicMaterial).opacity = arc * 0.45;
+        }
       }
     } else if (this.isStabbing) {
-      this.stabTime += dt * 4.2;
+      this.stabTime += dt * (Math.PI / 0.45); // 0.45s duration
       if (this.stabTime >= Math.PI) {
         this.isStabbing = false;
         this.stabTime = 0;
       } else {
-        meleeZ = -Math.sin(this.stabTime) * 0.12;
-        meleePitch = -Math.sin(this.stabTime) * 0.22;
+        const p = this.stabTime / Math.PI;
+        if (p < 0.18) {
+          // Windup pull-back
+          const pull = Math.sin((p / 0.18) * (Math.PI / 2));
+          meleeZ = pull * 0.06;
+          meleePitch = pull * 0.14;
+        } else {
+          // Hook-thrust forward lunge
+          const lunge = Math.sin(((p - 0.18) / 0.82) * Math.PI);
+          meleeZ = -lunge * 0.22;
+          meleePitch = -lunge * 0.38;
+          meleeYaw = -lunge * 0.18;
+        }
       }
     }
 
-    // Inspect Animation (F Key: Rotates and showcases engravings)
+    // Inspect Animation (F Key: Firearms tilt/rotate to showcase engravings)
     let inspectYaw = 0;
     let inspectPitch = 0;
     let inspectRoll = 0;
@@ -678,7 +938,7 @@ export class WeaponViewmodel {
       if (this.inspectTime >= Math.PI * 2) {
         this.isInspecting = false;
         this.inspectTime = 0;
-      } else {
+      } else if (this.currentWeaponId !== 'garam-karambit') {
         inspectYaw = Math.sin(this.inspectTime) * 0.55;
         inspectPitch = Math.sin(this.inspectTime * 0.5) * 0.28;
         inspectRoll = Math.sin(this.inspectTime) * 0.45;

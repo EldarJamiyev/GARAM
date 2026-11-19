@@ -7,6 +7,8 @@ export class ProceduralAudio {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private compressor: DynamicsCompressorNode | null = null;
+  private reverbNode: ConvolverNode | null = null;
+  private reverbGain: GainNode | null = null;
   private masterVolume = 0.85;
 
   private initContext() {
@@ -25,11 +27,39 @@ export class ProceduralAudio {
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.setValueAtTime(this.masterVolume, this.ctx.currentTime);
 
+      // Procedural synthetic 0.38s concrete room impulse response for enclosed spaces
+      const rate = this.ctx.sampleRate;
+      const length = Math.floor(rate * 0.38);
+      const impulse = this.ctx.createBuffer(2, length, rate);
+      for (let channel = 0; channel < 2; channel++) {
+        const channelData = impulse.getChannelData(channel);
+        for (let i = 0; i < length; i++) {
+          const t = i / rate;
+          channelData[i] = (Math.random() * 2 - 1) * Math.exp(-t * 9.5);
+        }
+      }
+      this.reverbNode = this.ctx.createConvolver();
+      this.reverbNode.buffer = impulse;
+      this.reverbGain = this.ctx.createGain();
+      this.reverbGain.gain.setValueAtTime(0.05, this.ctx.currentTime); // Default dry outdoor slapback
+
       this.masterGain.connect(this.compressor);
+      this.masterGain.connect(this.reverbNode);
+      this.reverbNode.connect(this.reverbGain);
+      this.reverbGain.connect(this.compressor);
       this.compressor.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
+    }
+  }
+
+  /**
+   * Adjusts acoustic reverb tail based on player location (enclosed indoor tunnels vs open courtyard)
+   */
+  public setIndoorZone(isIndoor: boolean): void {
+    if (this.ctx && this.reverbGain) {
+      this.reverbGain.gain.setTargetAtTime(isIndoor ? 0.38 : 0.05, this.ctx.currentTime, 0.12);
     }
   }
 
@@ -462,5 +492,107 @@ export class ProceduralAudio {
     ringGain.connect(this.masterGain!);
     ring.start(t);
     ring.stop(t + 2.5);
+  }
+
+  public playKnifeDraw(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+
+    // Resonant metallic ring
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(2200, t);
+    osc.frequency.exponentialRampToValueAtTime(3200, t + 0.12);
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain!);
+    osc.start(t);
+    osc.stop(t + 0.42);
+
+    // Subtle blade-swish air friction
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.15);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.2;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(2400, t);
+    filter.Q.setValueAtTime(4.0, t);
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.2, t);
+    nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+
+    noise.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(this.masterGain!);
+    noise.start(t);
+    noise.stop(t + 0.15);
+  }
+
+  public playLowAmmoClick(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(2600, t);
+    osc.frequency.exponentialRampToValueAtTime(1400, t + 0.035);
+
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain!);
+    osc.start(t);
+    osc.stop(t + 0.04);
+  }
+
+  public playBuyRejection(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    // Double error tone
+    for (let i = 0; i < 2; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(160, t + i * 0.08);
+
+      gain.gain.setValueAtTime(0.2, t + i * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.05);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t + i * 0.08);
+      osc.stop(t + i * 0.08 + 0.05);
+    }
+  }
+
+  public playWeaponPickup(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, t);
+    osc.frequency.exponentialRampToValueAtTime(1400, t + 0.08);
+
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain!);
+    osc.start(t);
+    osc.stop(t + 0.12);
   }
 }

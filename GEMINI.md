@@ -27,3 +27,5 @@ You are a Principal FPS Gameplay Engineer & Graphics Architect building **GARAM:
    - `packages/client/src/main.ts` must remain under 320 lines, delegating domain logic to specialized single-responsibility modules (`InputManager`, `WeaponController`, `UtilityManager`, `BotAISystem`, `HUDManager`, `RadarRenderer`, `SceneManager`).
 6. **Strict Verification Gate**:
    - Prior to any commit, verify `npm run typecheck` passes with 0 errors across all workspaces and `npm run build` succeeds cleanly.
+7. **Living README & Visual Documentation Rule**:
+   - At the end of EVERY milestone/feature push, you MUST update `README.md` to reflect actual shipped features, controls, architecture, test counts, and roadmap progress—and maintain high-craft custom vector SVG graphics inside `docs/assets/*.svg` embedded directly in `README.md` (compatible with both GitHub Dark & Light themes). Never let `README.md` go stale.
