@@ -10,6 +10,45 @@ export class ProceduralAudio {
   private reverbNode: ConvolverNode | null = null;
   private reverbGain: GainNode | null = null;
   private masterVolume = 0.85;
+  private audioBufferCache: Map<string, AudioBuffer> = new Map();
+
+  constructor() {
+    // Preload ElevenLabs synthesized tactical audio (non-blocking)
+    this.preloadAudio('/audio/knife_draw.mp3');
+    this.preloadAudio('/audio/low_ammo_click.mp3');
+    this.preloadAudio('/audio/m4_suppressed.mp3');
+    this.preloadAudio('/audio/deagle_shot.mp3');
+    this.preloadAudio('/audio/awp_shot.mp3');
+  }
+
+  public async preloadAudio(url: string): Promise<AudioBuffer | null> {
+    if (this.audioBufferCache.has(url)) return this.audioBufferCache.get(url)!;
+    this.initContext();
+    if (!this.ctx) return null;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const arrayBuf = await res.arrayBuffer();
+      const decoded = await this.ctx.decodeAudioData(arrayBuf);
+      this.audioBufferCache.set(url, decoded);
+      return decoded;
+    } catch {
+      return null;
+    }
+  }
+
+  private playCachedBuffer(url: string, volume = 0.5): boolean {
+    const buf = this.audioBufferCache.get(url);
+    if (!buf || !this.ctx || !this.masterGain) return false;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(volume, this.ctx.currentTime);
+    src.connect(gain);
+    gain.connect(this.masterGain);
+    src.start();
+    return true;
+  }
 
   private initContext() {
     if (!this.ctx) {
@@ -495,6 +534,7 @@ export class ProceduralAudio {
   }
 
   public playKnifeDraw(): void {
+    if (this.playCachedBuffer('/audio/knife_draw.mp3', 0.6)) return;
     this.initContext();
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
