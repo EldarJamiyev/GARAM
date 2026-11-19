@@ -285,11 +285,20 @@ export const DE_CITADEL_NAV_GRAPH: Record<string, NavNode> = {
 };
 
 /**
- * Finds the closest NavNode to any arbitrary world position
+ * Finds the closest NavNode to any arbitrary world position.
+ * If `blocks` are provided, prioritizes nodes with unobstructed line of sight.
  */
-export function findNearestNavNode(pos: Vec3, filter?: (node: NavNode) => boolean): NavNode {
+export function findNearestNavNode(
+  pos: Vec3,
+  filter?: (node: NavNode) => boolean,
+  blocks?: MapBlockCollider[]
+): NavNode {
   let closest: NavNode | null = null;
   let minDistSq = Infinity;
+  let closestWithLOS: NavNode | null = null;
+  let minLOSDistSq = Infinity;
+
+  const eyeA = { x: pos.x, y: pos.y + 1.2, z: pos.z };
 
   for (const key of Object.keys(DE_CITADEL_NAV_GRAPH)) {
     const node = DE_CITADEL_NAV_GRAPH[key];
@@ -304,9 +313,19 @@ export function findNearestNavNode(pos: Vec3, filter?: (node: NavNode) => boolea
       minDistSq = dSq;
       closest = node;
     }
+
+    if (blocks && blocks.length > 0) {
+      const eyeB = { x: node.pos.x, y: node.pos.y + 1.2, z: node.pos.z };
+      if (hasLineOfSight(eyeA, eyeB, blocks, [])) {
+        if (dSq < minLOSDistSq) {
+          minLOSDistSq = dSq;
+          closestWithLOS = node;
+        }
+      }
+    }
   }
 
-  return closest || DE_CITADEL_NAV_GRAPH['mid_courtyard_s'];
+  return closestWithLOS || closest || DE_CITADEL_NAV_GRAPH['mid_courtyard_s'];
 }
 
 function dist3D(a: Vec3, b: Vec3): number {
@@ -321,16 +340,34 @@ function dist3D(a: Vec3, b: Vec3): number {
  * @param start Start world position
  * @param goal Goal world position
  * @param dynamicWeights Optional edge/node cost penalties (e.g. recent death zone or burning molotov)
+ * @param blocks Optional map geometry blocks to ensure start and goal entry nodes have line of sight
  */
 export function findPathAStar(
   start: Vec3,
   goal: Vec3,
-  dynamicWeights?: Record<string, number>
+  dynamicWeights?: Record<string, number>,
+  blocks?: MapBlockCollider[]
 ): Vec3[] {
-  const startNode = findNearestNavNode(start);
-  const goalNode = findNearestNavNode(goal);
+  const startNode = findNearestNavNode(start, undefined, blocks);
+  const goalNode = findNearestNavNode(goal, undefined, blocks);
 
   if (startNode.id === goalNode.id) {
+    if (
+      blocks &&
+      blocks.length > 0 &&
+      !hasLineOfSight(
+        { x: start.x, y: start.y + 1.2, z: start.z },
+        { x: goal.x, y: goal.y + 1.2, z: goal.z },
+        blocks,
+        []
+      )
+    ) {
+      return [
+        { x: start.x, y: start.y, z: start.z },
+        { x: startNode.pos.x, y: startNode.pos.y, z: startNode.pos.z },
+        { x: goal.x, y: goal.y, z: goal.z },
+      ];
+    }
     return [
       { x: start.x, y: start.y, z: start.z },
       { x: goal.x, y: goal.y, z: goal.z },
