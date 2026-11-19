@@ -244,6 +244,11 @@ export class WeaponController {
     }
   }
 
+  public onFireRelease(): void {
+    this.lastFireReleaseTime = performance.now();
+    this.inventory.isSemiTriggerReleased = true;
+  }
+
   private executeKarambitAttack(
     camera: THREE.PerspectiveCamera,
     bots: BotEntity[],

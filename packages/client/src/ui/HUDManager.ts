@@ -208,6 +208,50 @@ export class HUDManager {
     }
   }
 
+  public updateScoreboard(playerKills: number, playerDeaths: number, playerCash: number, bots: BotEntity[]): void {
+    const vg: ScoreboardPlayer[] = [
+      {
+        id: 'player',
+        name: '★ Eldar Garamov (You)',
+        team: 'Vanguard',
+        kills: playerKills,
+        deaths: playerDeaths,
+        assists: 0,
+        adr: 105,
+        cash: playerCash,
+        isAlive: true,
+        ping: 12,
+      },
+      ...bots.filter(b => b.team === 'Vanguard').map(b => ({
+        id: b.id,
+        name: b.name,
+        team: 'Vanguard' as const,
+        kills: b.kills,
+        deaths: b.deaths,
+        assists: 0,
+        adr: 85,
+        cash: 3200,
+        isAlive: !b.isDead,
+        ping: 16,
+      }))
+    ];
+
+    const syn: ScoreboardPlayer[] = bots.filter(b => b.team === 'Syndicate').map(b => ({
+      id: b.id,
+      name: b.name,
+      team: 'Syndicate' as const,
+      kills: b.kills,
+      deaths: b.deaths,
+      assists: 0,
+      adr: 80,
+      cash: 2800,
+      isAlive: !b.isDead,
+      ping: 22,
+    }));
+
+    this.renderDynamicScoreboard(vg, syn);
+  }
+
   public renderDynamicScoreboard(vanguardTeam: ScoreboardPlayer[], syndicateTeam: ScoreboardPlayer[]): void {
     const tbody = document.getElementById('score-tbody');
     if (!tbody) return;

@@ -7,7 +7,7 @@ import {
   WeaponDef,
   MapBlockCollider,
   AABBCollider,
-  SPAWN_ZONES
+  SPAWN_POINTS
 } from '@garam/shared';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
 import { ProceduralAudio } from './audio/ProceduralAudio.js';
@@ -115,13 +115,13 @@ export class GaramGame {
 
     // 3. Audio & Combat
     this.audio = new ProceduralAudio();
-    this.effects = new EffectsManager(this.worldScene);
+    this.effects = new EffectsManager(this.worldScene, this.worldCamera);
     this.inventory = new InventoryManager();
     this.economy = new EconomyManager();
     this.hud = new HUDManager();
 
     // Spawn player at Vanguard Defender Spawn
-    const spawnPos = SPAWN_ZONES.VANGUARD_SPAWN;
+    const spawnPos = SPAWN_POINTS.VANGUARD_CT;
     this.player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
     // 4. Build Map

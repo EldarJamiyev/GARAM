@@ -435,17 +435,7 @@ export function updateBotSystem(
       // Check target Player
       const distToPlayer = bot.mesh.position.distanceTo(playerPos);
       if (distToPlayer <= 36) {
-        const toPlayer = new THREE.Vector3().subVectors(playerEye, botEye);
-        toPlayer.normalize();
-        const losPlayer = hasLineOfSight(
-          {
-            origin: { x: botEye.x, y: botEye.y, z: botEye.z },
-            direction: { x: toPlayer.x, y: toPlayer.y, z: toPlayer.z },
-            maxDistance: distToPlayer,
-          },
-          blocks,
-          []
-        );
+        const losPlayer = hasLineOfSight(botEye, playerEye, blocks, []);
 
         if (losPlayer) {
           bot.mesh.lookAt(playerPos.x, bot.mesh.position.y, playerPos.z);
@@ -465,17 +455,7 @@ export function updateBotSystem(
           const distToAlly = bot.mesh.position.distanceTo(ally.mesh.position);
           if (distToAlly <= 30) {
             const allyEye = ally.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
-            const toAlly = new THREE.Vector3().subVectors(allyEye, botEye);
-            toAlly.normalize();
-            const losAlly = hasLineOfSight(
-              {
-                origin: { x: botEye.x, y: botEye.y, z: botEye.z },
-                direction: { x: toAlly.x, y: toAlly.y, z: toAlly.z },
-                maxDistance: distToAlly,
-              },
-              blocks,
-              []
-            );
+            const losAlly = hasLineOfSight(botEye, allyEye, blocks, []);
 
             if (losAlly) {
               bot.mesh.lookAt(ally.mesh.position.x, bot.mesh.position.y, ally.mesh.position.z);
@@ -497,17 +477,7 @@ export function updateBotSystem(
           const distToEnemy = bot.mesh.position.distanceTo(enemy.mesh.position);
           if (distToEnemy <= 30) {
             const enemyEye = enemy.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
-            const toEnemy = new THREE.Vector3().subVectors(enemyEye, botEye);
-            toEnemy.normalize();
-            const losEnemy = hasLineOfSight(
-              {
-                origin: { x: botEye.x, y: botEye.y, z: botEye.z },
-                direction: { x: toEnemy.x, y: toEnemy.y, z: toEnemy.z },
-                maxDistance: distToEnemy,
-              },
-              blocks,
-              []
-            );
+            const losEnemy = hasLineOfSight(botEye, enemyEye, blocks, []);
 
             if (losEnemy) {
               bot.mesh.lookAt(enemy.mesh.position.x, bot.mesh.position.y, enemy.mesh.position.z);
