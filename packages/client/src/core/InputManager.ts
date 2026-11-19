@@ -59,13 +59,16 @@ export class InputManager {
 
     document.addEventListener('pointerlockchange', () => {
       this.isLocked = document.pointerLockElement === this.canvas;
+      const overlay = document.getElementById('ui-overlay');
       if (this.isLocked) {
         this.uiState = 'PLAYING';
         this.blocker.style.display = 'none';
+        if (overlay) overlay.style.display = 'block';
       } else {
         if (this.uiState === 'PLAYING') {
           this.uiState = 'PAUSED';
           this.blocker.style.display = 'flex';
+          if (overlay) overlay.style.display = 'none';
         }
       }
     });
