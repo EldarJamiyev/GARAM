@@ -1,9 +1,15 @@
+export type FireMode = 'auto' | 'semi' | 'bolt' | 'melee';
+
 export interface WeaponDef {
   id: string;
   name: string;
   category: 'rifle' | 'sniper' | 'pistol' | 'smg' | 'melee';
+  slot: 1 | 2 | 3 | 4 | 5; // 1: Primary, 2: Secondary, 3: Melee, 4: Utility, 5: Bomb
+  fireMode: FireMode;
   price: number;
   damage: number;
+  headDamageMultiplier: number;
+  armorPenetration: number; // e.g. 0.775 for 77.5%
   fireRateRpm: number;
   magCapacity: number;
   reserveAmmo: number;
@@ -11,6 +17,7 @@ export interface WeaponDef {
   movementSpeed: number;
   penetrationPower: number;
   baseSpread: number;
+  killReward: number;
   sprayPattern: Array<[number, number]>; // [pitchDeg, yawDeg]
 }
 
@@ -82,8 +89,12 @@ export const WEAPONS: Record<string, WeaponDef> = {
     id: 'garam-47',
     name: 'Garam-47',
     category: 'rifle',
+    slot: 1,
+    fireMode: 'auto',
     price: 2700,
     damage: 36,
+    headDamageMultiplier: 4.0,
+    armorPenetration: 0.775,
     fireRateRpm: 600,
     magCapacity: 30,
     reserveAmmo: 90,
@@ -91,14 +102,19 @@ export const WEAPONS: Record<string, WeaponDef> = {
     movementSpeed: 5.45,
     penetrationPower: 200,
     baseSpread: 0.0,
+    killReward: 300,
     sprayPattern: GARAM_47_SPRAY,
   },
   'vanguard-m4': {
     id: 'vanguard-m4',
     name: 'Vanguard M4A1-S',
     category: 'rifle',
+    slot: 1,
+    fireMode: 'auto',
     price: 2900,
     damage: 33,
+    headDamageMultiplier: 4.0,
+    armorPenetration: 0.70,
     fireRateRpm: 666,
     magCapacity: 25,
     reserveAmmo: 75,
@@ -106,36 +122,47 @@ export const WEAPONS: Record<string, WeaponDef> = {
     movementSpeed: 5.55,
     penetrationPower: 180,
     baseSpread: 0.0,
+    killReward: 300,
     sprayPattern: VANGUARD_M4_SPRAY,
   },
   'sovereign-awp': {
     id: 'sovereign-awp',
     name: 'Sovereign AWP',
     category: 'sniper',
+    slot: 1,
+    fireMode: 'bolt',
     price: 4750,
     damage: 115,
-    fireRateRpm: 45,
+    headDamageMultiplier: 4.0,
+    armorPenetration: 0.975,
+    fireRateRpm: 41,
     magCapacity: 5,
     reserveAmmo: 30,
     reloadTime: 3.5,
     movementSpeed: 5.08,
     penetrationPower: 300,
-    baseSpread: 0.0,
+    baseSpread: 0.0, // Scoped base spread
+    killReward: 100,
     sprayPattern: [[2.5, 0.0]],
   },
   'desert-eagle': {
     id: 'desert-eagle',
     name: "Eldar's Custom Desert Eagle",
     category: 'pistol',
+    slot: 2,
+    fireMode: 'semi',
     price: 700,
     damage: 53,
-    fireRateRpm: 260,
+    headDamageMultiplier: 4.0,
+    armorPenetration: 0.932,
+    fireRateRpm: 267,
     magCapacity: 7,
     reserveAmmo: 35,
     reloadTime: 1.9,
     movementSpeed: 6.10,
     penetrationPower: 220,
     baseSpread: 0.0,
+    killReward: 300,
     sprayPattern: [
       [1.2, 0.0],
       [2.2, 0.15],
@@ -147,8 +174,12 @@ export const WEAPONS: Record<string, WeaponDef> = {
     id: 'garam-karambit',
     name: 'Garam Crimson Karambit',
     category: 'melee',
+    slot: 3,
+    fireMode: 'melee',
     price: 0,
-    damage: 55,
+    damage: 55, // Primary slash (M1)
+    headDamageMultiplier: 1.0,
+    armorPenetration: 0.85,
     fireRateRpm: 120,
     magCapacity: 1,
     reserveAmmo: 0,
@@ -156,6 +187,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     movementSpeed: 6.35,
     penetrationPower: 0,
     baseSpread: 0.0,
+    killReward: 1500,
     sprayPattern: [],
   },
 };
