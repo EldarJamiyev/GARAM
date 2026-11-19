@@ -16,7 +16,7 @@
       height: 100%;
       overflow: hidden;
       background-color: #0c0d0e;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
       color: #fff;
     }
     #game-canvas {
@@ -32,6 +32,7 @@
       height: 100%;
       pointer-events: none;
     }
+
     /* Crosshair */
     #crosshair {
       position: absolute;
@@ -45,39 +46,13 @@
       background: #00ff66;
       box-shadow: 0 0 2px #000;
     }
-    .crosshair-top {
-      width: 2px;
-      height: 8px;
-      left: -1px;
-      top: -12px;
-    }
-    .crosshair-bottom {
-      width: 2px;
-      height: 8px;
-      left: -1px;
-      top: 4px;
-    }
-    .crosshair-left {
-      width: 8px;
-      height: 2px;
-      top: -1px;
-      left: -12px;
-    }
-    .crosshair-right {
-      width: 8px;
-      height: 2px;
-      top: -1px;
-      left: 4px;
-    }
-    .crosshair-dot {
-      width: 2px;
-      height: 2px;
-      background: #00ff66;
-      position: absolute;
-      top: -1px;
-      left: -1px;
-    }
-    /* Scope Overlay (AWP) */
+    .crosshair-top { width: 2px; height: 8px; left: -1px; top: -12px; }
+    .crosshair-bottom { width: 2px; height: 8px; left: -1px; top: 4px; }
+    .crosshair-left { width: 8px; height: 2px; top: -1px; left: -12px; }
+    .crosshair-right { width: 8px; height: 2px; top: -1px; left: 4px; }
+    .crosshair-dot { width: 2px; height: 2px; background: #00ff66; position: absolute; top: -1px; left: -1px; }
+
+    /* Tactical Sniper Scope Overlay (Clean CS2 Style Full Screen Mask) */
     #sniper-scope {
       position: absolute;
       top: 0;
@@ -86,19 +61,9 @@
       height: 100%;
       display: none;
       pointer-events: none;
+      background: radial-gradient(circle at center, transparent 320px, rgba(0, 0, 0, 0.96) 322px);
     }
-    .scope-circle {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 580px;
-      height: 580px;
-      transform: translate(-50%, -50%);
-      border-radius: 50%;
-      border: 3px solid #111;
-      box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.94);
-    }
-    .scope-cross-h {
+    .scope-reticle-h {
       position: absolute;
       top: 50%;
       left: 0;
@@ -106,7 +71,7 @@
       height: 1px;
       background: rgba(0, 0, 0, 0.85);
     }
-    .scope-cross-v {
+    .scope-reticle-v {
       position: absolute;
       left: 50%;
       top: 0;
@@ -114,82 +79,114 @@
       width: 1px;
       background: rgba(0, 0, 0, 0.85);
     }
-    /* Top Round Header */
+    .scope-center-dot {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 3px;
+      height: 3px;
+      background: #ff2233;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+    }
+
+    /* Fixed CS2 Tournament 3-Column Round Header */
     #round-header {
       position: absolute;
-      top: 20px;
+      top: 16px;
       left: 50%;
       transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: 190px 110px 190px;
+      align-items: center;
+      background: rgba(10, 13, 17, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(12px);
+      overflow: hidden;
+    }
+    .header-team {
       display: flex;
       align-items: center;
-      gap: 24px;
-      background: rgba(14, 17, 21, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      padding: 8px 28px;
-      border-radius: 6px;
-      backdrop-filter: blur(10px);
-    }
-    .team-score {
-      font-size: 26px;
+      padding: 8px 16px;
       font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 1.5px;
     }
-    .score-vanguard {
+    .header-team.vanguard {
+      justify-content: space-between;
+      background: linear-gradient(90deg, rgba(59, 158, 255, 0.25), transparent);
       color: #3b9eff;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
-    .score-syndicate {
+    .header-team.syndicate {
+      justify-content: space-between;
+      background: linear-gradient(270deg, rgba(255, 170, 0, 0.25), transparent);
       color: #ffaa00;
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
     }
-    .round-timer {
-      font-size: 22px;
-      font-weight: 700;
+    .header-score {
+      font-size: 24px;
+      font-weight: 900;
       color: #fff;
-      letter-spacing: 1px;
     }
+    .header-timer {
+      text-align: center;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+
     /* Killfeed */
     #killfeed {
       position: absolute;
       top: 24px;
-      right: 32px;
+      right: 28px;
       display: flex;
       flex-direction: column;
       gap: 6px;
       pointer-events: none;
     }
     .kill-entry {
-      background: rgba(12, 14, 18, 0.85);
+      background: rgba(12, 15, 19, 0.9);
       border-left: 3px solid #ff334b;
-      padding: 6px 14px;
+      padding: 7px 16px;
       border-radius: 3px;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       color: #e4e9f0;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
       animation: fadeKill 5s forwards;
     }
     @keyframes fadeKill {
       0% { opacity: 0; transform: translateX(20px); }
-      10% { opacity: 1; transform: translateX(0); }
+      8% { opacity: 1; transform: translateX(0); }
       80% { opacity: 1; }
       100% { opacity: 0; transform: translateY(-10px); }
     }
-    /* Damage Popups */
+
+    /* Floating 3D Damage Numbers */
     .damage-popup {
       position: absolute;
       color: #ff3344;
       font-weight: 900;
-      font-size: 20px;
-      text-shadow: 0 0 4px #000;
+      font-size: 22px;
+      text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
       pointer-events: none;
       animation: floatUp 0.8s ease-out forwards;
     }
     .damage-popup.headshot {
       color: #ffd700;
-      font-size: 26px;
+      font-size: 28px;
+      text-shadow: 0 0 10px rgba(255, 215, 0, 0.6);
     }
     @keyframes floatUp {
-      0% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-      100% { opacity: 0; transform: translate(-50%, -100%) scale(0.9); }
+      0% { opacity: 1; transform: translate(-50%, -50%) scale(1.3); }
+      100% { opacity: 0; transform: translate(-50%, -120%) scale(0.9); }
     }
+
     /* Tactical HUD Bottom */
     #hud-bottom {
       position: absolute;
@@ -202,11 +199,12 @@
       font-weight: 700;
     }
     .hud-block {
-      background: rgba(10, 12, 14, 0.85);
+      background: rgba(10, 13, 17, 0.88);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      padding: 12px 20px;
+      padding: 12px 22px;
       border-radius: 6px;
-      backdrop-filter: blur(8px);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     }
     .hud-label {
       font-size: 11px;
@@ -215,51 +213,44 @@
       text-transform: uppercase;
       margin-bottom: 2px;
     }
-    .hud-val {
-      font-size: 32px;
-      letter-spacing: 1px;
-      color: #fff;
-    }
+    .hud-val { font-size: 32px; letter-spacing: 1px; color: #fff; }
     .hud-val.hp { color: #ff334b; }
     .hud-val.armor { color: #3b9eff; }
     .hud-val.ammo { color: #ffb833; }
     .hud-val.cash { color: #00ff88; }
     .hud-val.speed { font-size: 15px; color: #00ff88; }
+
     /* Scoreboard (TAB) */
     #scoreboard-modal {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 720px;
-      background: rgba(12, 15, 18, 0.94);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      width: 740px;
+      background: rgba(10, 13, 17, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 8px;
       padding: 24px;
       display: none;
-      box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(12px);
+      box-shadow: 0 0 35px rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(14px);
       z-index: 100;
     }
     .score-table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 12px;
+      margin-top: 14px;
       font-size: 14px;
     }
-    .score-table th, .score-table td {
-      padding: 8px 12px;
-      text-align: left;
-    }
+    .score-table th, .score-table td { padding: 9px 14px; text-align: left; }
     .score-table th {
       color: #8e959e;
       font-size: 11px;
       letter-spacing: 1.5px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
     }
-    .score-table tr:hover {
-      background: rgba(255, 255, 255, 0.05);
-    }
+    .score-table tr:hover { background: rgba(255, 255, 255, 0.05); }
+
     /* Buy Menu (B Key) */
     #buy-menu {
       position: absolute;
@@ -285,36 +276,28 @@
     }
     .buy-card {
       background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       padding: 16px;
       border-radius: 6px;
       cursor: pointer;
       transition: all 0.2s ease;
     }
     .buy-card:hover {
-      background: rgba(59, 158, 255, 0.15);
+      background: rgba(59, 158, 255, 0.18);
       border-color: #3b9eff;
       transform: translateY(-2px);
     }
-    .buy-name {
-      font-size: 16px;
-      font-weight: 700;
-      color: #fff;
-    }
-    .buy-price {
-      font-size: 14px;
-      font-weight: 600;
-      color: #00ff88;
-      margin-top: 4px;
-    }
-    /* Click to Play Screen */
+    .buy-name { font-size: 16px; font-weight: 700; color: #fff; }
+    .buy-price { font-size: 14px; font-weight: 700; color: #00ff88; margin-top: 4px; }
+
+    /* Start / Respawn Screen */
     #blocker {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.75);
+      background: rgba(0, 0, 0, 0.78);
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -350,42 +333,13 @@
       border-radius: 4px;
       transition: all 0.2s ease;
     }
-    .start-prompt:hover {
-      background: #e01b33;
-      transform: scale(1.05);
-    }
+    .start-prompt:hover { background: #e01b33; transform: scale(1.05); }
     .controls-help {
       margin-top: 28px;
       font-size: 12px;
       color: #7b8590;
       line-height: 2;
       text-align: center;
-    }
-    /* Plant / Defuse Progress bar */
-    #interaction-bar {
-      position: absolute;
-      bottom: 140px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 260px;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-    }
-    .progress-track {
-      width: 100%;
-      height: 8px;
-      background: rgba(0, 0, 0, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-      overflow: hidden;
-      margin-top: 6px;
-    }
-    .progress-fill {
-      height: 100%;
-      width: 0%;
-      background: #ff3344;
-      transition: width 0.05s linear;
     }
   </style>
 </head>
@@ -395,17 +349,22 @@
   <div id="ui-overlay">
     <!-- Sniper Scope Overlay -->
     <div id="sniper-scope">
-      <div class="scope-circle">
-        <div class="scope-cross-h"></div>
-        <div class="scope-cross-v"></div>
-      </div>
+      <div class="scope-reticle-h"></div>
+      <div class="scope-reticle-v"></div>
+      <div class="scope-center-dot"></div>
     </div>
 
-    <!-- Round Status Header -->
+    <!-- Structured 3-Column Round Header -->
     <div id="round-header">
-      <div class="team-score score-vanguard" id="score-ct">VANGUARD: 0</div>
-      <div class="round-timer" id="round-timer">01:45</div>
-      <div class="team-score score-syndicate" id="score-t">0 :SYNDICATE</div>
+      <div class="header-team vanguard">
+        <span>VANGUARD</span>
+        <span class="header-score" id="score-ct">0</span>
+      </div>
+      <div class="header-timer" id="round-timer">01:45</div>
+      <div class="header-team syndicate">
+        <span class="header-score" id="score-t">0</span>
+        <span>SYNDICATE</span>
+      </div>
     </div>
 
     <!-- Killfeed -->
@@ -418,14 +377,6 @@
       <div class="crosshair-bar crosshair-left" id="ch-left"></div>
       <div class="crosshair-bar crosshair-right" id="ch-right"></div>
       <div class="crosshair-dot"></div>
-    </div>
-
-    <!-- Plant / Defuse interaction progress -->
-    <div id="interaction-bar">
-      <div id="interaction-label" style="font-size: 12px; letter-spacing: 2px; color: #ffaa33; font-weight: 700;">ARMING PULSE CORE</div>
-      <div class="progress-track">
-        <div class="progress-fill" id="interaction-fill"></div>
-      </div>
     </div>
 
     <!-- Tactical HUD -->
@@ -450,7 +401,7 @@
           <div class="hud-label">$ CASH</div>
           <div class="hud-val cash" id="hud-cash">$800</div>
         </div>
-        <div class="hud-block" style="text-align: right;">
+        <div class="hud-block" style="text-align: right; min-width: 170px;">
           <div class="hud-label" id="hud-weapon-name">GARAM-47</div>
           <div class="hud-val ammo"><span id="hud-ammo-cur">30</span> <span style="font-size: 18px; color: #8e959e;">/ <span id="hud-ammo-res">90</span></span></div>
         </div>
@@ -460,7 +411,7 @@
 
   <!-- Scoreboard (TAB) -->
   <div id="scoreboard-modal">
-    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(255, 255, 255, 0.12); padding-bottom: 12px;">
       <h2 style="font-size: 20px; letter-spacing: 2px;">DE_CITADEL — 5V5 COMPETITIVE</h2>
       <span style="color: #00ff88; font-size: 13px;">64-TICK AUTHORITATIVE</span>
     </div>
@@ -561,8 +512,8 @@
     <div class="start-prompt">CLICK TO SPAWN (ELDAR GARAMOV)</div>
     <div class="controls-help">
       [WASD] Move &nbsp;|&nbsp; [A / D Tap] Counter-Strafe &nbsp;|&nbsp; [SPACE] Jump &nbsp;|&nbsp; [CTRL] Crouch &nbsp;|&nbsp; [SHIFT] Silent Walk<br>
-      [MOUSE 1] Fire with Recoil &nbsp;|&nbsp; [MOUSE 2] AWP Scope Zoom &nbsp;|&nbsp; [1, 2, 3, 4] Weapons & Grenades<br>
-      [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [E] Plant / Defuse Pulse Core &nbsp;|&nbsp; [R] Reload
+      [MOUSE 1] Fire with Recoil &nbsp;|&nbsp; [MOUSE 2] AWP Scope Zoom &nbsp;|&nbsp; [SCROLL / 1, 2, 3, 4] Switch Weapon<br>
+      [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [R] Reload &nbsp;|&nbsp; [ESC] Release Cursor
     </div>
   </div>
 

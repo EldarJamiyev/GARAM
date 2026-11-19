@@ -44,7 +44,12 @@ class GaramGame {
   private mouseDeltaX = 0;
   private mouseDeltaY = 0;
 
+  // Camera recoil punch (Screen kick)
+  private cameraPunchPitch = 0;
+
   // Weapons & Ballistics
+  private weaponSlotOrder = ['garam-47', 'desert-eagle', 'garam-karambit', 'sovereign-awp', 'vanguard-m4'];
+  private currentSlotIndex = 0;
   private currentWeapon: WeaponDef = WEAPONS['garam-47'];
   private currentAmmo = 30;
   private reserveAmmo = 90;
@@ -62,14 +67,9 @@ class GaramGame {
   private deaths = 0;
 
   // Match State Machine
-  private roundTimeRemaining = 105; // 1:45 round timer
+  private roundTimeRemaining = 105;
   private ctScore = 0;
   private tScore = 0;
-  private isBombPlanted = false;
-  private bombPlantTimer = 40;
-  private bombMesh: THREE.Mesh | null = null;
-  private isInteracting = false;
-  private interactionProgress = 0;
 
   // Map entities & Colliders
   private bots: BotEntity[] = [];
@@ -90,7 +90,7 @@ class GaramGame {
   constructor() {
     this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
     this.audio = new ProceduralAudio();
-    this.player = new KinematicPlayerController(0, 0, 35); // CT Garam Vanguard Base Spawn
+    this.player = new KinematicPlayerController(0, 0, 35);
 
     // WebGL Renderer with ACESFilmicToneMapping & PCFSoftShadowMap
     this.renderer = new THREE.WebGLRenderer({
@@ -106,18 +106,17 @@ class GaramGame {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.autoClear = false;
 
-    // 1. World Scene (Vibrant Sky & Crisp Lighting)
+    // 1. World Scene (Vibrant Sky & Crisp Sunlight)
     this.worldScene = new THREE.Scene();
-    this.worldScene.background = new THREE.Color(0x87ceeb); // Daylight sky
-    this.worldScene.fog = new THREE.FogExp2(0x87ceeb, 0.007);
+    this.worldScene.background = new THREE.Color(0x7ec0ee); // Crisp sky blue
+    this.worldScene.fog = new THREE.FogExp2(0x7ec0ee, 0.006);
 
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 500);
 
-    // Warm Directional Sunlight + Ambient Sky Fill
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x556677, 0.85);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x445566, 0.9);
     this.worldScene.add(hemiLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfff6e5, 1.8);
+    const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.9);
     sunLight.position.set(45, 80, -35);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
@@ -169,7 +168,7 @@ class GaramGame {
 
     window.addEventListener('mousemove', (e) => {
       if (!this.isLocked) return;
-      const sens = this.isScoped ? 0.0009 : 0.0022;
+      const sens = this.isScoped ? 0.0008 : 0.0022;
       this.mouseDeltaX = e.movementX;
       this.mouseDeltaY = e.movementY;
 
@@ -178,6 +177,17 @@ class GaramGame {
 
       const maxPitch = (Math.PI / 2) - 0.02;
       this.input.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.input.pitch));
+    });
+
+    // Mouse scroll wheel weapon switching
+    window.addEventListener('wheel', (e) => {
+      if (!this.isLocked) return;
+      if (e.deltaY > 0) {
+        this.currentSlotIndex = (this.currentSlotIndex + 1) % this.weaponSlotOrder.length;
+      } else {
+        this.currentSlotIndex = (this.currentSlotIndex - 1 + this.weaponSlotOrder.length) % this.weaponSlotOrder.length;
+      }
+      this.switchWeapon(this.weaponSlotOrder[this.currentSlotIndex]);
     });
 
     window.addEventListener('keydown', (e) => {
@@ -191,7 +201,6 @@ class GaramGame {
         case 'ShiftLeft': this.input.walk = true; break;
         case 'KeyR': this.reload(); break;
         case 'KeyB': this.toggleBuyMenu(); break;
-        case 'KeyE': this.isInteracting = true; break;
         case 'Tab': {
           e.preventDefault();
           const sb = document.getElementById('scoreboard-modal')!;
@@ -214,7 +223,6 @@ class GaramGame {
         case 'Space': this.input.jump = false; break;
         case 'ControlLeft': this.input.crouch = false; break;
         case 'ShiftLeft': this.input.walk = false; break;
-        case 'KeyE': this.isInteracting = false; this.interactionProgress = 0; break;
         case 'Tab': {
           const sb = document.getElementById('scoreboard-modal')!;
           sb.style.display = 'none';
@@ -228,7 +236,7 @@ class GaramGame {
         if (e.button === 0) {
           this.isFiring = true;
         } else if (e.button === 2) {
-          // Right click zoom (AWP scope toggle)
+          // Right-click AWP sniper scope
           if (this.currentWeapon.id === 'sovereign-awp') {
             this.toggleScope();
           }
@@ -243,7 +251,6 @@ class GaramGame {
       }
     });
 
-    // Disable browser context menu on right-click
     window.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -267,7 +274,7 @@ class GaramGame {
     this.viewmodel.isScoped = this.isScoped;
     const scopeEl = document.getElementById('sniper-scope')!;
     scopeEl.style.display = this.isScoped ? 'block' : 'none';
-    this.worldCamera.fov = this.isScoped ? 30 : 90;
+    this.worldCamera.fov = this.isScoped ? 28 : 90;
     this.worldCamera.updateProjectionMatrix();
   }
 
@@ -306,7 +313,7 @@ class GaramGame {
     });
   }
 
-  private switchWeapon(weaponId: string): void {
+  public switchWeapon(weaponId: string): void {
     if (!WEAPONS[weaponId]) return;
     if (this.isScoped) this.toggleScope();
 
@@ -314,6 +321,9 @@ class GaramGame {
     this.currentAmmo = this.currentWeapon.magCapacity;
     this.reserveAmmo = this.currentWeapon.reserveAmmo;
     this.consecutiveShots = 0;
+
+    // Swap 3D Model in Viewmodel Scene
+    this.viewmodel.setWeapon(weaponId);
 
     const nameEl = document.getElementById('hud-weapon-name');
     if (nameEl) nameEl.innerText = this.currentWeapon.name.toUpperCase();
@@ -339,7 +349,10 @@ class GaramGame {
     this.currentAmmo--;
     this.updateHUD();
     this.audio.playGunshot(this.currentWeapon.id);
-    this.viewmodel.fireRecoil(0.07, 0.05);
+    this.viewmodel.fireRecoil(0.08, 0.05);
+
+    // Camera view-punch screen kick
+    this.cameraPunchPitch += 0.022; // ~1.26 degrees punch
 
     // 1. Recoil spray pattern
     let sprayPitchDeg = 0;
@@ -387,9 +400,10 @@ class GaramGame {
     const intersects = this.raycaster.intersectObjects(hitCandidates, false);
     if (intersects.length > 0) {
       const hit = intersects[0];
+      this.spawnBulletTracer(this.worldCamera.position, hit.point);
+
       for (const bot of this.bots) {
         if (hit.object === bot.headCollider) {
-          // Headshot 4x dink
           this.audio.playHeadshotDink();
           const dmg = Math.round(this.currentWeapon.damage * 4.0);
           bot.health -= dmg;
@@ -405,32 +419,46 @@ class GaramGame {
         }
       }
     } else {
-      // Wall impact spark
       const worldHits = this.raycaster.intersectObjects(this.worldScene.children, true);
       if (worldHits.length > 0) {
-        this.spawnHitFeedback(worldHits[0].point, 0, false);
+        const hitPt = worldHits[0].point;
+        this.spawnBulletTracer(this.worldCamera.position, hitPt);
+        this.spawnHitFeedback(hitPt, 0, false);
       }
     }
+  }
+
+  private spawnBulletTracer(from: THREE.Vector3, to: THREE.Vector3): void {
+    const points = [from.clone().add(new THREE.Vector3(0, -0.15, 0)), to];
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({
+      color: 0xffea55, // Glowing yellow-white tracer beam
+      linewidth: 2,
+    });
+    const line = new THREE.Line(geo, mat);
+    this.worldScene.add(line);
+    setTimeout(() => {
+      this.worldScene.remove(line);
+      geo.dispose();
+      mat.dispose();
+    }, 60);
   }
 
   private checkBotDeath(bot: BotEntity, headshot: boolean): void {
     if (bot.health <= 0 && !bot.isDead) {
       bot.isDead = true;
-      bot.mesh.rotation.x = Math.PI / 2; // Ragdoll fall
+      bot.mesh.rotation.x = Math.PI / 2;
       bot.mesh.position.y = 0.2;
 
       this.kills++;
       this.playerCash += 300;
       this.updateHUD();
 
-      // Top right killfeed announcement
       this.addKillfeedEntry(`★ Eldar Garamov [${this.currentWeapon.name}] ${headshot ? '⚡ HEADSHOT ⚡ ' : ''}${bot.name}`);
 
-      // Update scoreboard
       const sbKills = document.getElementById('sb-kills');
       if (sbKills) sbKills.innerText = this.kills.toString();
 
-      // Check if all Syndicate enemies dead
       const livingEnemies = this.bots.filter(b => b.team === 'Syndicate' && !b.isDead);
       if (livingEnemies.length === 0) {
         this.ctScore++;
@@ -440,7 +468,6 @@ class GaramGame {
   }
 
   private spawnHitFeedback(pos: THREE.Vector3, dmg: number, isHeadshot: boolean): void {
-    // 1. Visual hit spark particle
     const pGeo = new THREE.SphereGeometry(isHeadshot ? 0.08 : 0.04, 8, 8);
     const pMat = new THREE.MeshBasicMaterial({ color: isHeadshot ? 0xffea00 : 0xff3333 });
     const p = new THREE.Mesh(pGeo, pMat);
@@ -448,7 +475,6 @@ class GaramGame {
     this.worldScene.add(p);
     setTimeout(() => this.worldScene.remove(p), 350);
 
-    // 2. Floating Damage Popup Number on HUD
     if (dmg > 0) {
       const screenPos = pos.clone().project(this.worldCamera);
       const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
@@ -465,7 +491,6 @@ class GaramGame {
   }
 
   private throwSmokeGrenade(): void {
-    // Spawn volumetric smoke cloud at aim location
     const eye = this.worldCamera.position;
     const dir = new THREE.Vector3();
     this.worldCamera.getWorldDirection(dir);
@@ -487,7 +512,7 @@ class GaramGame {
     this.smokeClouds.push({
       mesh: smokeMesh,
       startTime: performance.now(),
-      duration: 18000, // 18s smoke duration
+      duration: 18000,
     });
 
     this.audio.playGrenadeExplosion();
@@ -517,8 +542,8 @@ class GaramGame {
     if (cashEl) cashEl.innerText = `$${this.playerCash}`;
     if (curEl) curEl.innerText = this.currentAmmo.toString();
     if (resEl) resEl.innerText = this.reserveAmmo.toString();
-    if (ctEl) ctEl.innerText = `VANGUARD: ${this.ctScore}`;
-    if (tEl) tEl.innerText = `${this.tScore} :SYNDICATE`;
+    if (ctEl) ctEl.innerText = this.ctScore.toString();
+    if (tEl) tEl.innerText = this.tScore.toString();
   }
 
   private updateDynamicCrosshair(): void {
@@ -558,14 +583,12 @@ class GaramGame {
     this.bots.forEach((bot) => {
       if (bot.isDead) return;
 
-      // 1. Move towards current patrol waypoint
       const target = bot.patrolTarget;
       const toTarget = new THREE.Vector3().subVectors(target, bot.mesh.position);
       toTarget.y = 0;
       const distToTarget = toTarget.length();
 
       if (distToTarget < 1.0) {
-        // Next waypoint
         bot.waypointIndex = (bot.waypointIndex + 1) % bot.patrolWaypoints.length;
         bot.patrolTarget = bot.patrolWaypoints[bot.waypointIndex];
       } else {
@@ -574,18 +597,15 @@ class GaramGame {
         bot.mesh.lookAt(target.x, bot.mesh.position.y, target.z);
       }
 
-      // 2. Line of sight check to player (Shoot player if enemy Syndicate)
       if (bot.team === 'Syndicate') {
         const distToPlayer = bot.mesh.position.distanceTo(playerPos);
         if (distToPlayer < 35) {
           bot.mesh.lookAt(playerPos.x, bot.mesh.position.y, playerPos.z);
 
-          // Shoot at player every 900ms
           if (now - bot.lastShotTime > 900) {
             bot.lastShotTime = now;
             this.audio.playGunshot('garam-47');
 
-            // 35% chance to land hit on player
             if (Math.random() < 0.35) {
               const dmg = 22;
               if (this.playerArmor > 0) {
@@ -600,7 +620,6 @@ class GaramGame {
                 this.deaths++;
                 this.tScore++;
                 this.addKillfeedEntry(`💀 ${bot.name} eliminated Eldar Garamov`);
-                // Respawn player
                 this.playerHealth = 100;
                 this.playerArmor = 100;
                 this.player.state.x = 0;
@@ -621,13 +640,11 @@ class GaramGame {
     this.lastTime = now;
     this.accumulator += frameDelta;
 
-    // Fixed-timestep kinematics with true wall collision sliding
     while (this.accumulator >= this.FIXED_DT) {
       this.player.update(this.input, this.FIXED_DT, this.currentWeapon.movementSpeed, this.colliders);
       this.accumulator -= this.FIXED_DT;
     }
 
-    // Footstep audio cycle
     const hozSpeed = this.player.getHorizontalSpeed();
     if (this.player.state.isGrounded && hozSpeed > 0.8 && !this.input.walk) {
       this.distanceTraveled += hozSpeed * frameDelta;
@@ -637,7 +654,6 @@ class GaramGame {
       }
     }
 
-    // Continuous weapon fire
     if (this.isFiring && this.isLocked) {
       const fireInterval = 60 / this.currentWeapon.fireRateRpm;
       if (now - this.lastShotTime >= fireInterval * 1000) {
@@ -646,17 +662,17 @@ class GaramGame {
       }
     }
 
-    // Reset recoil spray pattern after releasing trigger
     if (!this.isFiring && this.consecutiveShots > 0) {
       if (now - this.lastFireReleaseTime > 280) {
         this.consecutiveShots = 0;
       }
     }
 
-    // Update bots
+    // Recover camera recoil punch smoothly
+    this.cameraPunchPitch += (0 - this.cameraPunchPitch) * (1 - Math.exp(-18 * frameDelta));
+
     this.updateBots(frameDelta, now);
 
-    // Update round timer & bomb beeps
     const timerEl = document.getElementById('round-timer');
     if (timerEl) {
       const mins = Math.floor(this.roundTimeRemaining / 60);
@@ -664,14 +680,14 @@ class GaramGame {
       timerEl.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
-    // Camera transform
+    // Camera transform with view-punch
     const eyeY = this.player.state.y + this.player.state.currentEyeHeight;
     this.worldCamera.position.set(this.player.state.x, eyeY, this.player.state.z);
 
-    const euler = new THREE.Euler(this.input.pitch, this.input.yaw, 0, 'YXZ');
+    const effectivePitch = this.input.pitch + this.cameraPunchPitch;
+    const euler = new THREE.Euler(effectivePitch, this.input.yaw, 0, 'YXZ');
     this.worldCamera.quaternion.setFromEuler(euler);
 
-    // Viewmodel springs & sway
     const walkBob = Math.sin(this.distanceTraveled * 4) * 0.008 * (hozSpeed / 5.45);
     let strafeRoll = 0;
     if (this.input.left) strafeRoll = 0.025;
