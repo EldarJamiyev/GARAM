@@ -15,7 +15,9 @@
     "test": "npm run test --workspaces"
   },
   "devDependencies": {
+    "@gradio/client": "^2.8.0",
     "concurrently": "^9.1.2",
+    "dotenv": "^18.0.10",
     "typescript": "^5.7.3",
     "vitest": "^5.1.1"
   }
