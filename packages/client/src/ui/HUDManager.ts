@@ -190,7 +190,7 @@ export class HUDManager {
     banner.style.transform = 'translate(-50%, -50%)';
     banner.style.textAlign = 'center';
     banner.style.pointerEvents = 'none';
-    banner.style.zIndex = '80';
+    banner.style.zIndex = '45';
 
     const tEl = document.createElement('div');
     tEl.style.fontSize = '44px';
@@ -210,7 +210,13 @@ export class HUDManager {
 
     banner.appendChild(tEl);
     banner.appendChild(sEl);
-    document.body.appendChild(banner);
+
+    const overlay = document.getElementById('ui-overlay');
+    if (overlay) {
+      overlay.appendChild(banner);
+    } else {
+      document.body.appendChild(banner);
+    }
 
     setTimeout(() => banner.remove(), durationMs);
   }

@@ -83,6 +83,7 @@ export class GaramGame {
   private bombsites: { A: THREE.Vector3; B: THREE.Vector3 };
 
   // Runtime State
+  private hasMatchStarted = false;
   private isFiring = false;
   private isInteracting = false;
   private cameraPunchPitch = 0;
@@ -408,6 +409,10 @@ export class GaramGame {
 
     this.lobbyUI = new LobbyUI({
       onDeploy: () => {
+        if (!this.hasMatchStarted) {
+          this.hasMatchStarted = true;
+          this.roundManager.startMatch();
+        }
         if (settingsStore.settings.gameMode === 'multiplayer') {
           if (!this.networkClient.isConnected) {
             const urlInput = document.getElementById('server-url-input') as HTMLInputElement;
@@ -432,7 +437,6 @@ export class GaramGame {
     });
 
     this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
-    this.roundManager.startMatch();
     this.syncActiveWeapon();
 
     window.addEventListener('resize', this.onResize.bind(this));
@@ -469,6 +473,18 @@ export class GaramGame {
 
     const frameDelta = Math.min((now - this.lastTime) / 1000, 0.1);
     this.lastTime = now;
+
+    if (!this.hasMatchStarted) {
+      this.effects.update(frameDelta);
+      this.sceneManager.update(frameDelta, this.worldCamera.position);
+      this.sceneManager.render(
+        this.viewmodelScene,
+        this.viewmodelCamera,
+        this.customizer.wireframeWorld
+      );
+      return;
+    }
+
     this.accumulator += frameDelta;
 
     const activeWp = this.inventory.getActiveWeapon();

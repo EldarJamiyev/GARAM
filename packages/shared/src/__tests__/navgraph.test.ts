@@ -6,6 +6,7 @@ import {
   rollRandomStrategies,
 } from '../maps/TacticalNavGraph.js';
 import { DE_CITADEL_BLOCKS, BOMBSITES, Vec3, MapBlockCollider } from '../maps/DeCitadelData.js';
+import { hasLineOfSight } from '../physics/RaycastEngine.js';
 
 function pointDistToAABB(px: number, py: number, pz: number, b: MapBlockCollider): number {
   const dx = Math.max(b.minX - px, 0, px - b.maxX);
@@ -154,5 +155,32 @@ describe('TacticalNavGraph & A* Pathfinding', () => {
     const round = rollRandomStrategies();
     expect(round.syndicate).toBeDefined();
     expect(round.vanguard).toBeDefined();
+  });
+
+  it('resolves nearest nav node with direct line-of-sight across partition walls', () => {
+    // Position at Mid South side of mid_wall_east (x: 22, z: 2)
+    const posSouth = { x: 22, y: 0, z: 2 };
+    const nearestWithLOS = findNearestNavNode(posSouth, undefined, DE_CITADEL_BLOCKS);
+    // Must select a node with direct LOS, not a node on the North side of mid_wall_east
+    const eyeA = { x: posSouth.x, y: posSouth.y + 1.2, z: posSouth.z };
+    const eyeB = { x: nearestWithLOS.pos.x, y: nearestWithLOS.pos.y + 1.2, z: nearestWithLOS.pos.z };
+    const los = hasLineOfSight(eyeA, eyeB, DE_CITADEL_BLOCKS, []);
+    expect(los).toBe(true);
+  });
+
+  it('computes collision-free A* path across B Connector with obstacle-awareness', () => {
+    const start = { x: 22, y: 0, z: 20 };
+    const goal = { x: 30, y: 0, z: -12 };
+    const path = findPathAStar(start, goal, undefined, DE_CITADEL_BLOCKS);
+
+    expect(path.length).toBeGreaterThan(2);
+    // Check that every segment of path does not penetrate mid_wall_east
+    const midWallEast = DE_CITADEL_BLOCKS.find(b => b.id === 'mid_wall_east')!;
+    for (let i = 0; i < path.length - 1; i++) {
+      const p1 = path[i];
+      const p2 = path[i + 1];
+      const hits = segmentHitsBlock(p1, p2, midWallEast, 0.38);
+      expect(hits, `Path segment ${i} to ${i+1} hits mid_wall_east`).toBe(false);
+    }
   });
 });

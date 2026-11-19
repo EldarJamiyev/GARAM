@@ -14,6 +14,7 @@ import {
   HitZone,
   SurfaceMaterial,
   DE_CITADEL_NAV_GRAPH,
+  DE_CITADEL_BLOCKS,
   findNearestNavNode,
   findPathAStar,
   rollRandomStrategies,
@@ -187,7 +188,9 @@ export class BotAISystem {
 
       const path = findPathAStar(
         { x: bot.mesh.position.x, y: bot.mesh.position.y, z: bot.mesh.position.z },
-        dest
+        dest,
+        undefined,
+        DE_CITADEL_BLOCKS
       );
 
       this.botStates.set(bot.id, {
@@ -259,7 +262,9 @@ export class BotAISystem {
 
       const path = findPathAStar(
         { x: bot.mesh.position.x, y: bot.mesh.position.y, z: bot.mesh.position.z },
-        dest
+        dest,
+        undefined,
+        DE_CITADEL_BLOCKS
       );
 
       this.botStates.set(bot.id, {
@@ -651,7 +656,9 @@ export class BotAISystem {
           if (state.path.length === 0 || dist3D(state.path[state.path.length - 1], bombSitePos) > 4.0) {
             state.path = findPathAStar(
               { x: botPos.x, y: botPos.y, z: botPos.z },
-              bombSitePos
+              bombSitePos,
+              undefined,
+              blocks
             );
             state.pathIndex = 0;
           }
@@ -690,7 +697,9 @@ export class BotAISystem {
           const nextTarget = bot.patrolWaypoints[bot.waypointIndex];
           state.path = findPathAStar(
             { x: botPos.x, y: botPos.y, z: botPos.z },
-            nextTarget
+            nextTarget,
+            undefined,
+            blocks
           );
           state.pathIndex = 0;
           state.consecutiveStuckCount = 0;
@@ -700,21 +709,42 @@ export class BotAISystem {
           distToWaypoint = _toTarget.length();
         }
       } else if (state.pathIndex < state.path.length - 1) {
-        // Line-of-sight corner cutting: if bot can see next-next waypoint directly, skip current corner!
+        // Line-of-sight corner cutting: if bot can see next-next waypoint with capsule clearance, skip corner!
         const nextNext = state.path[state.pathIndex + 1];
         if (nextNext) {
-          const losNext = hasLineOfSight(
-            { x: botPos.x, y: botPos.y + 1.2, z: botPos.z },
-            { x: nextNext.x, y: nextNext.y + 1.2, z: nextNext.z },
-            blocks,
-            []
-          );
-          if (losNext) {
-            state.pathIndex++;
-            targetWaypoint = nextNext;
-            _toTarget.subVectors(targetWaypoint, botPos);
-            _toTarget.y = 0;
-            distToWaypoint = _toTarget.length();
+          const eyeA = { x: botPos.x, y: botPos.y + 1.2, z: botPos.z };
+          const eyeB = { x: nextNext.x, y: nextNext.y + 1.2, z: nextNext.z };
+          const losCenter = hasLineOfSight(eyeA, eyeB, blocks, []);
+          if (losCenter) {
+            // Also verify lateral offset clearance (0.40m capsule clearance)
+            const dirX = nextNext.x - botPos.x;
+            const dirZ = nextNext.z - botPos.z;
+            const len = Math.hypot(dirX, dirZ);
+            let canCutCorner = true;
+            if (len > 0.001) {
+              const perpX = (-dirZ / len) * 0.40;
+              const perpZ = (dirX / len) * 0.40;
+              const losLeft = hasLineOfSight(
+                { x: eyeA.x + perpX, y: eyeA.y, z: eyeA.z + perpZ },
+                { x: eyeB.x + perpX, y: eyeB.y, z: eyeB.z + perpZ },
+                blocks,
+                []
+              );
+              const losRight = hasLineOfSight(
+                { x: eyeA.x - perpX, y: eyeA.y, z: eyeA.z - perpZ },
+                { x: eyeB.x - perpX, y: eyeB.y, z: eyeB.z - perpZ },
+                blocks,
+                []
+              );
+              canCutCorner = losLeft && losRight;
+            }
+            if (canCutCorner) {
+              state.pathIndex++;
+              targetWaypoint = nextNext;
+              _toTarget.subVectors(targetWaypoint, botPos);
+              _toTarget.y = 0;
+              distToWaypoint = _toTarget.length();
+            }
           }
         }
       }
@@ -781,13 +811,16 @@ export class BotAISystem {
               state.unstuckDuration = 0.6;
             }
 
-            // If stuck for 2+ consecutive checks, skip waypoint or repath
+            // If stuck for 2+ consecutive checks, recalculate path with obstacle-awareness
             if (state.consecutiveStuckCount >= 2) {
-              if (state.pathIndex < state.path.length - 1) {
-                state.pathIndex++;
-              } else if (state.path.length > 0) {
+              if (state.path.length > 0) {
                 const goal = state.path[state.path.length - 1];
-                state.path = findPathAStar({ x: botPos.x, y: botPos.y, z: botPos.z }, goal);
+                state.path = findPathAStar(
+                  { x: botPos.x, y: botPos.y, z: botPos.z },
+                  goal,
+                  undefined,
+                  blocks
+                );
                 state.pathIndex = 0;
               }
             }
@@ -848,7 +881,9 @@ export class BotAISystem {
         actualSpeed = isMoving ? resolvedSpeed : 0;
 
         if (!state.soundInvestigateTarget) {
-          if (resolvedSpeed > 0.3) {
+          if (state.unstuckDuration > 0) {
+            state.targetYaw = Math.atan2(state.unstuckDir.x, state.unstuckDir.z);
+          } else if (resolvedSpeed > 0.3) {
             state.targetYaw = Math.atan2(resolved.vx, resolved.vz);
           } else {
             state.targetYaw = Math.atan2(_toTarget.x, _toTarget.z);
