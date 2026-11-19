@@ -36,6 +36,20 @@ export interface AABBCollider {
   maxZ: number;
 }
 
+export interface MapBounds {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+export const DEFAULT_MAP_BOUNDS: MapBounds = {
+  minX: -58.5,
+  maxX: 58.5,
+  minZ: -58.5,
+  maxZ: 58.5,
+};
+
 /**
  * Checks if a cylinder capsule overlaps an AABB box vertically and horizontally
  */
@@ -105,7 +119,10 @@ export function resolveHorizontalAABB(
   height: number,
   colliders: AABBCollider[],
   canStep = true,
-  maxStep = KINEMATICS.STEP_HEIGHT
+  maxStep = KINEMATICS.STEP_HEIGHT,
+  bounds: MapBounds = DEFAULT_MAP_BOUNDS,
+  isAirTuck = false,
+  tuckOffset = 0.55
 ): HorizontalResolutionResult {
   let curX = startX;
   let curY = startY;
@@ -130,12 +147,14 @@ export function resolveHorizontalAABB(
     // 4 Iterative solver passes (handles corners, tight crevices, and multi-box intersections)
     for (let pass = 0; pass < 4; pass++) {
       for (const b of colliders) {
-        // Vertical height check
-        if (curY >= b.maxY || curY + height <= b.minY) continue;
+        // Vertical height check with mid-air crouch-jump tuck clearance
+        const effectiveFeetY = curY + (isAirTuck ? tuckOffset : 0);
+        if (effectiveFeetY >= b.maxY || curY + height <= b.minY) continue;
 
-        // Check if player can step up onto obstacle (only if moving towards it and grounded)
-        const stepDiff = b.maxY - curY;
-        if (canStep && stepDiff > 0 && stepDiff <= maxStep) {
+        // Check if player can step up onto obstacle (grounded OR mid-air crouch-jump tuck reaching top)
+        const stepDiff = b.maxY - (isAirTuck ? effectiveFeetY : curY);
+        const canStepNow = canStep || (isAirTuck && stepDiff <= maxStep);
+        if (canStepNow && stepDiff > 0 && stepDiff <= maxStep) {
           const cx = Math.max(b.minX, Math.min(curX, b.maxX));
           const cz = Math.max(b.minZ, Math.min(curZ, b.maxZ));
           const dx = curX - cx;
@@ -219,9 +238,9 @@ export function resolveHorizontalAABB(
     }
   }
 
-  // Hard clamp against DE_CITADEL map perimeter (120m x 120m arena with walls at +/-58.5)
-  curX = Math.max(-58.05, Math.min(58.05, curX));
-  curZ = Math.max(-58.05, Math.min(58.05, curZ));
+  // Map bounds perimeter clamp (e.g. walls at +/-58.5 with radius = 0.36 -> clamp at +/-58.14)
+  curX = Math.max(bounds.minX + radius, Math.min(bounds.maxX - radius, curX));
+  curZ = Math.max(bounds.minZ + radius, Math.min(bounds.maxZ - radius, curZ));
 
   return {
     x: curX,
@@ -296,7 +315,8 @@ export class KinematicPlayerController {
     input: PlayerInput,
     dt: number,
     weaponMaxSpeed = KINEMATICS.SPEED_RIFLE,
-    colliders: AABBCollider[] = []
+    colliders: AABBCollider[] = [],
+    bounds: MapBounds = DEFAULT_MAP_BOUNDS
   ): void {
     // Store previous physics state before ticking for sub-tick render interpolation
     this.prevState.x = this.state.x;
@@ -440,6 +460,8 @@ export class KinematicPlayerController {
     }
 
     const currentHeight = this.actualCrouching ? KINEMATICS.CAPSULE_HEIGHT_CROUCH : KINEMATICS.CAPSULE_HEIGHT_STAND;
+    const isAirTuck = !wasGrounded && this.actualCrouching;
+    const tuckOffset = isAirTuck ? 0.55 : 0;
 
     // Horizontal movement integration with smooth wall sliding
     const horzRes = resolveHorizontalAABB(
@@ -453,7 +475,10 @@ export class KinematicPlayerController {
       currentHeight,
       colliders,
       this.state.isGrounded,
-      KINEMATICS.STEP_HEIGHT
+      KINEMATICS.STEP_HEIGHT,
+      bounds,
+      isAirTuck,
+      tuckOffset
     );
 
     // If auto-stepped up onto a riser, offset stepOffsetY so camera glides smoothly up instead of jumping
@@ -496,8 +521,10 @@ export class KinematicPlayerController {
     }
 
     for (const b of colliders) {
-      // Must be falling or standing (vy <= 0)
-      if (this.state.vy <= 0 && this.state.y >= b.maxY - 0.40 && newY <= b.maxY) {
+      // Must be falling or in mid-air tuck
+      const effectivePrevY = this.state.y + tuckOffset;
+      const effectiveNewY = newY + tuckOffset;
+      if (this.state.vy <= 0 && effectivePrevY >= b.maxY - 0.40 && (effectiveNewY <= b.maxY + 0.15 || newY <= b.maxY)) {
         // Player's horizontal foot circle must be firmly planted on the top face
         const cx = Math.max(b.minX, Math.min(this.state.x, b.maxX));
         const cz = Math.max(b.minZ, Math.min(this.state.z, b.maxZ));

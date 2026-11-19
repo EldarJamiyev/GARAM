@@ -203,6 +203,20 @@ export class WeaponViewmodel {
         });
 
         if (loadedModel) {
+          // Hook sub-nodes for mechanical animations if present in the GLB hierarchy
+          loadedModel.traverse((node) => {
+            const nameLower = node.name.toLowerCase();
+            if (nameLower.includes('slide')) {
+              this.slideMeshes.set(spec.weaponId, node as THREE.Mesh);
+            } else if (nameLower.includes('bolt')) {
+              this.boltMeshes.set(spec.weaponId, node as THREE.Mesh);
+            } else if (nameLower.includes('mag')) {
+              node.userData.baseY = node.position.y;
+              node.userData.baseZ = node.position.z;
+              this.magMeshes.set(spec.weaponId, node as THREE.Mesh);
+            }
+          });
+
           if (spec.weaponId === 'garam-karambit' && this.karambitSpinPivot) {
             this.karambitSpinPivot.children.forEach((c) => {
               c.visible = false;
@@ -1059,5 +1073,18 @@ export class WeaponViewmodel {
     this.currentRot.y += (this.targetRot.y - this.currentRot.y) * (1 - Math.exp(-18 * dt));
     this.currentRot.z += (this.targetRot.z - this.currentRot.z) * (1 - Math.exp(-18 * dt));
     this.mesh.rotation.copy(this.currentRot);
+  }
+
+  /**
+   * Cleans up GPU buffers, geometries, materials, and maps
+   */
+  public dispose(): void {
+    this.weaponMeshes.forEach((mesh) => {
+      AssetManager.disposeObject3D(mesh);
+    });
+    this.weaponMeshes.clear();
+    this.slideMeshes.clear();
+    this.boltMeshes.clear();
+    this.magMeshes.clear();
   }
 }

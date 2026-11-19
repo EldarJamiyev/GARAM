@@ -41,7 +41,7 @@ export const HITBOX = {
 
 // Material penetration profiles
 export const MATERIALS = {
-  WOOD_THIN: { resistance: 0.35, costPerMeter: 18, damageMultiplier: 0.75 },
+  WOOD_THIN: { resistance: 0.35, costPerMeter: 10, damageMultiplier: 0.75 },
   DRYWALL: { resistance: 0.30, costPerMeter: 22, damageMultiplier: 0.70 },
   METAL_SHEET: { resistance: 0.60, costPerMeter: 45, damageMultiplier: 0.45 },
   CONCRETE: { resistance: 1.0, costPerMeter: 9999, damageMultiplier: 0.0 },

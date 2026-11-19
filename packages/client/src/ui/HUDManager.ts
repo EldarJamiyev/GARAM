@@ -13,6 +13,16 @@ export interface ScoreboardPlayer {
   ping: number;
 }
 
+function escapeHtml(str: string): string {
+  return str.replace(/[&<>'"]/g, (tag) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  }[tag] || tag));
+}
+
 export class HUDManager {
   // Elements
   private hpEl = document.getElementById('hud-hp');
@@ -308,7 +318,7 @@ export class HUDManager {
     for (const p of vanguardTeam) {
       html += `
         <tr style="color: ${p.isAlive ? '#fff' : '#6b7280'};">
-          <td style="color: #3b9eff; font-weight: 700;">${p.name}</td>
+          <td style="color: #3b9eff; font-weight: 700;">${escapeHtml(p.name)}</td>
           <td>Garam Vanguard</td>
           <td>${p.kills}</td>
           <td>${p.deaths}</td>
@@ -320,7 +330,7 @@ export class HUDManager {
     for (const p of syndicateTeam) {
       html += `
         <tr style="color: ${p.isAlive ? '#fff' : '#6b7280'};">
-          <td style="color: #ffaa00; font-weight: 700;">${p.name}</td>
+          <td style="color: #ffaa00; font-weight: 700;">${escapeHtml(p.name)}</td>
           <td>Obsidian Syndicate</td>
           <td>${p.kills}</td>
           <td>${p.deaths}</td>

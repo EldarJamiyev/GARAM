@@ -11,6 +11,7 @@ export class ProceduralAudio {
   private reverbGain: GainNode | null = null;
   private masterVolume = 0.85;
   private audioBufferCache: Map<string, AudioBuffer> = new Map();
+  private sharedNoiseBuffer: AudioBuffer | null = null;
 
   constructor() {
     // Preload ElevenLabs synthesized tactical audio (non-blocking)
@@ -87,6 +88,15 @@ export class ProceduralAudio {
       this.reverbNode.connect(this.reverbGain);
       this.reverbGain.connect(this.compressor);
       this.compressor.connect(this.ctx.destination);
+
+      // Pre-allocate a single shared 2.0s white noise buffer for zero-allocation audio synthesis
+      const noiseRate = this.ctx.sampleRate;
+      const noiseLength = Math.floor(noiseRate * 2.0);
+      this.sharedNoiseBuffer = this.ctx.createBuffer(1, noiseLength, noiseRate);
+      const noiseData = this.sharedNoiseBuffer.getChannelData(0);
+      for (let i = 0; i < noiseLength; i++) {
+        noiseData[i] = Math.random() * 2 - 1;
+      }
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
@@ -249,17 +259,16 @@ export class ProceduralAudio {
     osc.start(t);
     osc.stop(t + (isAWP ? 0.28 : 0.16));
 
-    // 2. High-frequency gunpowder blast & crack
+    // 2. High-frequency gunpowder blast & crack (Zero-allocation via shared noise buffer)
     const dur = isAWP ? 0.35 : isSuppressed ? 0.04 : 0.14;
-    const bufferSize = Math.floor(this.ctx.sampleRate * dur);
-    const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const output = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      output[i] = Math.random() * 2 - 1;
-    }
-
     const whiteNoise = this.ctx.createBufferSource();
-    whiteNoise.buffer = noiseBuffer;
+    if (this.sharedNoiseBuffer) {
+      whiteNoise.buffer = this.sharedNoiseBuffer;
+    } else {
+      const bufferSize = Math.floor(this.ctx.sampleRate * dur);
+      const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      whiteNoise.buffer = noiseBuffer;
+    }
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = isAWP ? 'lowpass' : 'bandpass';
@@ -273,7 +282,9 @@ export class ProceduralAudio {
     whiteNoise.connect(filter);
     filter.connect(noiseGain);
     noiseGain.connect(destinationNode);
-    whiteNoise.start(t);
+
+    const offset = Math.random() * Math.max(0, 2.0 - dur);
+    whiteNoise.start(t, offset);
     whiteNoise.stop(t + dur);
 
     // 3. Crisp mechanical hammer / bolt action transient click
@@ -483,13 +494,14 @@ export class ProceduralAudio {
     this.initContext();
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const bufferSize = Math.floor(this.ctx.sampleRate * 1.2);
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
-
     const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
+    if (this.sharedNoiseBuffer) {
+      noise.buffer = this.sharedNoiseBuffer;
+    } else {
+      const bufferSize = Math.floor(this.ctx.sampleRate * 1.2);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      noise.buffer = buffer;
+    }
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(1400, t);
@@ -501,7 +513,8 @@ export class ProceduralAudio {
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain!);
-    noise.start(t);
+    const offset = Math.random() * Math.max(0, 2.0 - 1.2);
+    noise.start(t, offset);
     noise.stop(t + 1.2);
   }
 
@@ -553,13 +566,15 @@ export class ProceduralAudio {
     osc.start(t);
     osc.stop(t + 0.42);
 
-    // Subtle blade-swish air friction
-    const bufferSize = Math.floor(this.ctx.sampleRate * 0.15);
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * 0.2;
+    // Subtle blade-swish air friction (zero-allocation)
     const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
+    if (this.sharedNoiseBuffer) {
+      noise.buffer = this.sharedNoiseBuffer;
+    } else {
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.15);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      noise.buffer = buffer;
+    }
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'bandpass';
     filter.frequency.setValueAtTime(2400, t);
@@ -571,7 +586,8 @@ export class ProceduralAudio {
     noise.connect(filter);
     filter.connect(nGain);
     nGain.connect(this.masterGain!);
-    noise.start(t);
+    const offset = Math.random() * Math.max(0, 2.0 - 0.15);
+    noise.start(t, offset);
     noise.stop(t + 0.15);
   }
 

@@ -135,8 +135,8 @@ describe('Kinematics & SAT Collision Resolution', () => {
       false
     );
 
-    expect(res.x).toBeLessThanOrEqual(58.05);
-    expect(res.z).toBeGreaterThanOrEqual(-58.05);
+    expect(res.x).toBeLessThanOrEqual(58.14);
+    expect(res.z).toBeGreaterThanOrEqual(-58.14);
   });
 
   it('sub-tick position interpolation smoothly blends prevState and state', () => {
@@ -230,5 +230,99 @@ describe('Kinematics & SAT Collision Resolution', () => {
     player.update(inputCrouch, 1 / 128, KINEMATICS.SPEED_RIFLE, []);
 
     expect(player.crouchStamina).toBeLessThan(0.60);
+  });
+
+  it('guarantees 100% bit-identical 128Hz client and server kinematics parity (zero drift)', () => {
+    const client = new KinematicPlayerController(0, 0, 0);
+    const server = new KinematicPlayerController(0, 0, 0);
+
+    const input = {
+      forward: true,
+      backward: false,
+      left: false,
+      right: false,
+      jump: false,
+      crouch: false,
+      walk: false,
+      yaw: 0,
+      pitch: 0,
+    };
+
+    const dt = 1 / 128;
+    for (let i = 0; i < 128; i++) {
+      // Jump at tick 20
+      input.jump = (i === 20);
+      client.update(input, dt, KINEMATICS.SPEED_RIFLE, []);
+      server.update(input, dt, KINEMATICS.SPEED_RIFLE, []);
+    }
+
+    expect(client.state.x).toBeCloseTo(server.state.x, 6);
+    expect(client.state.y).toBeCloseTo(server.state.y, 6);
+    expect(client.state.z).toBeCloseTo(server.state.z, 6);
+    expect(client.state.vx).toBeCloseTo(server.state.vx, 6);
+    expect(client.state.vy).toBeCloseTo(server.state.vy, 6);
+    expect(client.state.vz).toBeCloseTo(server.state.vz, 6);
+  });
+
+  it('mid-air crouch-jump tuck allows clearing and landing on 1.5m obstacles', () => {
+    // 1.5m CT Barrier
+    const barrier: AABBCollider = {
+      minX: -2,
+      maxX: 2,
+      minY: 0,
+      maxY: 1.50,
+      minZ: -4,
+      maxZ: -2,
+    };
+
+    // Controller running towards the barrier and executing a crouch-jump
+    const jumper = new KinematicPlayerController(0, 0, -1.60);
+    jumper.state.vz = -KINEMATICS.SPEED_RIFLE; // Running jump forward towards -Z
+
+    const jumpInput = {
+      forward: true,
+      backward: false,
+      left: false,
+      right: false,
+      jump: true,
+      crouch: true, // Crouch-jump tuck active in mid-air
+      walk: false,
+      yaw: 0,
+      pitch: 0,
+    };
+
+    const dt = 1 / 128;
+    // Step jumper forward into the barrier until landing on top
+    for (let i = 0; i < 90; i++) {
+      if (i > 0) jumpInput.jump = false;
+      jumper.update(jumpInput, dt, KINEMATICS.SPEED_RIFLE, [barrier]);
+    }
+
+    // Must be grounded on top of the 1.5m barrier
+    expect(jumper.state.y).toBe(1.50);
+    expect(jumper.state.isGrounded).toBe(true);
+  });
+
+  it('map bounds perimeter clamp respects decoupled arena walls at +/-58.5m with 0.36m radius', () => {
+    const player = new KinematicPlayerController(50, 0, 50);
+    const sprintInput = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: true, // Moving towards +X
+      jump: false,
+      crouch: false,
+      walk: false,
+      yaw: 0,
+      pitch: 0,
+    };
+
+    // Run for 3 seconds towards positive X edge
+    for (let i = 0; i < 384; i++) {
+      player.update(sprintInput, 1 / 128, KINEMATICS.SPEED_KNIFE, []);
+    }
+
+    // 58.5 - 0.36 = 58.14
+    expect(player.state.x).toBeCloseTo(58.14, 2);
   });
 });

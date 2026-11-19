@@ -39,6 +39,8 @@ export class NetworkClient {
   public isConnected = false;
   public localPlayerId = '';
   public ping = 15;
+  public serverClockOffset = 0; // Estimated (serverTime - localClientTime)
+  public readonly INTERPOLATION_DELAY_MS = 46.875; // 3 ticks at 64Hz (CS2 tournament interpolation buffer)
 
   private seq = 0;
   private unackInputs: UnackInput[] = [];
@@ -170,14 +172,31 @@ export class NetworkClient {
     });
   }
 
-  public sendFire(origin: THREE.Vector3, direction: THREE.Vector3, weaponId: string): void {
+  public getEstimatedServerTime(): number {
+    return Date.now() + this.serverClockOffset;
+  }
+
+  public sendFire(
+    direction: THREE.Vector3,
+    weaponId: string,
+    yaw: number,
+    pitch: number,
+    isSecondaryMelee = false,
+    isScoped = false
+  ): void {
     if (!this.isConnected) return;
+    this.seq++;
+    const targetServerTime = this.getEstimatedServerTime() - this.INTERPOLATION_DELAY_MS;
     this.send({
       type: 'fire',
-      clientTimestamp: Date.now(),
-      origin: { x: origin.x, y: origin.y, z: origin.z },
-      direction: { x: direction.x, y: direction.y, z: direction.z },
+      seq: this.seq,
+      targetServerTime,
       weaponId,
+      direction: { x: direction.x, y: direction.y, z: direction.z },
+      yaw,
+      pitch,
+      isSecondaryMelee,
+      isScoped,
     });
   }
 
@@ -188,7 +207,13 @@ export class NetworkClient {
     }
 
     if (packet.type === 'pong') {
-      this.ping = Math.max(1, Math.round((Date.now() - packet.clientTimestamp)));
+      const now = Date.now();
+      const rtt = Math.max(1, now - packet.clientTimestamp);
+      this.ping = rtt;
+      const oneWayLatency = rtt / 2;
+      const sampleOffset = (packet.serverTimestamp + oneWayLatency) - now;
+      // Exponential smoothing filter on clock offset
+      this.serverClockOffset += (sampleOffset - this.serverClockOffset) * 0.25;
       return;
     }
 

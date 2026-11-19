@@ -56,7 +56,10 @@ export const ECONOMY: EconomyConfig = {
   },
 };
 
-export function getLossBonus(lossStreak: number): number {
+export function getLossBonus(lossStreak: number, isPistolLoss = false): number {
+  if (isPistolLoss && lossStreak <= 1) {
+    return ECONOMY.lossBonusBase + ECONOMY.lossBonusStep; // $1,900 minimum in MR12 to prevent CT starvation
+  }
   const clampedStreak = Math.max(0, Math.min(4, lossStreak));
   return ECONOMY.lossBonusBase + clampedStreak * ECONOMY.lossBonusStep;
 }

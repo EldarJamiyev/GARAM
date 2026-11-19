@@ -6,6 +6,16 @@ export interface DamageEntry {
   headshots: number;
 }
 
+function escapeHtml(str: string): string {
+  return str.replace(/[&<>'"]/g, (tag) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  }[tag] || tag));
+}
+
 export class CombatReportManager {
   private damageGiven: Map<string, DamageEntry> = new Map();
   private damageTaken: Map<string, DamageEntry> = new Map();
@@ -93,7 +103,7 @@ export class CombatReportManager {
         const hsText = entry.headshots > 0 ? ` (${entry.headshots} HS)` : '';
         html += `
           <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-            <span style="color: #fff; font-weight: 600;">➔ ${entry.name}</span>
+            <span style="color: #fff; font-weight: 600;">➔ ${escapeHtml(entry.name)}</span>
             <span style="color: #00ff88; font-weight: 700;">${entry.damage} in ${entry.hits} hit${entry.hits > 1 ? 's' : ''}${hsText}</span>
           </div>
         `;
@@ -110,7 +120,7 @@ export class CombatReportManager {
         const hsText = entry.headshots > 0 ? ` (${entry.headshots} HS)` : '';
         html += `
           <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-            <span style="color: #fff; font-weight: 600;">← ${entry.name}</span>
+            <span style="color: #fff; font-weight: 600;">← ${escapeHtml(entry.name)}</span>
             <span style="color: #ff4455; font-weight: 700;">${entry.damage} in ${entry.hits} hit${entry.hits > 1 ? 's' : ''}${hsText}</span>
           </div>
         `;

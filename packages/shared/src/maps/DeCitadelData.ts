@@ -16,7 +16,7 @@ export const SURFACE_MATERIALS: Record<SurfaceMaterial, MaterialProperties> = {
   },
   WOOD_THIN: {
     mu: 0.75,
-    cost: 18,
+    cost: 10,
     maxThickness: 2.2, // Allows crate corners, edges, and doors to penetrate cleanly
     isImpenetrable: false,
   },
@@ -57,6 +57,13 @@ export interface Vec3 {
   y: number;
   z: number;
 }
+
+export const DE_CITADEL_BOUNDS = {
+  minX: -58.5,
+  maxX: 58.5,
+  minZ: -58.5,
+  maxZ: 58.5,
+};
 
 export interface BombsiteDef {
   id: 'A' | 'B';

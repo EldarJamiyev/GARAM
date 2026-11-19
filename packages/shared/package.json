@@ -9,9 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.14.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^5.7.3"
   }

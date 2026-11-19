@@ -215,7 +215,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     inaccuracyJump: 0.18,
     inaccuracyFire: 0.038,
     taggingPower: 0.68,
-    damageDropoffPer10m: 0.81,
+    damageDropoffPer10m: 0.87, // 48m 1-tap headshot range against Kevlar helmet
   },
   'garam-karambit': {
     id: 'garam-karambit',

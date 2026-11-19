@@ -41,7 +41,7 @@ export interface NetBombState {
 export type ClientPacket =
   | { type: 'join'; callsign: string; faction: 'Vanguard' | 'Syndicate' }
   | { type: 'input'; seq: number; timestamp: number; input: PlayerInput; weaponId: string }
-  | { type: 'fire'; clientTimestamp: number; origin: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; weaponId: string }
+  | { type: 'fire'; seq: number; targetServerTime: number; weaponId: string; direction: { x: number; y: number; z: number }; yaw: number; pitch: number; isSecondaryMelee?: boolean; isScoped?: boolean }
   | { type: 'reload' }
   | { type: 'buy'; item: string }
   | { type: 'utility_throw'; utilityType: string; mode: 'long' | 'medium' | 'short'; origin: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; velocity: { x: number; y: number; z: number } }

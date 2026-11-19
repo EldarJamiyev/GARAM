@@ -7,3 +7,4 @@ export * from './maps/TacticalNavGraph.js';
 export * from './physics/RaycastEngine.js';
 export * from './net/Protocol.js';
 export * from './net/LagCompensation.js';
+export * from './net/Validator.js';

@@ -116,4 +116,31 @@ export class AssetManager {
       object.position.z -= center.z;
     }
   }
+
+  /**
+   * Deeply and recursively disposes geometries, materials, and textures
+   * to guarantee zero GPU memory leaks during weapon swaps and scene cleanup.
+   */
+  public static disposeObject3D(root: THREE.Object3D): void {
+    root.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (mesh.isMesh) {
+        if (mesh.geometry) {
+          mesh.geometry.dispose();
+        }
+        if (mesh.material) {
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          mats.forEach((mat) => {
+            Object.keys(mat).forEach((prop) => {
+              const val = (mat as unknown as Record<string, unknown>)[prop];
+              if (val && typeof val === 'object' && 'isTexture' in val && (val as THREE.Texture).isTexture) {
+                (val as THREE.Texture).dispose();
+              }
+            });
+            mat.dispose();
+          });
+        }
+      }
+    });
+  }
 }

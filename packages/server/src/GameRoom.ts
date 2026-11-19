@@ -13,7 +13,8 @@ import {
   ClientPacket,
   ServerPacket,
   NetOperatorState,
-  NetBombState
+  NetBombState,
+  validateClientPacket
 } from '@garam/shared';
 import { LagCompensation, SnapshotTarget } from './LagCompensation.js';
 
@@ -39,6 +40,7 @@ interface HumanSession {
   kills: number;
   deaths: number;
   ping: number;
+  simBudgetMs: number;
 }
 
 interface ServerBot {
@@ -140,12 +142,21 @@ export class GameRoom {
     }
   }
 
-  public handleConnection(ws: WebSocket): void {
+  public handleConnection(ws: WebSocket, rateLimitCheck?: () => boolean): void {
     const sessionId = `player_${Math.random().toString(36).substring(2, 9)}`;
 
     ws.on('message', (data) => {
+      if (rateLimitCheck && !rateLimitCheck()) {
+        return;
+      }
+
       try {
-        const packet = JSON.parse(data.toString()) as ClientPacket;
+        const raw = JSON.parse(data.toString());
+        const packet = validateClientPacket(raw);
+        if (!packet) {
+          // Discard invalid / malicious / prototype-polluted packet
+          return;
+        }
         this.processClientPacket(sessionId, packet, ws);
       } catch {
         // Discard malformed packet
@@ -195,6 +206,7 @@ export class GameRoom {
         kills: 0,
         deaths: 0,
         ping: 15,
+        simBudgetMs: 46.875,
       };
 
       this.sessions.set(sessionId, session);
@@ -225,13 +237,19 @@ export class GameRoom {
     }
 
     if (packet.type === 'input') {
+      // Simulation time budget check: prevent time-dilation / input burst speedhacks
+      const stepCostMs = KINEMATICS.FIXED_DT * 1000; // 7.8125ms
+      if (session.simBudgetMs < stepCostMs * 0.5) {
+        return;
+      }
+      session.simBudgetMs -= stepCostMs;
       session.lastInputSeq = packet.seq;
       const weapon = WEAPONS[packet.weaponId] || WEAPONS['garam-47'];
 
-      // Run 64-tick kinematic step on server
+      // Run 128Hz fixed kinematic step on server for 100% mathematical parity
       session.controller.update(
         packet.input,
-        this.TICK_DT,
+        KINEMATICS.FIXED_DT,
         weapon.movementSpeed,
         DE_CITADEL_BLOCKS.map(b => ({
           minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY, minZ: b.minZ, maxZ: b.maxZ
@@ -252,17 +270,38 @@ export class GameRoom {
       session.lastShotTime = now;
       if (weapon.category !== 'melee') session.currentAmmo--;
 
-      // 80ms Lag-Compensated Hitbox Rewind
-      const rewoundTargets = this.lagComp.getRewoundTargets(now, packet.clientTimestamp);
+      // Dynamically bounded lag-compensated hitbox rewind with clock skew immunity
+      const rewoundTargets = this.lagComp.getRewoundTargets(now, packet.targetServerTime, session.ping);
+
+      // Ray origin is strictly computed on server from authoritative player controller state
+      const eyeHeight = session.controller.state.isCrouching
+        ? KINEMATICS.EYE_HEIGHT_CROUCH
+        : KINEMATICS.EYE_HEIGHT_STAND;
+      const origin = {
+        x: session.controller.state.x,
+        y: session.controller.state.y + eyeHeight,
+        z: session.controller.state.z,
+      };
+
+      // Server normalizes direction vector
+      const dirLen = Math.hypot(packet.direction.x, packet.direction.y, packet.direction.z);
+      if (dirLen < 0.0001 || !Number.isFinite(dirLen)) return;
+      const direction = {
+        x: packet.direction.x / dirLen,
+        y: packet.direction.y / dirLen,
+        z: packet.direction.z / dirLen,
+      };
 
       const ray: Ray = {
-        origin: packet.origin,
-        direction: packet.direction,
+        origin,
+        direction,
       };
+
+      const baseDmg = packet.isSecondaryMelee && weapon.id === 'garam-karambit' ? 90 : weapon.damage;
 
       const hits = executeTacticalRaycast(
         ray,
-        weapon.damage,
+        baseDmg,
         weapon.armorPenetration,
         weapon.penetrationPower,
         250,
@@ -340,6 +379,11 @@ export class GameRoom {
     this.intervalHandle = setInterval(() => {
       this.tick++;
       const now = Date.now();
+
+      // Replenish simulation time budget per connected player (cap 46.875ms, i.e. 3 ticks)
+      this.sessions.forEach(s => {
+        s.simBudgetMs = Math.min(46.875, s.simBudgetMs + this.TICK_DT * 1000);
+      });
 
       // 1. Update Match Timers
       this.updateMatchState();

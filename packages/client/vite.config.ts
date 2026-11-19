@@ -13,7 +13,4 @@ export default defineConfig({
       '@garam/shared': path.resolve(__dirname, '../shared/src'),
     },
   },
-  optimizeDeps: {
-    exclude: ['@dimforge/rapier3d-compat'],
-  },
 });

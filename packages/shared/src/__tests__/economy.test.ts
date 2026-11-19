@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ECONOMY } from '../index.js';
+import { ECONOMY, getLossBonus } from '../index.js';
 
 describe('Competitive MR12 Economy System', () => {
   it('correctly calculates round win and progressive loss streak payouts', () => {
@@ -12,6 +12,13 @@ describe('Competitive MR12 Economy System', () => {
     expect(ECONOMY.lossBonusBase + ECONOMY.lossBonusStep * 2).toBe(2400);
     expect(ECONOMY.lossBonusBase + ECONOMY.lossBonusStep * 3).toBe(2900);
     expect(ECONOMY.lossBonusMax).toBe(3400);
+  });
+
+  it('awards MR12 $1900 loss bonus after pistol round loss to prevent CT starvation', () => {
+    // Round 1 or 13 lost: streak starts at 1 ($1,900)
+    expect(getLossBonus(0, true)).toBe(1900);
+    expect(getLossBonus(1, true)).toBe(1900);
+    expect(getLossBonus(2, false)).toBe(2400);
   });
 
   it('post-plant loss bonus adds +$800 for terrorists', () => {

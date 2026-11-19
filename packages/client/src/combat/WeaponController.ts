@@ -52,6 +52,10 @@ export class WeaponController {
   // AWP 2-stage zoom state: 0 = 90°, 1 = 28° (1x), 2 = 10° (2x)
   public zoomStage = 0;
 
+  public get isScoped(): boolean {
+    return this.zoomStage > 0;
+  }
+
   // Melee cooldowns
   private nextMeleeTime = 0;
 

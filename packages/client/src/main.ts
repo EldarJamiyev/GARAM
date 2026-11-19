@@ -302,7 +302,14 @@ export class GaramGame {
         if (this.networkClient.isConnected) {
           const fwd = new THREE.Vector3();
           this.worldCamera.getWorldDirection(fwd);
-          this.networkClient.sendFire(this.worldCamera.position, fwd, active.id);
+          this.networkClient.sendFire(
+            fwd,
+            active.id,
+            this.inputManager.input.yaw,
+            this.inputManager.input.pitch,
+            false,
+            this.weaponController.isScoped
+          );
         }
         this.weaponController.handlePrimaryFire(
           this.worldCamera,
@@ -327,6 +334,18 @@ export class GaramGame {
         if (active.category === 'grenade') {
           this.playerManager.throwUtilityGrenade('short', this.worldCamera);
           return;
+        }
+        if (active.category === 'melee' && this.networkClient.isConnected) {
+          const fwd = new THREE.Vector3();
+          this.worldCamera.getWorldDirection(fwd);
+          this.networkClient.sendFire(
+            fwd,
+            active.id,
+            this.inputManager.input.yaw,
+            this.inputManager.input.pitch,
+            true,
+            false
+          );
         }
         this.weaponController.handleSecondaryFire(this.worldCamera, this.blocks, this.bots);
       },

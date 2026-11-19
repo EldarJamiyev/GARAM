@@ -6,9 +6,9 @@
 
 <p align="center">
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
-  <img src="https://img.shields.io/badge/Tickrate-128Hz%20Fixed%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
-  <img src="https://img.shields.io/badge/Netcode-64--Tick%20Rewind-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-40%20Passing-D4AF37?style=for-the-badge" alt="40 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
+  <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
+  <img src="https://img.shields.io/badge/Tests-55%20Passing-D4AF37?style=for-the-badge" alt="55 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -21,11 +21,12 @@
 - **Lead Operator:** Eldar Garamov (Callsign: Sovereign-1), Supreme Commander of the GARAM Vanguard.
 - **The Conflict:** **GARAM Vanguard** (Defenders / CT) vs. **The Obsidian Syndicate** (Attackers / T).
 - **Core Directives:**
-  1. **Strict 128Hz Kinematic Determinism:** Pure mathematical kinematics with Circle-AABB Separating Axis Theorem (SAT) wall deflection. Zero wall stick, zero corner kickback.
-  2. **Zero Standing Spread RNG:** Stationary rifle shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy.
-  3. **A\* Tactical Bot Brain:** Connected 32-waypoint tactical navigation graph with dynamic per-round team strategies, real raycast ballistics, sound awareness, anti-stuck steering, and bot separation.
-  4. **Dual-Pass PBR Rendering:** Depth-isolated viewmodel rendering (65° FOV) with procedural PMREM Image-Based Lighting (IBL) reflections and zero world-geometry clipping.
-  5. **64-Tick Lag-Compensated Netcode:** Authoritative 64-tick server simulation with 80ms historical hitbox ring buffer rewind, sub-tick spherical interpolation, and client-side prediction reconciliation.
+  1. **Strict 128Hz Kinematic Determinism & Parity:** Pure mathematical kinematics with Circle-AABB Separating Axis Theorem (SAT) wall deflection. Discrete 1/128s server sub-stepping guarantees zero Euler drift between client and authoritative server. Includes mid-air crouch-jump tuck (+0.55m capsule lift) to mount 1.5m CT barriers and crates.
+  2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin is strictly computed on server from authenticated player state (magic bullet exploits eliminated). Includes token-bucket rate limiter (150 msg/s), 4KB payload cap, origin allowlist checks, and prototype pollution defenses.
+  3. **Zero Standing Spread RNG:** Stationary rifle shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy.
+  4. **A\* Tactical Bot Brain:** Connected 32-waypoint tactical navigation graph with dynamic per-round team strategies, real raycast ballistics, sound awareness, anti-stuck steering, and bot separation.
+  5. **Dual-Pass PBR Rendering & Asset Pipeline:** Depth-isolated viewmodel rendering (65° FOV) with procedural PMREM Image-Based Lighting (IBL) reflections, zero world-geometry clipping, and Box3-normalized textured GLBs with animated mechanical bone hooks.
+  6. **Adaptive Clock-Skew Immune Lag Compensation:** Authoritative 64-tick server simulation with ping-adaptive historical hitbox rewind (up to 150ms ceiling), synchronized against client local OS clock drift.
 
 ---
 
@@ -114,21 +115,23 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (40 Passing Tests)
+### Test Suite Coverage (55 Passing Tests Across 8 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
 ```
 ```text
- ✓ packages/shared/src/__tests__/kinematics.test.ts  (9 tests)
- ✓ packages/shared/src/__tests__/ballistics.test.ts  (7 tests)
- ✓ packages/shared/src/__tests__/navgraph.test.ts    (7 tests)
- ✓ packages/shared/src/__tests__/callout.test.ts     (9 tests)
- ✓ packages/shared/src/__tests__/economy.test.ts     (4 tests)
- ✓ packages/shared/src/__tests__/lagcomp.test.ts     (4 tests)
+ ✓ packages/server/src/__tests__/gameroom.integration.test.ts (2 tests)
+ ✓ packages/shared/src/__tests__/kinematics.test.ts          (12 tests)
+ ✓ packages/shared/src/__tests__/ballistics.test.ts          (9 tests)
+ ✓ packages/shared/src/__tests__/security.test.ts            (5 tests)
+ ✓ packages/shared/src/__tests__/lagcomp.test.ts             (6 tests)
+ ✓ packages/shared/src/__tests__/navgraph.test.ts            (7 tests)
+ ✓ packages/shared/src/__tests__/callout.test.ts             (9 tests)
+ ✓ packages/shared/src/__tests__/economy.test.ts             (5 tests)
 
- Test Files  6 passed (6)
-      Tests  40 passed (40)
+ Test Files  8 passed (8)
+      Tests  55 passed (55)
 ```
 
 ---

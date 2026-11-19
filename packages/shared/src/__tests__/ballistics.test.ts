@@ -294,4 +294,90 @@ describe('RaycastEngine & Ballistics', () => {
     expect(hits[0].hitZone).toBe('HEAD');
     expect(hits[0].isHeadshot).toBe(true);
   });
+
+  it('Garam-47 penetrates 1.5m WOOD_THIN cover and awards lethal penetration damage (> 10 dmg)', () => {
+    const crate: MapBlockCollider = {
+      id: 'wood_crate_1',
+      name: 'Site A Wood Crate',
+      x: 0,
+      y: 0,
+      z: 5,
+      w: 1.5,
+      h: 2.0,
+      d: 1.5,
+      minX: -0.75,
+      maxX: 0.75,
+      minY: 0,
+      maxY: 2.0,
+      minZ: 4.25,
+      maxZ: 5.75, // 1.5m thick along Z
+      material: 'WOOD_THIN',
+    };
+
+    const target: TargetCollider = {
+      id: 'enemy_behind_crate',
+      name: 'Syndicate Defender',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 8 },
+      armor: 0, // Unarmored target behind wood cover
+      hasHelmet: false,
+      isDead: false,
+    };
+
+    const ray: Ray = {
+      origin: { x: 0, y: 1.35, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const ak = WEAPONS['garam-47'];
+    const hits = executeTacticalRaycast(
+      ray,
+      ak.damage,
+      ak.armorPenetration,
+      ak.penetrationPower,
+      50,
+      [crate],
+      [target]
+    );
+
+    const targetHit = hits.find(h => h.targetId === 'enemy_behind_crate');
+    expect(targetHit).toBeDefined();
+    // With WOOD_THIN cost 10 and penPower 200, penFactor = 1.0:
+    // Damage after 1.5m = 36 * 0.75 - 1.5 * 10 * 1.0 = 27 - 15 = 12 dmg > 10 dmg
+    expect(targetHit?.awardedDamage).toBeGreaterThanOrEqual(10);
+  });
+
+  it('Desert Eagle 1-taps helmeted enemies up to 45m range with 0.87 damage dropoff', () => {
+    const target: TargetCollider = {
+      id: 'helmet_enemy_45m',
+      name: 'Syndicate Sniper',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 45 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+    };
+
+    const deagle = WEAPONS['desert-eagle'];
+    const ray: Ray = {
+      origin: { x: 0, y: 1.66, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      deagle.damage,
+      deagle.armorPenetration,
+      deagle.penetrationPower,
+      100,
+      [],
+      [target],
+      deagle.damageDropoffPer10m
+    );
+
+    const headHit = hits.find(h => h.targetId === 'helmet_enemy_45m');
+    expect(headHit).toBeDefined();
+    expect(headHit?.hitZone).toBe('HEAD');
+    expect(headHit?.awardedDamage).toBeGreaterThanOrEqual(100);
+  });
 });
