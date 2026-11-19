@@ -221,7 +221,7 @@ export class GaramGame {
           const state = this.inventory.slots[s as SlotNumber];
           if (state && WEAPONS[state.weaponId]) {
             const def = WEAPONS[state.weaponId];
-            state.currentAmmo = def.magazineSize;
+            state.currentAmmo = def.magCapacity;
             state.reserveAmmo = def.reserveAmmo;
           }
         }
@@ -253,7 +253,7 @@ export class GaramGame {
         this.weaponController.onFireRelease();
       },
       onAltFire: () => {
-        this.weaponController.handleSecondaryFire(this.worldCamera, this.bots, this.blocks);
+        this.weaponController.handleSecondaryFire(this.worldCamera, this.blocks, this.bots);
       },
       onReload: () => {
         if (this.inventory.startReload()) {
@@ -412,10 +412,10 @@ export class GaramGame {
     if (WEAPONS[item]) {
       const def = WEAPONS[item];
       if (this.economy.spendCash(def.price)) {
-        const slot = (def.slot || (def.category === 'primary' ? 1 : 2)) as SlotNumber;
+        const slot = def.slot;
         this.inventory.slots[slot] = {
           weaponId: def.id,
-          currentAmmo: def.magazineSize,
+          currentAmmo: def.magCapacity,
           reserveAmmo: def.reserveAmmo
         };
         this.inventory.equipSlot(slot);
@@ -531,8 +531,8 @@ export class GaramGame {
           this.hud.addKillfeed(`💀 ${bot.name} eliminated Eldar Garamov`);
           this.playerHealth = 100;
           this.economy.armor = 100;
-          this.player.state.x = SPAWN_ZONES.VANGUARD_SPAWN.x;
-          this.player.state.z = SPAWN_ZONES.VANGUARD_SPAWN.z;
+          this.player.state.x = SPAWN_POINTS.VANGUARD_CT.x;
+          this.player.state.z = SPAWN_POINTS.VANGUARD_CT.z;
         }
       },
       (shooter, victim, dmg) => {
