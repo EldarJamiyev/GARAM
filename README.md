@@ -39,7 +39,7 @@
 The project is structured as an npm workspaces monorepo enforcing strict boundaries:
 
 - **`@garam/shared`**: Pure, deterministic TypeScript kernel with **zero DOM or Three.js dependencies**. Implements 128Hz kinematics, Circle-AABB SAT collision resolution, 5-zone raycast ballistics, the 32-node `TacticalNavGraph` with A\* pathfinding, economy state rules, and network schemas.
-- **`@garam/client`**: Client application running Three.js (WebGL2/WebGPU), dual-pass viewmodels, procedural PMREM IBL materials, Web Audio DSP convolver reverb, 2D radar, dropped weapon physics, spectator system, and lightweight orchestrator (`main.ts <= 650 lines`).
+- **`@garam/client`**: Client application running Three.js (WebGL2), dual-pass viewmodels, procedural PMREM IBL materials, Web Audio DSP convolver reverb, 2D radar, dropped weapon physics, spectator system, and lightweight orchestrator (`main.ts <= 650 lines`).
 - **`@garam/server`**: Authoritative 64-tick Node.js server running shared physics verification, 80ms historical hitbox rewind, and match round transitions.
 
 ---
@@ -70,17 +70,16 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
 | Weapon | Slot | Cost | Damage (Body / Head) | RPM | Mag / Reserve | Unique Mechanical Features |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Garam-47** | 1 | $2,700 | 36 / 144 HP | 600 | 30 / 90 | CS2 '7' recoil spray curve, 1-shot headshot kill, authentic curved banana magazine. |
-| **Vanguard M4A1-S** | 1 | $2,900 | 38 / 140 HP | 600 | 20 / 80 | Perforated suppressor, 11m muffled gunshot radius, tight laser spray grouping. |
+| **Vanguard M4A1-S** | 1 | $2,900 | 33 / 132 HP | 666 | 25 / 75 | Perforated suppressor, 11m muffled gunshot radius, tight laser spray grouping. |
 | **Sovereign AWP** | 1 | $4,750 | 115 / 450 HP | 41 | 5 / 30 | 1-shot lethal torso kill, dual-stage 28°/10° optical zoom, flared scope with emerald tint. |
-| **Desert Eagle** | 2 | $700 | 53 / 159 HP | 267 | 7 / 35 | Heavy handgun pocket cannon, serrated cocking slide, lethal 1-shot headshot at close/mid. |
-| **Crimson Karambit** | 3 | $0 | 40 / 90 (180 Backstab) | — | 1 / 0 | True `ExtrudeGeometry` curved hawkbill blade, 360° ring-spin draw `[3]`/`[Q]`, `[F]` inspect twirl. |
+| **Desert Eagle** | 2 | $700 | 53 / 212 HP | 267 | 7 / 35 | Heavy handgun pocket cannon, serrated cocking slide, lethal 1-shot headshot at close/mid. |
+| **Crimson Karambit** | 3 | $0 | 55 / 55 (180 Backstab) | — | 1 / 0 | True `ExtrudeGeometry` curved hawkbill blade, 360° ring-spin draw `[3]`/`[Q]`, `[F]` inspect twirl. |
 
 ### 5-Zone Raycast Ballistics Multipliers
 - **Head (`HEAD`):** 4.00x multiplier (Instant lethal rifle/sniper hit)
-- **Neck (`NECK`):** 2.25x multiplier
 - **Chest (`CHEST`):** 1.00x baseline damage
-- **Stomach (`STOMACH`):** 1.25x multiplier
-- **Arms & Hands (`ARMS`):** 1.00x baseline damage
+- **Stomach (`STOMACH`):** 1.15x multiplier
+- **Arms & Hands (`ARMS`):** 0.75x multiplier
 - **Legs & Feet (`LEGS`):** 0.75x multiplier (Applies 58% tagging deceleration)
 
 ---
@@ -91,13 +90,14 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
 | :--- | :---: | :---: | :--- |
 | **Move Forward / Back / Strafe** | `W`, `S`, `A`, `D` | — | 128Hz fixed kinematics with instant counter-strafing. |
 | **Jump / Crouch-Jump** | `Space` | — | Air strafing enabled (`wishDir` acceleration). |
-| **Crouch (Duck)** | `ControlLeft` | `C` | Smooth eye height transition ($1.72\text{m} \to 1.16\text{m}$). |
+| **Crouch (Duck)** | `ControlLeft` | — | Smooth eye height transition ($1.72\text{m} \to 1.16\text{m}$). |
 | **Walk (Silent Movement)** | `ShiftLeft` | — | Restricts speed to $3.30\text{m/s}$, eliminates all footstep audio cues. |
 | **Primary Fire / Slash** | `Mouse 1 (Left)` | — | Automatic or semi-auto fire / Karambit alternating slashes. |
 | **Secondary Fire / Scope / Stab** | `Mouse 2 (Right)` | — | AWP dual-stage zoom / Karambit heavy hook thrust. |
 | **Reload Weapon** | `R` | — | Full animation timer with ammo reserve replenishment. |
 | **Quick Switch Weapon** | `Q` | — | Instantly flips to previous weapon slot with draw animation. |
 | **Weapon Slot Selection** | `1`, `2`, `3`, `4`, `5` | `Scroll Wheel` | Primary (1), Secondary (2), Knife (3), Utility (4), Bomb (5). |
+| **Grenade Quick-Select** | `Z`, `X`, `C`, `V` | — | Smoke (Z), Flash (X), HE Grenade (C), Molotov (V). |
 | **Drop Active Weapon** | `G` | — | Tosses active firearm into 3D world with physical drop arc. |
 | **Interact / Defuse / Loot Floor** | `E` | — | Hold to defuse (5s kit, 10s raw) or press aiming at dropped weapon. |
 | **Inspect Weapon & Knife Spin** | `F` | — | Continuous CS2 finger-ring spin on Karambit, sway inspect on guns. |
@@ -115,7 +115,7 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (55 Passing Tests Across 8 Suites)
+### Test Suite Coverage (63 Passing Tests Across 9 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
@@ -126,12 +126,13 @@ npm test
  ✓ packages/shared/src/__tests__/ballistics.test.ts          (9 tests)
  ✓ packages/shared/src/__tests__/security.test.ts            (5 tests)
  ✓ packages/shared/src/__tests__/lagcomp.test.ts             (6 tests)
- ✓ packages/shared/src/__tests__/navgraph.test.ts            (7 tests)
+ ✓ packages/shared/src/__tests__/navgraph.test.ts            (12 tests)
  ✓ packages/shared/src/__tests__/callout.test.ts             (9 tests)
  ✓ packages/shared/src/__tests__/economy.test.ts             (5 tests)
+ ✓ packages/shared/src/__tests__/docs-sync.test.ts           (3 tests)
 
- Test Files  8 passed (8)
-      Tests  55 passed (55)
+ Test Files  9 passed (9)
+      Tests  63 passed (63)
 ```
 
 ---

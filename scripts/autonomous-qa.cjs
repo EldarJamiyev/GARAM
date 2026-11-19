@@ -106,7 +106,9 @@ async function runAutonomousQASuite() {
       const canvas = document.getElementById('game-canvas');
       const blocker = document.getElementById('blocker');
       const overlay = document.getElementById('ui-overlay');
+      const roundBanner = document.getElementById('round-banner');
       const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+      const isBannerVisible = roundBanner && getComputedStyle(roundBanner).display !== 'none' && (!overlay || getComputedStyle(overlay).display !== 'none');
       return {
         canvasReady: !!canvas && canvas.width > 0,
         canvasResolution: canvas.width + 'x' + canvas.height,
@@ -114,6 +116,7 @@ async function runAutonomousQASuite() {
         glVendor: gl ? gl.getParameter(gl.VENDOR) : 'N/A',
         blockerVisible: blocker && getComputedStyle(blocker).display === 'flex',
         overlayHidden: overlay && getComputedStyle(overlay).display === 'none',
+        roundBannerHiddenInLobby: !isBannerVisible,
       };
     })()`,
     returnByValue: true

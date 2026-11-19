@@ -477,11 +477,8 @@ export class GaramGame {
     if (!this.hasMatchStarted) {
       this.effects.update(frameDelta);
       this.sceneManager.update(frameDelta, this.worldCamera.position);
-      this.sceneManager.render(
-        this.viewmodelScene,
-        this.viewmodelCamera,
-        this.customizer.wireframeWorld
-      );
+      this.renderer.clear();
+      this.renderer.render(this.worldScene, this.worldCamera);
       return;
     }
 
