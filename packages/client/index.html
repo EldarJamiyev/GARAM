@@ -43,7 +43,7 @@
     .crosshair-bar {
       position: absolute;
       background: #00ff66;
-      box-shadow: 0 0 1px #000;
+      box-shadow: 0 0 2px #000;
     }
     .crosshair-top {
       width: 2px;
@@ -77,7 +77,120 @@
       top: -1px;
       left: -1px;
     }
-    /* Tactical HUD */
+    /* Scope Overlay (AWP) */
+    #sniper-scope {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      pointer-events: none;
+    }
+    .scope-circle {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 580px;
+      height: 580px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      border: 3px solid #111;
+      box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.94);
+    }
+    .scope-cross-h {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: rgba(0, 0, 0, 0.85);
+    }
+    .scope-cross-v {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: rgba(0, 0, 0, 0.85);
+    }
+    /* Top Round Header */
+    #round-header {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      background: rgba(14, 17, 21, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 8px 28px;
+      border-radius: 6px;
+      backdrop-filter: blur(10px);
+    }
+    .team-score {
+      font-size: 26px;
+      font-weight: 800;
+    }
+    .score-vanguard {
+      color: #3b9eff;
+    }
+    .score-syndicate {
+      color: #ffaa00;
+    }
+    .round-timer {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 1px;
+    }
+    /* Killfeed */
+    #killfeed {
+      position: absolute;
+      top: 24px;
+      right: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+    .kill-entry {
+      background: rgba(12, 14, 18, 0.85);
+      border-left: 3px solid #ff334b;
+      padding: 6px 14px;
+      border-radius: 3px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #e4e9f0;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      animation: fadeKill 5s forwards;
+    }
+    @keyframes fadeKill {
+      0% { opacity: 0; transform: translateX(20px); }
+      10% { opacity: 1; transform: translateX(0); }
+      80% { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-10px); }
+    }
+    /* Damage Popups */
+    .damage-popup {
+      position: absolute;
+      color: #ff3344;
+      font-weight: 900;
+      font-size: 20px;
+      text-shadow: 0 0 4px #000;
+      pointer-events: none;
+      animation: floatUp 0.8s ease-out forwards;
+    }
+    .damage-popup.headshot {
+      color: #ffd700;
+      font-size: 26px;
+    }
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+      100% { opacity: 0; transform: translate(-50%, -100%) scale(0.9); }
+    }
+    /* Tactical HUD Bottom */
     #hud-bottom {
       position: absolute;
       bottom: 24px;
@@ -89,10 +202,10 @@
       font-weight: 700;
     }
     .hud-block {
-      background: rgba(10, 12, 14, 0.75);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(10, 12, 14, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
       padding: 12px 20px;
-      border-radius: 4px;
+      border-radius: 6px;
       backdrop-filter: blur(8px);
     }
     .hud-label {
@@ -107,18 +220,92 @@
       letter-spacing: 1px;
       color: #fff;
     }
-    .hud-val.hp {
-      color: #ff334b;
+    .hud-val.hp { color: #ff334b; }
+    .hud-val.armor { color: #3b9eff; }
+    .hud-val.ammo { color: #ffb833; }
+    .hud-val.cash { color: #00ff88; }
+    .hud-val.speed { font-size: 15px; color: #00ff88; }
+    /* Scoreboard (TAB) */
+    #scoreboard-modal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 720px;
+      background: rgba(12, 15, 18, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 24px;
+      display: none;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(12px);
+      z-index: 100;
     }
-    .hud-val.armor {
-      color: #3b9eff;
+    .score-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 14px;
     }
-    .hud-val.ammo {
-      color: #ffb833;
+    .score-table th, .score-table td {
+      padding: 8px 12px;
+      text-align: left;
     }
-    .hud-val.speed {
+    .score-table th {
+      color: #8e959e;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .score-table tr:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    /* Buy Menu (B Key) */
+    #buy-menu {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 760px;
+      background: rgba(10, 13, 16, 0.96);
+      border: 2px solid #3b9eff;
+      border-radius: 8px;
+      padding: 28px;
+      display: none;
+      box-shadow: 0 0 40px rgba(59, 158, 255, 0.35);
+      backdrop-filter: blur(14px);
+      z-index: 101;
+      pointer-events: auto;
+    }
+    .buy-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .buy-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .buy-card:hover {
+      background: rgba(59, 158, 255, 0.15);
+      border-color: #3b9eff;
+      transform: translateY(-2px);
+    }
+    .buy-name {
       font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .buy-price {
+      font-size: 14px;
+      font-weight: 600;
       color: #00ff88;
+      margin-top: 4px;
     }
     /* Click to Play Screen */
     #blocker {
@@ -127,22 +314,23 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.75);
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       pointer-events: auto;
       cursor: pointer;
+      z-index: 200;
     }
     .title-banner {
-      font-size: 56px;
+      font-size: 64px;
       font-weight: 900;
-      letter-spacing: 6px;
+      letter-spacing: 8px;
       color: #fff;
       text-transform: uppercase;
-      margin-bottom: 8px;
-      text-shadow: 0 0 20px rgba(255, 51, 75, 0.6);
+      margin-bottom: 6px;
+      text-shadow: 0 0 25px rgba(255, 51, 75, 0.7);
     }
     .subtitle {
       font-size: 14px;
@@ -152,7 +340,7 @@
       margin-bottom: 32px;
     }
     .start-prompt {
-      padding: 12px 28px;
+      padding: 14px 32px;
       background: #ff2a44;
       border: 1px solid #ff596f;
       color: #fff;
@@ -164,14 +352,40 @@
     }
     .start-prompt:hover {
       background: #e01b33;
-      transform: scale(1.04);
+      transform: scale(1.05);
     }
     .controls-help {
       margin-top: 28px;
       font-size: 12px;
       color: #7b8590;
-      line-height: 1.8;
+      line-height: 2;
       text-align: center;
+    }
+    /* Plant / Defuse Progress bar */
+    #interaction-bar {
+      position: absolute;
+      bottom: 140px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 260px;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+    .progress-track {
+      width: 100%;
+      height: 8px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #ff3344;
+      transition: width 0.05s linear;
     }
   </style>
 </head>
@@ -179,6 +393,25 @@
   <canvas id="game-canvas"></canvas>
 
   <div id="ui-overlay">
+    <!-- Sniper Scope Overlay -->
+    <div id="sniper-scope">
+      <div class="scope-circle">
+        <div class="scope-cross-h"></div>
+        <div class="scope-cross-v"></div>
+      </div>
+    </div>
+
+    <!-- Round Status Header -->
+    <div id="round-header">
+      <div class="team-score score-vanguard" id="score-ct">VANGUARD: 0</div>
+      <div class="round-timer" id="round-timer">01:45</div>
+      <div class="team-score score-syndicate" id="score-t">0 :SYNDICATE</div>
+    </div>
+
+    <!-- Killfeed -->
+    <div id="killfeed"></div>
+
+    <!-- Crosshair -->
     <div id="crosshair">
       <div class="crosshair-bar crosshair-top" id="ch-top"></div>
       <div class="crosshair-bar crosshair-bottom" id="ch-bottom"></div>
@@ -187,6 +420,15 @@
       <div class="crosshair-dot"></div>
     </div>
 
+    <!-- Plant / Defuse interaction progress -->
+    <div id="interaction-bar">
+      <div id="interaction-label" style="font-size: 12px; letter-spacing: 2px; color: #ffaa33; font-weight: 700;">ARMING PULSE CORE</div>
+      <div class="progress-track">
+        <div class="progress-fill" id="interaction-fill"></div>
+      </div>
+    </div>
+
+    <!-- Tactical HUD -->
     <div id="hud-bottom">
       <div style="display: flex; gap: 16px;">
         <div class="hud-block">
@@ -199,11 +441,15 @@
         </div>
         <div class="hud-block">
           <div class="hud-label">VELOCITY</div>
-          <div class="hud-val speed" id="hud-speed">0.0 m/s</div>
+          <div class="hud-val speed" id="hud-speed">0.0 m/s • PINPOINT</div>
         </div>
       </div>
 
       <div style="display: flex; gap: 16px;">
+        <div class="hud-block">
+          <div class="hud-label">$ CASH</div>
+          <div class="hud-val cash" id="hud-cash">$800</div>
+        </div>
         <div class="hud-block" style="text-align: right;">
           <div class="hud-label" id="hud-weapon-name">GARAM-47</div>
           <div class="hud-val ammo"><span id="hud-ammo-cur">30</span> <span style="font-size: 18px; color: #8e959e;">/ <span id="hud-ammo-res">90</span></span></div>
@@ -212,13 +458,111 @@
     </div>
   </div>
 
+  <!-- Scoreboard (TAB) -->
+  <div id="scoreboard-modal">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(255, 255, 255, 0.1); padding-bottom: 12px;">
+      <h2 style="font-size: 20px; letter-spacing: 2px;">DE_CITADEL — 5V5 COMPETITIVE</h2>
+      <span style="color: #00ff88; font-size: 13px;">64-TICK AUTHORITATIVE</span>
+    </div>
+    <table class="score-table">
+      <thead>
+        <tr>
+          <th>OPERATOR</th>
+          <th>FACTION</th>
+          <th>K</th>
+          <th>D</th>
+          <th>PING</th>
+        </tr>
+      </thead>
+      <tbody id="score-tbody">
+        <tr>
+          <td style="color: #3b9eff; font-weight: 700;">★ Eldar Garamov (You)</td>
+          <td>Garam Vanguard</td>
+          <td id="sb-kills">0</td>
+          <td id="sb-deaths">0</td>
+          <td style="color: #00ff88;">12ms</td>
+        </tr>
+        <tr>
+          <td>Vanguard Alex</td>
+          <td>Garam Vanguard</td>
+          <td>0</td>
+          <td>0</td>
+          <td style="color: #00ff88;">15ms</td>
+        </tr>
+        <tr>
+          <td style="color: #ffaa00;">Syndicate Kaine</td>
+          <td>Obsidian Syndicate</td>
+          <td>0</td>
+          <td>0</td>
+          <td style="color: #00ff88;">18ms</td>
+        </tr>
+        <tr>
+          <td style="color: #ffaa00;">Syndicate Ghost</td>
+          <td>Obsidian Syndicate</td>
+          <td>0</td>
+          <td>0</td>
+          <td style="color: #00ff88;">21ms</td>
+        </tr>
+        <tr>
+          <td style="color: #ffaa00;">Syndicate Viper</td>
+          <td>Obsidian Syndicate</td>
+          <td>0</td>
+          <td>0</td>
+          <td style="color: #00ff88;">19ms</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Buy Menu (B Key) -->
+  <div id="buy-menu">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h2 style="font-size: 22px; letter-spacing: 2px;">TACTICAL REQUISITION (BUY MENU)</h2>
+      <span style="color: #7b8590; font-size: 13px;">[B] CLOSE</span>
+    </div>
+    <div class="buy-grid">
+      <div class="buy-card" data-buy="garam-47">
+        <div class="buy-name">Garam-47</div>
+        <div style="font-size: 12px; color: #a0aab5;">Assault Rifle • 1-Tap Headshot</div>
+        <div class="buy-price">$2,700</div>
+      </div>
+      <div class="buy-card" data-buy="vanguard-m4">
+        <div class="buy-name">Vanguard M4A1-S</div>
+        <div style="font-size: 12px; color: #a0aab5;">Suppressed Rifle • Tight Burst</div>
+        <div class="buy-price">$2,900</div>
+      </div>
+      <div class="buy-card" data-buy="sovereign-awp">
+        <div class="buy-name">Sovereign AWP</div>
+        <div style="font-size: 12px; color: #a0aab5;">Sniper Rifle • 1-Shot Kill Scope</div>
+        <div class="buy-price">$4,750</div>
+      </div>
+      <div class="buy-card" data-buy="desert-eagle">
+        <div class="buy-name">Eldar's Desert Eagle</div>
+        <div style="font-size: 12px; color: #a0aab5;">Heavy Pistol • Crimson Slide</div>
+        <div class="buy-price">$700</div>
+      </div>
+      <div class="buy-card" data-buy="kevlar-helmet">
+        <div class="buy-name">Kevlar + Helmet</div>
+        <div style="font-size: 12px; color: #a0aab5;">Ballistic Body Armor & Helmet</div>
+        <div class="buy-price">$1,000</div>
+      </div>
+      <div class="buy-card" data-buy="smoke-grenade">
+        <div class="buy-name">Smoke Grenade</div>
+        <div style="font-size: 12px; color: #a0aab5;">Tactical Sightline Denial Cloud</div>
+        <div class="buy-price">$300</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Click to Play Screen -->
   <div id="blocker">
     <div class="title-banner">GARAM</div>
     <div class="subtitle">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
     <div class="start-prompt">CLICK TO SPAWN (ELDAR GARAMOV)</div>
     <div class="controls-help">
       [WASD] Move &nbsp;|&nbsp; [A / D Tap] Counter-Strafe &nbsp;|&nbsp; [SPACE] Jump &nbsp;|&nbsp; [CTRL] Crouch &nbsp;|&nbsp; [SHIFT] Silent Walk<br>
-      [MOUSE 1] Fire with Recoil &nbsp;|&nbsp; [1, 2, 3] Switch Weapon &nbsp;|&nbsp; [R] Reload &nbsp;|&nbsp; [ESC] Release Cursor
+      [MOUSE 1] Fire with Recoil &nbsp;|&nbsp; [MOUSE 2] AWP Scope Zoom &nbsp;|&nbsp; [1, 2, 3, 4] Weapons & Grenades<br>
+      [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [E] Plant / Defuse Pulse Core &nbsp;|&nbsp; [R] Reload
     </div>
   </div>
 
