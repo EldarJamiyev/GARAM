@@ -99,6 +99,7 @@ export class SceneManager {
     ctx.fill();
 
     const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
     tex.mapping = THREE.EquirectangularReflectionMapping;
 
     const envMat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide });

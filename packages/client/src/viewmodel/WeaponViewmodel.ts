@@ -14,6 +14,7 @@ export class WeaponViewmodel {
   private weaponMeshes: Map<string, THREE.Group> = new Map();
   private slideMeshes: Map<string, THREE.Mesh> = new Map();
   private boltMeshes: Map<string, THREE.Mesh> = new Map();
+  private magMeshes: Map<string, THREE.Mesh> = new Map();
 
   // Animation triggers & timers
   private slideKick = 0;
@@ -32,9 +33,9 @@ export class WeaponViewmodel {
   public isReloading = false;
   public reloadProgress = 0;
 
-  // Spring physics states
-  private targetPos = new THREE.Vector3(0.20, -0.20, -0.38);
-  private currentPos = new THREE.Vector3(0.20, -0.20, -0.38);
+  // Spring physics states (centered tactical framing)
+  private targetPos = new THREE.Vector3(0.13, -0.16, -0.32);
+  private currentPos = new THREE.Vector3(0.13, -0.16, -0.32);
   private velPos = new THREE.Vector3();
 
   private targetRot = new THREE.Euler(0, 0, 0);
@@ -76,19 +77,22 @@ export class WeaponViewmodel {
   private buildTacticalGlove(isLeft: boolean): THREE.Group {
     const glove = new THREE.Group();
     const fabricMat = new THREE.MeshStandardMaterial({
-      color: 0x16181b,
-      roughness: 0.85,
-      metalness: 0.12,
+      color: 0x2e333a,
+      roughness: 0.72,
+      metalness: 0.22,
+      envMapIntensity: 1.6,
     });
     const knuckleMat = new THREE.MeshStandardMaterial({
-      color: 0x0c0e10,
-      roughness: 0.3,
-      metalness: 0.75,
+      color: 0x16181b,
+      roughness: 0.25,
+      metalness: 0.88,
+      envMapIntensity: 2.0,
     });
     const cuffMat = new THREE.MeshStandardMaterial({
-      color: 0x242830,
+      color: 0x3d4653,
       roughness: 0.6,
       metalness: 0.35,
+      envMapIntensity: 1.5,
     });
 
     // Forearm sleeve angled into frame
@@ -191,23 +195,23 @@ export class WeaponViewmodel {
     // Adjust left & right arms depending on weapon type
     if (weaponId === 'desert-eagle') {
       // 2-handed Weaver pistol grip firmly supporting .50 AE frame
-      this.rightArm.position.set(0.05, -0.08, -0.06);
-      this.rightArm.rotation.set(0.22, -0.08, 0.12);
+      this.rightArm.position.set(0.02, -0.07, -0.04);
+      this.rightArm.rotation.set(0.24, -0.06, 0.10);
       this.leftArm.visible = true;
-      this.leftArm.position.set(0.0, -0.10, -0.08);
-      this.leftArm.rotation.set(0.28, 0.42, -0.18);
+      this.leftArm.position.set(-0.03, -0.08, -0.05);
+      this.leftArm.rotation.set(0.26, 0.40, -0.16);
     } else if (weaponId === 'garam-karambit') {
       // 1-handed reverse tactical knife grip through index ring
-      this.rightArm.position.set(0.07, -0.07, -0.08);
-      this.rightArm.rotation.set(0.32, -0.18, 0.22);
+      this.rightArm.position.set(0.04, -0.06, -0.06);
+      this.rightArm.rotation.set(0.30, -0.15, 0.20);
       this.leftArm.visible = false;
     } else {
       // 2-handed rifle support with visible gloved left hand holding handguard
-      this.rightArm.position.set(0.06, -0.10, 0.02);
-      this.rightArm.rotation.set(0.18, -0.1, 0.1);
+      this.rightArm.position.set(0.03, -0.07, 0.04);
+      this.rightArm.rotation.set(0.18, -0.08, 0.08);
       this.leftArm.visible = true;
-      this.leftArm.position.set(-0.06, -0.08, -0.24);
-      this.leftArm.rotation.set(-0.15, 0.45, -0.1);
+      this.leftArm.position.set(-0.05, -0.05, -0.20);
+      this.leftArm.rotation.set(-0.12, 0.40, -0.10);
     }
   }
 
@@ -265,21 +269,46 @@ export class WeaponViewmodel {
     topStripe.position.set(0, 0.03, 0);
     slide.add(topStripe);
 
-    // Rear Combat Sights
+    // Rear Combat Sights with Dual Tritium Dots
     const rearSight = new THREE.Mesh(
       new THREE.BoxGeometry(0.034, 0.014, 0.01),
-      new THREE.MeshBasicMaterial({ color: 0x10ff66 })
+      new THREE.MeshStandardMaterial({ color: 0x181a1d, metalness: 0.85, roughness: 0.3 })
     );
     rearSight.position.set(0, 0.035, 0.09);
     slide.add(rearSight);
 
-    // Front Sight Post
+    const tritiumMat = new THREE.MeshStandardMaterial({
+      color: 0x00ff66,
+      emissive: 0x00ff66,
+      emissiveIntensity: 3.5,
+      roughness: 0.1,
+    });
+    const rearDotL = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 8, 8), tritiumMat);
+    rearDotL.position.set(-0.012, 0.004, 0.005);
+    rearSight.add(rearDotL);
+    const rearDotR = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 8, 8), tritiumMat);
+    rearDotR.position.set(0.012, 0.004, 0.005);
+    rearSight.add(rearDotR);
+
+    // Front Sight Post with Center Tritium Dot
     const frontSight = new THREE.Mesh(
       new THREE.BoxGeometry(0.008, 0.016, 0.01),
-      new THREE.MeshBasicMaterial({ color: 0x10ff66 })
+      new THREE.MeshStandardMaterial({ color: 0x181a1d, metalness: 0.85, roughness: 0.3 })
     );
     frontSight.position.set(0, 0.035, -0.09);
     slide.add(frontSight);
+
+    const frontDot = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 8, 8), tritiumMat);
+    frontDot.position.set(0, 0.005, 0.005);
+    frontSight.add(frontDot);
+
+    // .50 AE Steel Magazine (Choreographed Reload)
+    const deagleMag = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.12, 0.05), frameMat);
+    deagleMag.position.set(0, -0.06, 0.01);
+    deagleMag.rotation.x = -0.22;
+    deagleMag.userData.baseY = -0.06;
+    group.add(deagleMag);
+    this.magMeshes.set('desert-eagle', deagleMag);
 
     // Fluted Barrel with Recessed Crown
     const barrelGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.09, 16);
@@ -324,7 +353,9 @@ export class WeaponViewmodel {
     const mag = new THREE.Mesh(magGeo, magMat);
     mag.position.set(0, -0.13, -0.07);
     mag.rotation.x = -0.32;
+    mag.userData.baseY = -0.13;
     group.add(mag);
+    this.magMeshes.set('garam-47', mag);
 
     // Textured Polymer Handguard
     const gripGeo = new THREE.BoxGeometry(0.05, 0.065, 0.20);
@@ -397,7 +428,9 @@ export class WeaponViewmodel {
     const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.17, 0.075), bodyMat);
     mag.position.set(0, -0.11, -0.06);
     mag.rotation.x = -0.14;
+    mag.userData.baseY = -0.11;
     group.add(mag);
+    this.magMeshes.set('vanguard-m4', mag);
 
     // Quad-Rail Handguard
     const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.055, 0.22), bodyMat);
@@ -434,6 +467,13 @@ export class WeaponViewmodel {
     // Chassis / Stock
     const stock = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.095, 0.58), stockMat);
     group.add(stock);
+
+    // .338 Lapua Magnum Steel Magazine
+    const awpMag = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.14, 0.09), metalMat);
+    awpMag.position.set(0, -0.07, -0.08);
+    awpMag.userData.baseY = -0.07;
+    group.add(awpMag);
+    this.magMeshes.set('sovereign-awp', awpMag);
 
     // Gold Sovereign Trim Line
     const goldStripe = new THREE.Mesh(new THREE.BoxGeometry(0.057, 0.012, 0.48), goldMat);
@@ -645,12 +685,37 @@ export class WeaponViewmodel {
       }
     }
 
-    // Reload animation dip & roll
+    // Multi-stage CS2 magazine reload animation & left-arm choreography
     let reloadY = 0;
     let reloadRoll = 0;
+    const currentMag = this.magMeshes.get(this.currentWeaponId);
+
     if (this.isReloading) {
-      reloadY = -0.09 * Math.sin(this.reloadProgress * Math.PI);
-      reloadRoll = 0.28 * Math.sin(this.reloadProgress * Math.PI);
+      reloadY = -0.06 * Math.sin(this.reloadProgress * Math.PI);
+      reloadRoll = 0.22 * Math.sin(this.reloadProgress * Math.PI);
+
+      if (currentMag && typeof currentMag.userData.baseY === 'number') {
+        const baseY = currentMag.userData.baseY;
+        if (this.reloadProgress < 0.35) {
+          // Stage 1 (0–35%): Empty magazine drops out downward
+          const drop = this.reloadProgress / 0.35;
+          currentMag.position.y = baseY - drop * 0.16;
+          currentMag.rotation.z = drop * 0.25;
+        } else if (this.reloadProgress < 0.70) {
+          // Stage 2 (35–70%): Fresh magazine rises from tactical pouch into magwell
+          const rise = (this.reloadProgress - 0.35) / 0.35;
+          currentMag.position.y = baseY - (1.0 - rise) * 0.16;
+          currentMag.rotation.z = (1.0 - rise) * 0.12;
+        } else {
+          // Stage 3 (70–100%): Fresh mag firmly seated, rack charging handle
+          currentMag.position.y = baseY;
+          currentMag.rotation.z = 0;
+          this.slideKick = Math.sin((this.reloadProgress - 0.70) / 0.30 * Math.PI) * 0.035;
+        }
+      }
+    } else if (currentMag && typeof currentMag.userData.baseY === 'number') {
+      currentMag.position.y = currentMag.userData.baseY;
+      currentMag.rotation.z = 0;
     }
 
     // 3D Hooke's Law spring-damper for mouse sway
@@ -668,8 +733,9 @@ export class WeaponViewmodel {
     this.recoilPitch += (0 - this.recoilPitch) * (1 - Math.exp(-22 * dt));
     this.recoilZ += (0 - this.recoilZ) * (1 - Math.exp(-24 * dt));
 
-    this.targetPos.z = -0.45 + this.recoilZ + meleeZ;
-    this.targetPos.y = -0.22 + walkBob + reloadY + drawY;
+    this.targetPos.x = 0.13;
+    this.targetPos.y = -0.16 + walkBob + reloadY + drawY;
+    this.targetPos.z = -0.34 + this.recoilZ + meleeZ;
 
     // Spring position update
     const fX = -k * (this.currentPos.x - this.targetPos.x) - c * this.velPos.x;

@@ -27,7 +27,7 @@ const _reverseNormal = new THREE.Vector3();
 
 export interface WeaponCombatCallbacks {
   onKill: (killerName: string, victimBot: BotEntity, headshot: boolean, weaponName: string, reward: number) => void;
-  onCameraPunch: (pitchKick: number) => void;
+  onCameraPunch: (pitchKick: number, yawKick?: number) => void;
   onScopeChanged: (zoomStage: number, fov: number, sens: number) => void;
   onUtilityThrown: () => void;
   onHitmarker?: (headshot: boolean) => void;
@@ -44,6 +44,10 @@ export class WeaponController {
   public consecutiveShots = 0;
   public lastShotTime = 0;
   public lastFireReleaseTime = 0;
+
+  // Physical camera aim-punch angles (radians)
+  public aimPunchPitch = 0;
+  public aimPunchYaw = 0;
 
   // AWP 2-stage zoom state: 0 = 90°, 1 = 28° (1x), 2 = 10° (2x)
   public zoomStage = 0;
@@ -63,6 +67,40 @@ export class WeaponController {
     this.effects = effects;
     this.audio = audio;
     this.callbacks = callbacks;
+  }
+
+  public update(dt: number, currentSpeed: number, isCrouching: boolean): void {
+    const now = performance.now();
+    const weapon = this.inventory.getActiveWeapon();
+
+    // 1. Recover physical camera aim-punch smoothly according to weapon recovery rate
+    const recoveryTime = isCrouching
+      ? (weapon.recoveryTimeCrouch || 0.28)
+      : (weapon.recoveryTimeStand || 0.35);
+    const decayRate = 1.0 / Math.max(0.06, recoveryTime);
+    const decayFactor = 1.0 - Math.exp(-decayRate * dt);
+
+    this.aimPunchPitch += (0 - this.aimPunchPitch) * decayFactor;
+    this.aimPunchYaw += (0 - this.aimPunchYaw) * decayFactor;
+
+    // Decay consecutive shots counter after pausing fire
+    const fireIntervalMs = (60 / Math.max(1, weapon.fireRateRpm)) * 1000;
+    if (now - this.lastShotTime > fireIntervalMs * 1.5) {
+      this.consecutiveShots = Math.max(0, this.consecutiveShots - Math.ceil(dt * 14));
+    }
+
+    // 2. Scoped AWP motion blur: when moving scoped with AWP, scope reticle blurs
+    if (this.zoomStage > 0 && weapon.id === 'sovereign-awp') {
+      const scopeEl = document.getElementById('sniper-scope');
+      if (scopeEl) {
+        if (currentSpeed > 0.38) {
+          const blurPx = Math.min(10, (currentSpeed - 0.38) * 2.8);
+          scopeEl.style.filter = `blur(${blurPx.toFixed(1)}px)`;
+        } else {
+          scopeEl.style.filter = 'none';
+        }
+      }
+    }
   }
 
   public handlePrimaryFire(
@@ -121,7 +159,7 @@ export class WeaponController {
     _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
     this.effects.spawnShellCasing(camera.position, _forward, _right);
 
-    // Recoil spray calculation
+    // Recoil spray calculation from weapon spray pattern
     let sprayPitchDeg = 0;
     let sprayYawDeg = 0;
     if (weapon.sprayPattern.length > 0) {
@@ -132,13 +170,22 @@ export class WeaponController {
     }
     this.consecutiveShots++;
 
+    // Calculate physical aim-punch kick scaled by recoilViewPunchScale
+    const punchScale = weapon.recoilViewPunchScale;
+    const punchPitchRad = (sprayPitchDeg * Math.PI / 180) * punchScale;
+    const punchYawRad = (sprayYawDeg * Math.PI / 180) * punchScale;
+
+    this.aimPunchPitch = punchPitchRad;
+    this.aimPunchYaw = punchYawRad;
+    this.callbacks.onCameraPunch(punchPitchRad, punchYawRad);
+
     // Spread calculation: zero standing spread RNG when counter-strafed!
     let dynamicSpread = 0;
     if (currentSpeed > 0.38) {
-      dynamicSpread = (currentSpeed / weapon.movementSpeed) * 0.045;
+      dynamicSpread = (currentSpeed / weapon.movementSpeed) * (weapon.inaccuracyMove || 0.045);
     }
     if (!isGrounded) {
-      dynamicSpread += 0.16;
+      dynamicSpread += (weapon.inaccuracyJump || 0.16);
     }
     if (weapon.id === 'sovereign-awp' && this.zoomStage === 0) {
       dynamicSpread += 0.085; // Heavy noscope spread penalty
@@ -147,8 +194,8 @@ export class WeaponController {
     const spreadX = (Math.random() - 0.5) * dynamicSpread;
     const spreadY = (Math.random() - 0.5) * dynamicSpread;
 
-    const pitchRad = inputPitch + (sprayPitchDeg * Math.PI / 180) + spreadY;
-    const yawRad = inputYaw + (sprayYawDeg * Math.PI / 180) + spreadX;
+    const pitchRad = inputPitch + this.aimPunchPitch + spreadY;
+    const yawRad = inputYaw + this.aimPunchYaw + spreadX;
 
     const eyePos = camera.position;
     _rayDir.set(
@@ -157,7 +204,7 @@ export class WeaponController {
       -Math.cos(yawRad) * Math.cos(pitchRad)
     ).normalize();
 
-    // Map targets for RaycastEngine
+    // Map targets for RaycastEngine with live 1:1 articulated hitboxes
     const targets: TargetCollider[] = bots.map(b => ({
       id: b.id,
       name: b.name,
@@ -166,6 +213,7 @@ export class WeaponController {
       hasHelmet: true,
       armor: 100,
       isDead: b.isDead,
+      hitboxes: b.rig?.getWorldHitboxes(),
     }));
 
     const sharedRay: Ray = {
@@ -181,7 +229,8 @@ export class WeaponController {
       weapon.penetrationPower,
       250,
       blocks,
-      targets
+      targets,
+      weapon.damageDropoffPer10m || 0.98
     );
 
     _terminalPoint.copy(eyePos).addScaledVector(_rayDir, 160);

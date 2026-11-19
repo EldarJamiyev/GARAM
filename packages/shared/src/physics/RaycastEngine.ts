@@ -31,6 +31,16 @@ export interface RaycastHit {
   penetratedWalls: number;
 }
 
+export interface TargetHitboxes {
+  head?: Vec3;
+  chest?: Vec3;
+  stomach?: Vec3;
+  leftArm?: Vec3;
+  rightArm?: Vec3;
+  leftLeg?: Vec3;
+  rightLeg?: Vec3;
+}
+
 export interface TargetCollider {
   id: string;
   name: string;
@@ -39,6 +49,7 @@ export interface TargetCollider {
   hasHelmet: boolean;
   armor: number;
   isDead: boolean;
+  hitboxes?: TargetHitboxes;
 }
 
 export interface SmokeOccluder {
@@ -238,7 +249,8 @@ export function executeTacticalRaycast(
   penetrationPower: number,
   maxRange = 250,
   blocks: MapBlockCollider[] = [],
-  targets: TargetCollider[] = []
+  targets: TargetCollider[] = [],
+  rangeDropoff = 1.0
 ): RaycastHit[] {
   interface HitCandidate {
     type: 'block' | 'target';
@@ -284,9 +296,11 @@ export function executeTacticalRaycast(
     const bx = t.center.x;
     const by = t.center.y;
     const bz = t.center.z;
+    const hb = t.hitboxes;
 
-    // Head Sphere
-    const headHit = intersectRaySphere(ray, { x: bx, y: by + 1.66, z: bz }, 0.18);
+    // Head Sphere (uses articulated bone position if available)
+    const headPos = hb?.head ?? { x: bx, y: by + 1.66, z: bz };
+    const headHit = intersectRaySphere(ray, headPos, 0.18);
     if (headHit.hit && headHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -299,8 +313,12 @@ export function executeTacticalRaycast(
       });
     }
 
-    // Chest Cylinder
-    const chestHit = intersectRayVerticalCylinder(ray, bx, bz, by + 1.18, by + 1.50, 0.34);
+    // Chest Cylinder / Box
+    const chestX = hb?.chest?.x ?? bx;
+    const chestZ = hb?.chest?.z ?? bz;
+    const chestMinY = hb?.chest ? hb.chest.y - 0.16 : by + 1.18;
+    const chestMaxY = hb?.chest ? hb.chest.y + 0.16 : by + 1.50;
+    const chestHit = intersectRayVerticalCylinder(ray, chestX, chestZ, chestMinY, chestMaxY, 0.34);
     if (chestHit.hit && chestHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -314,7 +332,11 @@ export function executeTacticalRaycast(
     }
 
     // Stomach Cylinder
-    const stomHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.88, by + 1.18, 0.34);
+    const stomX = hb?.stomach?.x ?? bx;
+    const stomZ = hb?.stomach?.z ?? bz;
+    const stomMinY = hb?.stomach ? hb.stomach.y - 0.15 : by + 0.88;
+    const stomMaxY = hb?.stomach ? hb.stomach.y + 0.15 : by + 1.18;
+    const stomHit = intersectRayVerticalCylinder(ray, stomX, stomZ, stomMinY, stomMaxY, 0.34);
     if (stomHit.hit && stomHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -445,7 +467,11 @@ export function executeTacticalRaycast(
           break;
       }
 
-      const rawDamage = currentDamage * zoneMultiplier;
+      // Apply range dropoff: effective damage decays per 10m traveled
+      const rangeDecay = Math.pow(rangeDropoff, c.distance / 10);
+      const effectiveDamage = currentDamage * rangeDecay;
+
+      const rawDamage = effectiveDamage * zoneMultiplier;
       let healthDamage = Math.round(rawDamage);
       let armorDamage = 0;
 

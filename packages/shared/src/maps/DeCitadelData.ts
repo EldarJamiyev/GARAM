@@ -218,6 +218,34 @@ export const SPAWN_ZONES = {
   },
 };
 
+export interface CalloutZone {
+  name: string;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+export const CALLOUT_ZONES: CalloutZone[] = [
+  { name: 'A SITE', minX: 16, maxX: 45, minZ: -36, maxZ: -6 },
+  { name: 'B SITE', minX: -45, maxX: -16, minZ: -36, maxZ: -6 },
+  { name: 'MID COURTYARD', minX: -16, maxX: 16, minZ: -18, maxZ: 18 },
+  { name: 'MID DOORS', minX: -8, maxX: 8, minZ: -4, maxZ: 8 },
+  { name: 'A LONG', minX: 16, maxX: 45, minZ: -6, maxZ: 28 },
+  { name: 'B TUNNEL', minX: -45, maxX: -16, minZ: -6, maxZ: 28 },
+  { name: 'VANGUARD SPAWN', minX: -30, maxX: 30, minZ: 24, maxZ: 58 },
+  { name: 'SYNDICATE SPAWN', minX: -30, maxX: 30, minZ: -58, maxZ: -28 },
+];
+
+export function getCalloutName(x: number, _y: number, z: number): string {
+  for (const zone of CALLOUT_ZONES) {
+    if (x >= zone.minX && x <= zone.maxX && z >= zone.minZ && z <= zone.maxZ) {
+      return zone.name;
+    }
+  }
+  return 'DE_CITADEL';
+}
+
 // Full 5v5 Roster: 4 Vanguard AI allies (with player as 5th) + 5 Obsidian Syndicate AI enemies
 export const TACTICAL_BOTS: BotSpawnDef[] = [
   // --- Vanguard Allies (CT) ---

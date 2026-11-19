@@ -200,4 +200,98 @@ describe('RaycastEngine & Ballistics', () => {
     const blockedLOS = hasLineOfSight(eyeA, eyeB, [], [smoke]);
     expect(blockedLOS).toBe(false);
   });
+
+  it('calculates realistic distance damage dropoff per 10m', () => {
+    const targetNear: TargetCollider = {
+      id: 'target_near',
+      name: 'Near Target',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 10 },
+      armor: 0,
+      hasHelmet: false,
+      isDead: false,
+    };
+    const targetFar: TargetCollider = {
+      id: 'target_far',
+      name: 'Far Target',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 50 },
+      armor: 0,
+      hasHelmet: false,
+      isDead: false,
+    };
+
+    const rayNear: Ray = {
+      origin: { x: 0, y: 1.3, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+    const hitsNear = executeTacticalRaycast(
+      rayNear,
+      36, // Garam-47 base damage
+      0.775,
+      200,
+      100,
+      [],
+      [targetNear],
+      0.98
+    );
+
+    const hitsFar = executeTacticalRaycast(
+      rayNear,
+      36,
+      0.775,
+      200,
+      100,
+      [],
+      [targetFar],
+      0.98
+    );
+
+    expect(hitsNear[0].awardedDamage).toBeGreaterThan(hitsFar[0].awardedDamage);
+    // At 10m: 36 * 0.98^1 = 35.28 -> 35
+    // At 50m: 36 * 0.98^5 = 32.54 -> 33
+    expect(hitsNear[0].awardedDamage).toBe(35);
+    expect(hitsFar[0].awardedDamage).toBe(33);
+  });
+
+  it('accurately hits articulated bone hitboxes when provided', () => {
+    const articulatedTarget: TargetCollider = {
+      id: 'articulated_bot',
+      name: 'Articulated Bot',
+      team: 'Syndicate',
+      center: { x: 5, y: 0, z: 10 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+      hitboxes: {
+        head: { x: 5.2, y: 1.72, z: 10.1 },
+      },
+    };
+
+    // Aim directly at the articulated head position
+    const toHead = {
+      x: 5.2 - 0,
+      y: 1.72 - 1.72,
+      z: 10.1 - 0,
+    };
+    const len = Math.hypot(toHead.x, toHead.y, toHead.z);
+    const ray: Ray = {
+      origin: { x: 0, y: 1.72, z: 0 },
+      direction: { x: toHead.x / len, y: toHead.y / len, z: toHead.z / len },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      WEAPONS['garam-47'].damage,
+      WEAPONS['garam-47'].armorPenetration,
+      WEAPONS['garam-47'].penetrationPower,
+      50,
+      [],
+      [articulatedTarget]
+    );
+
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0].hitZone).toBe('HEAD');
+    expect(hits[0].isHeadshot).toBe(true);
+  });
 });

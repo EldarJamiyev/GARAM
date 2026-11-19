@@ -13,6 +13,7 @@ export class OperatorRig {
   public root: THREE.Group;
   public headCollider: THREE.Mesh;
   public bodyCollider: THREE.Mesh;
+  private wireframeGroup: THREE.Group;
 
   // Segmented Limbs
   private leftLeg: THREE.Group;
@@ -22,6 +23,7 @@ export class OperatorRig {
   private leftArm: THREE.Group;
   private rightArm: THREE.Group;
   private weaponMesh: THREE.Group;
+  private contactShadow: THREE.Mesh;
 
   // UI Billboard
   private uiBillboard: THREE.Sprite;
@@ -29,10 +31,11 @@ export class OperatorRig {
   private uiCtx: CanvasRenderingContext2D;
   private uiTexture: THREE.CanvasTexture;
 
-  // Animation Timers
+  // Animation Timers & Physics
   private walkCycle = Math.random() * Math.PI * 2;
   private flinchTimer = 0;
   private deathProgress = 0;
+  private deathKnockback = new THREE.Vector3();
 
   constructor(team: 'Vanguard' | 'Syndicate', name: string) {
     this.root = new THREE.Group();
@@ -180,7 +183,53 @@ export class OperatorRig {
     this.bodyCollider.position.set(0, 0.95, 0);
     this.root.add(this.bodyCollider);
 
-    // 6. Overhead Tactical Health & Nameplate Billboard
+    // 6. Grounded Contact Shadow Disc (Radial Soft Gradient)
+    const shadowGeo = new THREE.PlaneGeometry(0.95, 0.95);
+    shadowGeo.rotateX(-Math.PI / 2);
+    const shadowCanvas = document.createElement('canvas');
+    shadowCanvas.width = 128;
+    shadowCanvas.height = 128;
+    const sCtx = shadowCanvas.getContext('2d')!;
+    const sGrad = sCtx.createRadialGradient(64, 64, 4, 64, 64, 64);
+    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
+    sGrad.addColorStop(0.45, 'rgba(0, 0, 0, 0.40)');
+    sGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
+    sCtx.fillStyle = sGrad;
+    sCtx.fillRect(0, 0, 128, 128);
+    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
+    shadowTex.colorSpace = THREE.SRGBColorSpace;
+    const shadowMat = new THREE.MeshBasicMaterial({
+      map: shadowTex,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.contactShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    this.contactShadow.position.y = 0.015;
+    this.root.add(this.contactShadow);
+
+    // 7. Hitbox Wireframe Debug Overlays ([F2] Sandbox)
+    this.wireframeGroup = new THREE.Group();
+    this.wireframeGroup.visible = false;
+    const wfMatHead = new THREE.MeshBasicMaterial({ color: 0xff0044, wireframe: true });
+    const wfMatBody = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true });
+    const wfHead = new THREE.Mesh(new THREE.SphereGeometry(0.20, 10, 8), wfMatHead);
+    wfHead.position.set(0, 1.66, 0);
+    this.wireframeGroup.add(wfHead);
+
+    const wfChest = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.32, 8), wfMatBody);
+    wfChest.position.set(0, 1.34, 0);
+    this.wireframeGroup.add(wfChest);
+
+    const wfStomach = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.30, 8), wfMatBody);
+    wfStomach.position.set(0, 1.03, 0);
+    this.wireframeGroup.add(wfStomach);
+
+    const wfLegs = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.30, 0.88, 8), wfMatBody);
+    wfLegs.position.set(0, 0.44, 0);
+    this.wireframeGroup.add(wfLegs);
+    this.root.add(this.wireframeGroup);
+
+    // 8. Overhead Tactical Health & Nameplate Billboard
     this.uiCanvas = document.createElement('canvas');
     this.uiCanvas.width = 256;
     this.uiCanvas.height = 80;
@@ -198,6 +247,33 @@ export class OperatorRig {
     this.root.add(this.uiBillboard);
 
     this.updateBillboard(1.0, team, name);
+  }
+
+  public setWireframesVisible(visible: boolean): void {
+    this.wireframeGroup.visible = visible;
+  }
+
+  public getWorldHitboxes() {
+    const headWorld = new THREE.Vector3();
+    const chestWorld = new THREE.Vector3();
+    const stomWorld = new THREE.Vector3();
+    this.head.getWorldPosition(headWorld);
+    this.torso.getWorldPosition(chestWorld);
+    chestWorld.y += 0.28;
+    stomWorld.copy(chestWorld);
+    stomWorld.y -= 0.30;
+
+    return {
+      head: { x: headWorld.x, y: headWorld.y + 0.16, z: headWorld.z },
+      chest: { x: chestWorld.x, y: chestWorld.y, z: chestWorld.z },
+      stomach: { x: stomWorld.x, y: stomWorld.y, z: stomWorld.z },
+    };
+  }
+
+  public triggerDeath(hitDir?: THREE.Vector3, isHeadshot?: boolean): void {
+    if (hitDir) {
+      this.deathKnockback.copy(hitDir).normalize().multiplyScalar(isHeadshot ? 1.8 : 1.2);
+    }
   }
 
   private buildLeg(suitColor: number, bootColor: number): THREE.Group {
@@ -245,17 +321,22 @@ export class OperatorRig {
 
   public update(dt: number, state: OperatorVisualState): void {
     if (state.isDead) {
-      // Death collapse pose
+      // Directional death collapse pose with momentum carry
       if (this.deathProgress < 1.0) {
         this.deathProgress = Math.min(1.0, this.deathProgress + dt * 3.5);
         this.root.rotation.x = -Math.PI / 2 * this.deathProgress;
         this.root.position.y = -0.75 * this.deathProgress;
+        if (this.deathKnockback.lengthSq() > 0.01) {
+          this.root.position.addScaledVector(this.deathKnockback, dt * (1 - this.deathProgress) * 2.2);
+        }
       }
       this.uiBillboard.visible = false;
+      this.contactShadow.visible = false;
       return;
     }
 
     this.uiBillboard.visible = true;
+    this.contactShadow.visible = true;
 
     // 1. Walking Striding Animation
     if (state.isMoving) {

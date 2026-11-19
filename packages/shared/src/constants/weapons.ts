@@ -19,6 +19,17 @@ export interface WeaponDef {
   baseSpread: number;
   killReward: number;
   sprayPattern: Array<[number, number]>; // [pitchDeg, yawDeg]
+
+  // Sprint E3 Ballistic & Recoil Control Extensions
+  recoilViewPunchScale: number;
+  recoveryTimeStand: number;        // Recovery reset time when standing (s)
+  recoveryTimeCrouch: number;       // Faster reset when crouching (s)
+  crouchSpreadMultiplier: number;   // Spread reduction when crouching (e.g. 0.65x)
+  inaccuracyMove: number;           // Move inaccuracy scaling
+  inaccuracyJump: number;           // Jump inaccuracy penalty
+  inaccuracyFire: number;           // Per-shot tapping inaccuracy bloom
+  taggingPower: number;             // Speed fraction retained on hit (0.45 to 0.68)
+  damageDropoffPer10m: number;      // Range damage drop-off multiplier per 10m
 }
 
 // 30-round spray pattern for Garam-47 (AK variant)
@@ -104,6 +115,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0,
     killReward: 300,
     sprayPattern: GARAM_47_SPRAY,
+    recoilViewPunchScale: 1.0,
+    recoveryTimeStand: 0.38,
+    recoveryTimeCrouch: 0.285,
+    crouchSpreadMultiplier: 0.65,
+    inaccuracyMove: 0.045,
+    inaccuracyJump: 0.16,
+    inaccuracyFire: 0.012,
+    taggingPower: 0.56,
+    damageDropoffPer10m: 0.98,
   },
   'vanguard-m4': {
     id: 'vanguard-m4',
@@ -124,6 +144,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0,
     killReward: 300,
     sprayPattern: VANGUARD_M4_SPRAY,
+    recoilViewPunchScale: 0.72,
+    recoveryTimeStand: 0.32,
+    recoveryTimeCrouch: 0.24,
+    crouchSpreadMultiplier: 0.65,
+    inaccuracyMove: 0.040,
+    inaccuracyJump: 0.15,
+    inaccuracyFire: 0.009,
+    taggingPower: 0.60,
+    damageDropoffPer10m: 0.98,
   },
   'sovereign-awp': {
     id: 'sovereign-awp',
@@ -144,6 +173,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0, // Scoped base spread
     killReward: 100,
     sprayPattern: [[2.5, 0.0]],
+    recoilViewPunchScale: 2.2,
+    recoveryTimeStand: 0.45,
+    recoveryTimeCrouch: 0.3375,
+    crouchSpreadMultiplier: 0.50,
+    inaccuracyMove: 0.085,
+    inaccuracyJump: 0.25,
+    inaccuracyFire: 0.0,
+    taggingPower: 0.45,
+    damageDropoffPer10m: 0.99,
   },
   'desert-eagle': {
     id: 'desert-eagle',
@@ -169,6 +207,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
       [3.0, -0.2],
       [3.6, 0.3],
     ],
+    recoilViewPunchScale: 1.6,
+    recoveryTimeStand: 0.58, // Rapid Deagle spam blooms unless paced
+    recoveryTimeCrouch: 0.435,
+    crouchSpreadMultiplier: 0.65,
+    inaccuracyMove: 0.050,
+    inaccuracyJump: 0.18,
+    inaccuracyFire: 0.038,
+    taggingPower: 0.68,
+    damageDropoffPer10m: 0.81,
   },
   'garam-karambit': {
     id: 'garam-karambit',
@@ -189,6 +236,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0,
     killReward: 1500,
     sprayPattern: [],
+    recoilViewPunchScale: 0.0,
+    recoveryTimeStand: 0.1,
+    recoveryTimeCrouch: 0.1,
+    crouchSpreadMultiplier: 1.0,
+    inaccuracyMove: 0.0,
+    inaccuracyJump: 0.0,
+    inaccuracyFire: 0.0,
+    taggingPower: 0.80,
+    damageDropoffPer10m: 1.0,
   },
   'smoke-grenade': {
     id: 'smoke-grenade',
@@ -209,6 +265,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0,
     killReward: 300,
     sprayPattern: [],
+    recoilViewPunchScale: 0.0,
+    recoveryTimeStand: 0.1,
+    recoveryTimeCrouch: 0.1,
+    crouchSpreadMultiplier: 1.0,
+    inaccuracyMove: 0.0,
+    inaccuracyJump: 0.0,
+    inaccuracyFire: 0.0,
+    taggingPower: 0.85,
+    damageDropoffPer10m: 1.0,
   },
   'flashbang': {
     id: 'flashbang',
@@ -229,6 +294,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0,
     killReward: 300,
     sprayPattern: [],
+    recoilViewPunchScale: 0.0,
+    recoveryTimeStand: 0.1,
+    recoveryTimeCrouch: 0.1,
+    crouchSpreadMultiplier: 1.0,
+    inaccuracyMove: 0.0,
+    inaccuracyJump: 0.0,
+    inaccuracyFire: 0.0,
+    taggingPower: 0.85,
+    damageDropoffPer10m: 1.0,
   },
   'he-grenade': {
     id: 'he-grenade',
@@ -249,6 +323,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0,
     killReward: 300,
     sprayPattern: [],
+    recoilViewPunchScale: 0.0,
+    recoveryTimeStand: 0.1,
+    recoveryTimeCrouch: 0.1,
+    crouchSpreadMultiplier: 1.0,
+    inaccuracyMove: 0.0,
+    inaccuracyJump: 0.0,
+    inaccuracyFire: 0.0,
+    taggingPower: 0.85,
+    damageDropoffPer10m: 1.0,
   },
   'molotov': {
     id: 'molotov',
@@ -269,5 +352,14 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0,
     killReward: 300,
     sprayPattern: [],
+    recoilViewPunchScale: 0.0,
+    recoveryTimeStand: 0.1,
+    recoveryTimeCrouch: 0.1,
+    crouchSpreadMultiplier: 1.0,
+    inaccuracyMove: 0.0,
+    inaccuracyJump: 0.0,
+    inaccuracyFire: 0.0,
+    taggingPower: 0.85,
+    damageDropoffPer10m: 1.0,
   },
 };

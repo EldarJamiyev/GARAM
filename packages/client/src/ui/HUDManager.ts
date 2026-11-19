@@ -29,8 +29,10 @@ export class HUDManager {
   private roundTimerEl = document.getElementById('round-timer');
   private killfeedEl = document.getElementById('killfeed');
   private sniperScopeEl = document.getElementById('sniper-scope');
+  private calloutEl = document.getElementById('hud-callout');
 
   // Crosshair
+  private crosshairEl = document.getElementById('crosshair');
   private chTop = document.getElementById('ch-top');
   private chBottom = document.getElementById('ch-bottom');
   private chLeft = document.getElementById('ch-left');
@@ -38,6 +40,15 @@ export class HUDManager {
   private crosshairBars = document.querySelectorAll('.crosshair-bar, .crosshair-dot');
 
   constructor() {}
+
+  public updateCallout(zoneName: string): void {
+    if (!this.calloutEl) {
+      this.calloutEl = document.getElementById('hud-callout');
+    }
+    if (this.calloutEl) {
+      this.calloutEl.innerText = zoneName.toUpperCase();
+    }
+  }
 
   public updatePlayerStats(
     hp: number,
@@ -87,7 +98,14 @@ export class HUDManager {
     }
   }
 
-  public updateCrosshair(speed: number, consecutiveShots: number, isPinpoint: boolean): void {
+  public updateCrosshair(
+    speed: number,
+    consecutiveShots: number,
+    isPinpoint: boolean,
+    aimPunchYaw = 0,
+    aimPunchPitch = 0,
+    followRecoil = false
+  ): void {
     const spreadGap = (speed / 5.45) * 16 + (consecutiveShots * 1.6);
     const totalGap = 4 + spreadGap;
 
@@ -100,6 +118,20 @@ export class HUDManager {
     this.crosshairBars.forEach((el) => {
       (el as HTMLElement).style.background = color;
     });
+
+    // CS2 Follow Recoil Crosshair Tracking
+    if (this.crosshairEl) {
+      if (followRecoil && (Math.abs(aimPunchYaw) > 0.001 || Math.abs(aimPunchPitch) > 0.001)) {
+        const halfH = window.innerHeight / 2;
+        const fovRad = (90 * Math.PI) / 180;
+        const focalLength = halfH / Math.tan(fovRad / 2);
+        const followX = Math.tan(aimPunchYaw) * focalLength;
+        const followY = -Math.tan(aimPunchPitch) * focalLength;
+        this.crosshairEl.style.transform = `translate(calc(-50% + ${followX.toFixed(1)}px), calc(-50% + ${followY.toFixed(1)}px))`;
+      } else {
+        this.crosshairEl.style.transform = 'translate(-50%, -50%)';
+      }
+    }
   }
 
   public setScopeOverlay(visible: boolean): void {

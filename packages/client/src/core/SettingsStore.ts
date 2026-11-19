@@ -22,6 +22,8 @@ export interface UserSettings {
   gameMode: GameMode;
   multiplayerHost: string;
   crosshair: CrosshairConfig;
+  followRecoil: boolean;
+  showHitboxes: boolean;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -33,6 +35,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   fov: 90,
   gameMode: 'offline',
   multiplayerHost: 'ws://localhost:2567',
+  followRecoil: false,
+  showHitboxes: false,
   crosshair: {
     thickness: 2,
     length: 8,

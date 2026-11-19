@@ -7,7 +7,8 @@ import {
   WeaponDef,
   MapBlockCollider,
   AABBCollider,
-  SPAWN_POINTS
+  SPAWN_POINTS,
+  getCalloutName
 } from '@garam/shared';
 import { SceneManager } from './render/SceneManager.js';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
@@ -188,8 +189,8 @@ export class GaramGame {
           this.hud.addKillfeed(`${headshot ? '🎯 [HEADSHOT] ' : '💀 '}${killerName} [${weaponName}] ${victimBot.name} (+$${reward})`);
           this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, this.bots);
         },
-        onCameraPunch: (kick) => {
-          this.cameraPunchPitch += kick;
+        onCameraPunch: (_kickPitch, _kickYaw) => {
+          // Handled directly by WeaponController aim-punch state machine
         },
         onScopeChanged: (zoomStage, fov, sens) => {
           this.worldCamera.fov = fov;
@@ -227,6 +228,15 @@ export class GaramGame {
       },
       onToggleFreezeBots: (frozen) => {
         this.hud.addKillfeed(`Bot Freeze: ${frozen ? 'FROZEN' : 'ACTIVE'}`);
+      },
+      onToggleHitboxes: (show) => {
+        for (const b of this.bots) {
+          b.rig?.setWireframesVisible(show);
+        }
+        this.hud.addKillfeed(`Hitbox Wireframes: ${show ? 'VISIBLE' : 'HIDDEN'}`);
+      },
+      onToggleFollowRecoil: (enabled) => {
+        this.hud.addKillfeed(`Follow Recoil: ${enabled ? 'ON' : 'OFF'}`);
       },
       onRespawnBots: () => {
         this.respawnAllBots();
@@ -642,9 +652,8 @@ export class GaramGame {
       this.inputManager.exitPointerLock();
     } else {
       buyMenu.style.display = 'none';
-      if (this.inputManager.uiState === 'BUY_MENU') {
-        this.inputManager.requestPointerLock();
-      }
+      this.inputManager.uiState = 'PLAYING';
+      this.inputManager.requestPointerLock();
     }
   }
 
@@ -824,12 +833,14 @@ export class GaramGame {
       );
     }
 
-    // Recoil spray reset after releasing trigger
-    if (!this.isFiring && this.weaponController.consecutiveShots > 0) {
-      if (now - this.weaponController.lastFireReleaseTime > 260) {
-        this.weaponController.consecutiveShots = 0;
-      }
-    }
+    // Update weapon controller (recoil recovery, consecutive shots decay, AWP scope blur)
+    this.weaponController.update(frameDelta, hozSpeed, this.inputManager.input.crouch);
+
+    // Update zero-GC pooled bullet tracers, shell casings, and impact decals
+    this.effects.update(frameDelta);
+
+    // Update dynamic environment sky dome tracking player
+    this.sceneManager.update(frameDelta, this.worldCamera.position);
 
     // Camera recoil punch recovery
     this.cameraPunchPitch += (0 - this.cameraPunchPitch) * (1 - Math.exp(-18 * frameDelta));
@@ -890,8 +901,9 @@ export class GaramGame {
     const interp = this.player.getInterpolatedPosition(alpha);
     this.worldCamera.position.set(interp.x, interp.eyeY, interp.z);
 
-    const effectivePitch = this.inputManager.input.pitch + this.cameraPunchPitch;
-    _euler.set(effectivePitch, this.inputManager.input.yaw, 0, 'YXZ');
+    const effectivePitch = this.inputManager.input.pitch + this.cameraPunchPitch + this.weaponController.aimPunchPitch * 0.45;
+    const effectiveYaw = this.inputManager.input.yaw + this.weaponController.aimPunchYaw * 0.45;
+    _euler.set(effectivePitch, effectiveYaw, 0, 'YXZ');
     this.worldCamera.quaternion.setFromEuler(_euler);
 
     const walkBob = Math.sin(this.distanceTraveled * 4) * 0.008 * (hozSpeed / 5.45);
@@ -917,7 +929,17 @@ export class GaramGame {
       this.inventory.activeSlot
     );
 
-    this.hud.updateCrosshair(hozSpeed, this.weaponController.consecutiveShots, isPinpoint);
+    this.hud.updateCrosshair(
+      hozSpeed,
+      this.weaponController.consecutiveShots,
+      isPinpoint,
+      this.weaponController.aimPunchYaw,
+      this.weaponController.aimPunchPitch,
+      settingsStore.settings.followRecoil
+    );
+
+    // Live Tactical Map Callout Indicator
+    this.hud.updateCallout(getCalloutName(this.player.state.x, this.player.state.y, this.player.state.z));
 
     // Telemetry Perf Monitor [F3]
     this.perfMonitor.recordFrame(frameDelta * 1000, this.networkClient.isConnected ? 14 : -1);

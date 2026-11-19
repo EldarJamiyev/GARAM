@@ -203,6 +203,53 @@ async function runAutonomousQASuite() {
   });
   console.log('Buy Menu Check:', buyCheck.result.value);
 
+  // 6b. Test Weapon Switching (1, 2, 3)
+  console.log('\n[Test 6b] Testing Fast Weapon Switching...');
+  const switchCheck = await send('Runtime.evaluate', {
+    expression: `(async () => {
+      // Press 2 for Secondary (Pistol)
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit2', key: '2', bubbles: true }));
+      await new Promise(r => setTimeout(r, 150));
+      const wpAfter2 = document.getElementById('hud-weapon-name')?.innerText;
+      const slot2Active = document.getElementById('slot-2')?.classList.contains('active');
+
+      // Press 3 for Knife
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }));
+      await new Promise(r => setTimeout(r, 150));
+      const wpAfter3 = document.getElementById('hud-weapon-name')?.innerText;
+      const slot3Active = document.getElementById('slot-3')?.classList.contains('active');
+
+      // Press 1 for Primary
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
+      await new Promise(r => setTimeout(r, 150));
+      const wpAfter1 = document.getElementById('hud-weapon-name')?.innerText;
+      const slot1Active = document.getElementById('slot-1')?.classList.contains('active');
+
+      return {
+        after2: { wp: wpAfter2, slot2Active },
+        after3: { wp: wpAfter3, slot3Active },
+        after1: { wp: wpAfter1, slot1Active },
+      };
+    })()`,
+    awaitPromise: true,
+    returnByValue: true
+  });
+  console.log('Weapon Switch Check:', switchCheck.result.value);
+
+  // 6c. Test Tactical Map Callout HUD
+  console.log('\n[Test 6c] Verifying Tactical Map Callout HUD...');
+  const calloutCheck = await send('Runtime.evaluate', {
+    expression: `(() => {
+      const calloutEl = document.getElementById('hud-callout');
+      return {
+        calloutText: calloutEl?.innerText,
+        calloutVisible: !!calloutEl && getComputedStyle(calloutEl).display !== 'none'
+      };
+    })()`,
+    returnByValue: true
+  });
+  console.log('Tactical Callout Check:', calloutCheck.result.value);
+
   // 7. Capture In-Game Verification Screenshot
   console.log('\n[Test 7] Capturing High-Res Playtest Screenshot...');
   const ss = await send('Page.captureScreenshot', { format: 'png' });

@@ -11,6 +11,14 @@ interface ShellCasing {
   angularVelocity: THREE.Vector3;
   bounces: number;
   lifetime: number;
+  active: boolean;
+}
+
+interface TracerLine {
+  line: THREE.Line;
+  positions: Float32Array;
+  lifetime: number;
+  active: boolean;
 }
 
 export class EffectsManager {
@@ -22,8 +30,15 @@ export class EffectsManager {
   private decalPoolIndex = 0;
   private readonly MAX_DECALS = 80;
 
-  // Active Shell Casings
-  private shellCasings: ShellCasing[] = [];
+  // Pooled Tracers (Max 24, Zero-GC)
+  private tracerPool: TracerLine[] = [];
+  private tracerIndex = 0;
+  private readonly MAX_TRACERS = 24;
+
+  // Pooled Shell Casings (Max 32, Zero-GC)
+  private shellPool: ShellCasing[] = [];
+  private shellIndex = 0;
+  private readonly MAX_SHELLS = 32;
   private shellGeometry: THREE.CylinderGeometry;
   private shellMaterial: THREE.MeshStandardMaterial;
 
@@ -36,33 +51,40 @@ export class EffectsManager {
     this.scene = scene;
     this.camera = camera;
 
-    // Procedural decal textures
+    // Procedural high-contrast bullet impact decal textures
+    const concreteTex = this.createImpactTexture('#141618', '#383b40');
+    const woodTex = this.createImpactTexture('#281c12', '#4e3422');
+    const metalTex = this.createImpactTexture('#0a0c0e', '#5a626b');
+
     this.concreteDecalMat = new THREE.MeshBasicMaterial({
-      color: 0x181a1d,
+      map: concreteTex,
+      transparent: true,
       depthWrite: false,
       polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
+      polygonOffsetFactor: -1.5,
+      polygonOffsetUnits: -1.5,
     });
 
     this.woodDecalMat = new THREE.MeshBasicMaterial({
-      color: 0x24180e,
+      map: woodTex,
+      transparent: true,
       depthWrite: false,
       polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
+      polygonOffsetFactor: -1.5,
+      polygonOffsetUnits: -1.5,
     });
 
     this.metalDecalMat = new THREE.MeshBasicMaterial({
-      color: 0x08090a,
+      map: metalTex,
+      transparent: true,
       depthWrite: false,
       polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: -1,
+      polygonOffsetFactor: -1.5,
+      polygonOffsetUnits: -1.5,
     });
 
     // Initialize Decal Pool
-    const decalGeo = new THREE.PlaneGeometry(0.12, 0.12);
+    const decalGeo = new THREE.PlaneGeometry(0.14, 0.14);
     for (let i = 0; i < this.MAX_DECALS; i++) {
       const mesh = new THREE.Mesh(decalGeo, this.concreteDecalMat);
       mesh.visible = false;
@@ -70,7 +92,22 @@ export class EffectsManager {
       this.decalPool.push({ mesh, inUse: false });
     }
 
-    // Shell casing assets
+    // Initialize Tracer Pool (Zero Runtime Allocations)
+    const tracerMat = new THREE.LineBasicMaterial({
+      color: 0xffea55,
+      linewidth: 2,
+    });
+    for (let i = 0; i < this.MAX_TRACERS; i++) {
+      const positions = new Float32Array(6);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const line = new THREE.Line(geo, tracerMat);
+      line.visible = false;
+      this.scene.add(line);
+      this.tracerPool.push({ line, positions, lifetime: 0, active: false });
+    }
+
+    // Initialize Shell Casing Pool
     this.shellGeometry = new THREE.CylinderGeometry(0.006, 0.006, 0.024, 8);
     this.shellGeometry.rotateX(Math.PI / 2);
     this.shellMaterial = new THREE.MeshStandardMaterial({
@@ -78,6 +115,52 @@ export class EffectsManager {
       metalness: 0.95,
       roughness: 0.2,
     });
+
+    for (let i = 0; i < this.MAX_SHELLS; i++) {
+      const mesh = new THREE.Mesh(this.shellGeometry, this.shellMaterial);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.shellPool.push({
+        mesh,
+        velocity: new THREE.Vector3(),
+        angularVelocity: new THREE.Vector3(),
+        bounces: 0,
+        lifetime: 0,
+        active: false,
+      });
+    }
+  }
+
+  private createImpactTexture(coreColor: string, rimColor: string): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d')!;
+
+    // Outer crater rim
+    const grad = ctx.createRadialGradient(32, 32, 4, 32, 32, 28);
+    grad.addColorStop(0, coreColor);
+    grad.addColorStop(0.5, rimColor);
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(32, 32, 28, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Fractured spall flecks
+    ctx.fillStyle = coreColor;
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = 12 + Math.random() * 14;
+      const px = 32 + Math.cos(angle) * dist;
+      const py = 32 + Math.sin(angle) * dist;
+      ctx.fillRect(px, py, 2, 2);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
   }
 
   public spawnBulletDecal(point: THREE.Vector3, normal: THREE.Vector3, materialType: string): void {
@@ -86,6 +169,7 @@ export class EffectsManager {
 
     decal.mesh.position.copy(point).addScaledVector(normal, 0.008);
     decal.mesh.lookAt(point.clone().add(normal));
+    decal.mesh.rotation.z = Math.random() * Math.PI * 2;
 
     if (materialType === 'WOOD_THIN') {
       decal.mesh.material = this.woodDecalMat;
@@ -103,46 +187,45 @@ export class EffectsManager {
     // Suppress tracer lines completely for suppressed Vanguard M4A1-S!
     if (weaponId === 'vanguard-m4') return;
 
-    const points = [from.clone().add(new THREE.Vector3(0, -0.12, 0)), to];
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({
-      color: weaponId === 'sovereign-awp' ? 0xffffff : 0xffea55,
-      linewidth: weaponId === 'sovereign-awp' ? 3 : 2,
-    });
-    const line = new THREE.Line(geo, mat);
-    this.scene.add(line);
+    const tracer = this.tracerPool[this.tracerIndex];
+    this.tracerIndex = (this.tracerIndex + 1) % this.MAX_TRACERS;
 
-    setTimeout(() => {
-      this.scene.remove(line);
-      geo.dispose();
-      mat.dispose();
-    }, 50);
+    const pos = tracer.positions;
+    pos[0] = from.x;
+    pos[1] = from.y - 0.12;
+    pos[2] = from.z;
+    pos[3] = to.x;
+    pos[4] = to.y;
+    pos[5] = to.z;
+
+    const attr = tracer.line.geometry.attributes.position as THREE.BufferAttribute;
+    attr.needsUpdate = true;
+    tracer.line.visible = true;
+    tracer.lifetime = 0.055;
+    tracer.active = true;
   }
 
   public spawnShellCasing(origin: THREE.Vector3, forward: THREE.Vector3, right: THREE.Vector3): void {
-    const mesh = new THREE.Mesh(this.shellGeometry, this.shellMaterial);
-    mesh.position.copy(origin).addScaledVector(right, 0.2).addScaledVector(forward, 0.25);
-    mesh.position.y -= 0.1;
+    const casing = this.shellPool[this.shellIndex];
+    this.shellIndex = (this.shellIndex + 1) % this.MAX_SHELLS;
 
-    // Eject to the right with slight upward and backward arc
-    const vel = right.clone().multiplyScalar(2.4 + Math.random() * 0.8);
-    vel.y += 2.0 + Math.random() * 0.6;
-    vel.addScaledVector(forward, -0.5);
+    casing.mesh.position.copy(origin).addScaledVector(right, 0.2).addScaledVector(forward, 0.25);
+    casing.mesh.position.y -= 0.1;
 
-    const angVel = new THREE.Vector3(
+    casing.velocity.copy(right).multiplyScalar(2.4 + Math.random() * 0.8);
+    casing.velocity.y = 2.0 + Math.random() * 0.6;
+    casing.velocity.addScaledVector(forward, -0.5);
+
+    casing.angularVelocity.set(
       (Math.random() - 0.5) * 25,
       (Math.random() - 0.5) * 25,
       (Math.random() - 0.5) * 25
     );
 
-    this.scene.add(mesh);
-    this.shellCasings.push({
-      mesh,
-      velocity: vel,
-      angularVelocity: angVel,
-      bounces: 0,
-      lifetime: 0,
-    });
+    casing.bounces = 0;
+    casing.lifetime = 0;
+    casing.active = true;
+    casing.mesh.visible = true;
   }
 
   public spawnDamagePopup(pos: THREE.Vector3, dmg: number, isHeadshot: boolean): void {
@@ -160,14 +243,27 @@ export class EffectsManager {
   }
 
   public update(dt: number): void {
-    // Tick shell casings physics
-    for (let i = this.shellCasings.length - 1; i >= 0; i--) {
-      const casing = this.shellCasings[i];
-      casing.lifetime += dt;
+    // 1. Tick tracers (hide expired ones)
+    for (let i = 0; i < this.MAX_TRACERS; i++) {
+      const tracer = this.tracerPool[i];
+      if (tracer.active) {
+        tracer.lifetime -= dt;
+        if (tracer.lifetime <= 0) {
+          tracer.active = false;
+          tracer.line.visible = false;
+        }
+      }
+    }
 
+    // 2. Tick shell casings physics
+    for (let i = 0; i < this.MAX_SHELLS; i++) {
+      const casing = this.shellPool[i];
+      if (!casing.active) continue;
+
+      casing.lifetime += dt;
       if (casing.lifetime > 4.0) {
-        this.scene.remove(casing.mesh);
-        this.shellCasings.splice(i, 1);
+        casing.active = false;
+        casing.mesh.visible = false;
         continue;
       }
 
@@ -179,7 +275,7 @@ export class EffectsManager {
         casing.mesh.rotation.y += casing.angularVelocity.y * dt;
         casing.mesh.rotation.z += casing.angularVelocity.z * dt;
 
-        // Floor bounce
+        // Floor bounce at y = 0.015
         if (casing.mesh.position.y <= 0.015) {
           casing.mesh.position.y = 0.015;
           casing.velocity.y = -casing.velocity.y * 0.45;

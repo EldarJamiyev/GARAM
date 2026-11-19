@@ -167,8 +167,10 @@ export class InputManager {
         return;
       }
 
-      // If Buy Menu is open, Digit 1-8 buy items directly
-      if (this.uiState === 'BUY_MENU') {
+      // If Buy Menu is open (both state AND visible DOM), Digit 1-8 buy items directly
+      const buyMenuEl = document.getElementById('buy-menu');
+      const isBuyMenuOpen = (this.uiState === 'BUY_MENU' || (buyMenuEl && getComputedStyle(buyMenuEl).display === 'block'));
+      if (isBuyMenuOpen) {
         if (e.code.startsWith('Digit')) {
           const num = parseInt(e.code.replace('Digit', ''), 10);
           if (num >= 1 && num <= 8 && this.callbacks.onBuyItem) {
@@ -180,7 +182,7 @@ export class InputManager {
 
       // Escape key handles closing modals cleanly
       if (e.code === 'Escape') {
-        if (this.uiState === 'BUY_MENU') {
+        if (this.uiState === 'BUY_MENU' || (buyMenuEl && getComputedStyle(buyMenuEl).display === 'block')) {
           this.callbacks.onToggleBuyMenu();
           return;
         }
@@ -208,13 +210,36 @@ export class InputManager {
         return;
       }
 
+      const code = e.code;
+      const key = e.key ? e.key.toLowerCase() : '';
+
+      // Directional Movement: W/A/S/D + Arrows + International & Cyrillic Layout mapping
+      if (code === 'KeyW' || key === 'w' || key === 'ц' || code === 'ArrowUp') {
+        this.input.forward = true;
+        return;
+      }
+      if (code === 'KeyS' || key === 's' || key === 'ы' || code === 'ArrowDown') {
+        this.input.backward = true;
+        return;
+      }
+      if (code === 'KeyA' || key === 'a' || key === 'ф' || code === 'ArrowLeft') {
+        this.input.left = true;
+        return;
+      }
+      if (code === 'KeyD' || key === 'd' || key === 'в' || code === 'ArrowRight') {
+        this.input.right = true;
+        return;
+      }
+
       switch (e.code) {
-        case 'KeyW': this.input.forward = true; break;
-        case 'KeyS': this.input.backward = true; break;
-        case 'KeyA': this.input.left = true; break;
-        case 'KeyD': this.input.right = true; break;
-        case 'ControlLeft': this.input.crouch = true; break;
-        case 'ShiftLeft': this.input.walk = true; break;
+        case 'ControlLeft':
+        case 'ControlRight':
+          this.input.crouch = true;
+          break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+          this.input.walk = true;
+          break;
         case 'KeyR': this.callbacks.onReload(); break;
         case 'KeyQ': this.callbacks.onQuickSwitch(); break;
         case 'KeyF': this.callbacks.onInspectWeapon?.(); break;
@@ -232,6 +257,13 @@ export class InputManager {
         case 'Numpad4': this.callbacks.onSlotSelect(4); break;
         case 'Digit5':
         case 'Numpad5': this.callbacks.onSlotSelect(5); break;
+        default:
+          if (e.key === '1') this.callbacks.onSlotSelect(1);
+          else if (e.key === '2') this.callbacks.onSlotSelect(2);
+          else if (e.key === '3') this.callbacks.onSlotSelect(3);
+          else if (e.key === '4') this.callbacks.onSlotSelect(4);
+          else if (e.key === '5') this.callbacks.onSlotSelect(5);
+          break;
       }
     });
 
@@ -256,13 +288,36 @@ export class InputManager {
         return;
       }
 
+      const code = e.code;
+      const key = e.key ? e.key.toLowerCase() : '';
+
+      // Directional Movement Release
+      if (code === 'KeyW' || key === 'w' || key === 'ц' || code === 'ArrowUp') {
+        this.input.forward = false;
+        return;
+      }
+      if (code === 'KeyS' || key === 's' || key === 'ы' || code === 'ArrowDown') {
+        this.input.backward = false;
+        return;
+      }
+      if (code === 'KeyA' || key === 'a' || key === 'ф' || code === 'ArrowLeft') {
+        this.input.left = false;
+        return;
+      }
+      if (code === 'KeyD' || key === 'd' || key === 'в' || code === 'ArrowRight') {
+        this.input.right = false;
+        return;
+      }
+
       switch (e.code) {
-        case 'KeyW': this.input.forward = false; break;
-        case 'KeyS': this.input.backward = false; break;
-        case 'KeyA': this.input.left = false; break;
-        case 'KeyD': this.input.right = false; break;
-        case 'ControlLeft': this.input.crouch = false; break;
-        case 'ShiftLeft': this.input.walk = false; break;
+        case 'ControlLeft':
+        case 'ControlRight':
+          this.input.crouch = false;
+          break;
+        case 'ShiftLeft':
+        case 'ShiftRight':
+          this.input.walk = false;
+          break;
       }
     });
 

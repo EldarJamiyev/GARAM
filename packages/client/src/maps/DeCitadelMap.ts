@@ -37,62 +37,76 @@ export interface BotEntity {
 }
 
 export function createProceduralTextures(maxAnisotropy = 8) {
-  // 1. Tactical Concrete Ground (High-albedo sunlit concrete #787e85)
+  // 1. Tactical Concrete Ground (High-albedo sunlit concrete with sRGB color space)
   const canvasConcrete = document.createElement('canvas');
   canvasConcrete.width = 512;
   canvasConcrete.height = 512;
   const ctxC = canvasConcrete.getContext('2d')!;
 
-  ctxC.fillStyle = '#787e85';
+  ctxC.fillStyle = '#8e939a';
   ctxC.fillRect(0, 0, 512, 512);
 
-  for (let i = 0; i < 40000; i++) {
+  for (let i = 0; i < 45000; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
     const val = Math.random();
-    ctxC.fillStyle = val > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.12)';
+    ctxC.fillStyle = val > 0.5 ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.10)';
     ctxC.fillRect(x, y, 2, 2);
   }
 
-  ctxC.strokeStyle = 'rgba(30, 34, 40, 0.4)';
-  ctxC.lineWidth = 4;
+  // Expansion joint grid
+  ctxC.strokeStyle = 'rgba(20, 24, 30, 0.45)';
+  ctxC.lineWidth = 3;
   ctxC.strokeRect(0, 0, 512, 512);
   ctxC.strokeRect(0, 0, 256, 256);
   ctxC.strokeRect(256, 256, 256, 256);
 
   const concreteTex = new THREE.CanvasTexture(canvasConcrete);
+  concreteTex.colorSpace = THREE.SRGBColorSpace;
   concreteTex.wrapS = THREE.RepeatWrapping;
   concreteTex.wrapT = THREE.RepeatWrapping;
-  concreteTex.repeat.set(16, 16);
+  concreteTex.repeat.set(24, 24);
   concreteTex.anisotropy = maxAnisotropy;
 
-  // 2. Fortified Citadel Wall
+  // 2. Fortified Citadel Travertine Wall with 1.65m Head-Height Architectural Band
   const canvasWall = document.createElement('canvas');
   canvasWall.width = 512;
   canvasWall.height = 512;
   const ctxW = canvasWall.getContext('2d')!;
 
-  ctxW.fillStyle = '#656b73';
+  ctxW.fillStyle = '#88857e';
   ctxW.fillRect(0, 0, 512, 512);
 
-  for (let i = 0; i < 26000; i++) {
+  for (let i = 0; i < 35000; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
-    ctxW.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.12)';
-    ctxW.fillRect(x, y, 3, 3);
+    ctxW.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.09)';
+    ctxW.fillRect(x, y, 2, 2);
   }
 
-  ctxW.fillStyle = '#1e2226';
-  ctxW.fillRect(0, 484, 512, 28);
-  ctxW.fillRect(0, 0, 512, 20);
+  // Dark protective base kick-plate (bottom 36px)
+  ctxW.fillStyle = '#2b2e34';
+  ctxW.fillRect(0, 476, 512, 36);
 
-  ctxW.strokeStyle = 'rgba(10, 12, 15, 0.55)';
-  ctxW.lineWidth = 3;
+  // 1.65m Head-Height Architectural Datum Line (CS2 Pro Pre-Aim Reference)
+  ctxW.fillStyle = '#3a3e46';
+  ctxW.fillRect(0, 310, 512, 14);
+  ctxW.fillStyle = 'rgba(212, 175, 55, 0.45)'; // Subtle gold accent stripe
+  ctxW.fillRect(0, 308, 512, 2);
+
+  // Subtle vertical panel seams
+  ctxW.strokeStyle = 'rgba(15, 18, 22, 0.35)';
+  ctxW.lineWidth = 2;
+  ctxW.beginPath();
+  ctxW.moveTo(256, 0); ctxW.lineTo(256, 512);
+  ctxW.stroke();
   ctxW.strokeRect(0, 0, 512, 512);
 
   const wallTex = new THREE.CanvasTexture(canvasWall);
+  wallTex.colorSpace = THREE.SRGBColorSpace;
   wallTex.wrapS = THREE.RepeatWrapping;
   wallTex.wrapT = THREE.RepeatWrapping;
+  wallTex.repeat.set(4, 2);
   wallTex.anisotropy = maxAnisotropy;
 
   // 3. Military Wooden Crate
@@ -101,28 +115,29 @@ export function createProceduralTextures(maxAnisotropy = 8) {
   canvasCrate.height = 256;
   const ctxCr = canvasCrate.getContext('2d')!;
 
-  ctxCr.fillStyle = '#8a5c36';
+  ctxCr.fillStyle = '#94663d';
   ctxCr.fillRect(0, 0, 256, 256);
 
-  ctxCr.fillStyle = '#704626';
+  ctxCr.fillStyle = '#7a4e28';
   for (let y = 0; y < 256; y += 32) {
     ctxCr.fillRect(0, y, 256, 3);
   }
 
-  ctxCr.strokeStyle = '#221e1a';
-  ctxCr.lineWidth = 16;
+  ctxCr.strokeStyle = '#241f1a';
+  ctxCr.lineWidth = 14;
   ctxCr.strokeRect(0, 0, 256, 256);
   ctxCr.beginPath();
   ctxCr.moveTo(0, 0);
   ctxCr.lineTo(256, 256);
   ctxCr.stroke();
 
-  ctxCr.fillStyle = 'rgba(255, 255, 255, 0.35)';
+  ctxCr.fillStyle = 'rgba(255, 255, 255, 0.4)';
   ctxCr.font = 'bold 20px monospace';
   ctxCr.textAlign = 'center';
   ctxCr.fillText('GARAM SEC', 128, 140);
 
   const crateTex = new THREE.CanvasTexture(canvasCrate);
+  crateTex.colorSpace = THREE.SRGBColorSpace;
   crateTex.anisotropy = maxAnisotropy;
 
   // 4. Industrial Hazard Stripes
@@ -131,9 +146,9 @@ export function createProceduralTextures(maxAnisotropy = 8) {
   canvasHazard.height = 256;
   const ctxH = canvasHazard.getContext('2d')!;
 
-  ctxH.fillStyle = '#f0c000';
+  ctxH.fillStyle = '#f5c518';
   ctxH.fillRect(0, 0, 256, 256);
-  ctxH.fillStyle = '#141414';
+  ctxH.fillStyle = '#141618';
 
   for (let i = -256; i < 512; i += 40) {
     ctxH.beginPath();
@@ -145,6 +160,7 @@ export function createProceduralTextures(maxAnisotropy = 8) {
   }
 
   const hazardTex = new THREE.CanvasTexture(canvasHazard);
+  hazardTex.colorSpace = THREE.SRGBColorSpace;
   hazardTex.wrapS = THREE.RepeatWrapping;
   hazardTex.wrapT = THREE.RepeatWrapping;
   hazardTex.repeat.set(4, 1);
@@ -156,15 +172,16 @@ export function createProceduralTextures(maxAnisotropy = 8) {
   canvasCorrugated.height = 256;
   const ctxCorr = canvasCorrugated.getContext('2d')!;
 
-  ctxCorr.fillStyle = '#223d57';
+  ctxCorr.fillStyle = '#26425e';
   ctxCorr.fillRect(0, 0, 256, 256);
   for (let x = 0; x < 256; x += 16) {
-    ctxCorr.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    ctxCorr.fillStyle = 'rgba(255, 255, 255, 0.15)';
     ctxCorr.fillRect(x, 0, 4, 256);
-    ctxCorr.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctxCorr.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctxCorr.fillRect(x + 8, 0, 8, 256);
   }
   const containerBlueTex = new THREE.CanvasTexture(canvasCorrugated);
+  containerBlueTex.colorSpace = THREE.SRGBColorSpace;
   containerBlueTex.wrapS = THREE.RepeatWrapping;
   containerBlueTex.wrapT = THREE.RepeatWrapping;
   containerBlueTex.anisotropy = maxAnisotropy;
@@ -211,6 +228,25 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   const containerBlueMat = new THREE.MeshStandardMaterial({ map: containerBlueTex, roughness: 0.45, metalness: 0.7 });
   const containerRedMat = new THREE.MeshStandardMaterial({ color: 0x8a2828, roughness: 0.45, metalness: 0.7 });
 
+  // Contact AO floor gradient for wall & crate bases
+  const aoCanvas = document.createElement('canvas');
+  aoCanvas.width = 64; aoCanvas.height = 64;
+  const aoCtx = aoCanvas.getContext('2d')!;
+  const aoGrad = aoCtx.createLinearGradient(0, 0, 0, 64);
+  aoGrad.addColorStop(0, 'rgba(0, 0, 0, 0.65)');
+  aoGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.25)');
+  aoGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
+  aoCtx.fillStyle = aoGrad;
+  aoCtx.fillRect(0, 0, 64, 64);
+  const aoTex = new THREE.CanvasTexture(aoCanvas);
+  aoTex.colorSpace = THREE.SRGBColorSpace;
+  const aoMat = new THREE.MeshBasicMaterial({
+    map: aoTex,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+
   for (const b of blocks) {
     colliders.push({
       minX: b.minX,
@@ -239,6 +275,19 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     mesh.receiveShadow = true;
     mesh.name = b.id;
     scene.add(mesh);
+
+    // Grounded Contact AO Floor Strips along wall & crate bases
+    if (b.y <= 0.1 && b.h >= 1.5 && b.w <= 50) {
+      const aoFront = new THREE.Mesh(new THREE.PlaneGeometry(b.w, 0.42), aoMat);
+      aoFront.rotation.x = -Math.PI / 2;
+      aoFront.position.set(b.x, 0.015, b.z + b.d / 2 + 0.21);
+      scene.add(aoFront);
+
+      const aoBack = new THREE.Mesh(new THREE.PlaneGeometry(b.w, 0.42), aoMat);
+      aoBack.rotation.x = Math.PI / 2;
+      aoBack.position.set(b.x, 0.015, b.z - b.d / 2 - 0.21);
+      scene.add(aoBack);
+    }
   }
 
   // Bombsite A Ground Ring
@@ -261,6 +310,7 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   ctxA.textBaseline = 'middle';
   ctxA.fillText('A', 64, 64);
   const aTex = new THREE.CanvasTexture(canvasA);
+  aTex.colorSpace = THREE.SRGBColorSpace;
   const aMesh = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({ map: aTex, transparent: true, side: THREE.DoubleSide }));
   aMesh.rotation.x = -Math.PI / 2;
   aMesh.position.set(BOMBSITES.A.center.x, 0.03, BOMBSITES.A.center.z);
@@ -286,6 +336,7 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   ctxB.textBaseline = 'middle';
   ctxB.fillText('B', 64, 64);
   const bTex = new THREE.CanvasTexture(canvasB);
+  bTex.colorSpace = THREE.SRGBColorSpace;
   const bMesh = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({ map: bTex, transparent: true, side: THREE.DoubleSide }));
   bMesh.rotation.x = -Math.PI / 2;
   bMesh.position.set(BOMBSITES.B.center.x, 0.03, BOMBSITES.B.center.z);
@@ -307,6 +358,7 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     sCtx.textBaseline = 'middle';
     sCtx.fillText(text, 128, 32);
     const sTex = new THREE.CanvasTexture(sCanvas);
+    sTex.colorSpace = THREE.SRGBColorSpace;
     const sMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 0.88), new THREE.MeshBasicMaterial({ map: sTex, transparent: true }));
     sMesh.position.copy(pos);
     sMesh.rotation.y = rotY;

@@ -7,6 +7,8 @@ export interface CustomizerCallbacks {
   onToggleInfiniteAmmo: (enabled: boolean) => void;
   onToggleShowImpacts: (enabled: boolean) => void;
   onToggleFreezeBots: (frozen: boolean) => void;
+  onToggleHitboxes?: (show: boolean) => void;
+  onToggleFollowRecoil?: (enabled: boolean) => void;
   onRespawnBots: () => void;
   onExit: () => void;
 }
@@ -20,6 +22,7 @@ export class CustomizerUI {
   public infiniteAmmo = false;
   public showImpacts = false;
   public freezeBots = false;
+  public showHitboxes = false;
 
   // Cached original weapon specs for reset
   private originalWeapons: Record<string, WeaponDef> = {};
@@ -91,6 +94,7 @@ export class CustomizerUI {
               <div class="cust-row"><span>CENTER DOT</span><input type="checkbox" id="ch-dot"></div>
               <div class="cust-row"><span>OUTLINE</span><input type="checkbox" id="ch-outline" checked></div>
               <div class="cust-row"><span>DYNAMIC SPREAD</span><input type="checkbox" id="ch-dyn" checked></div>
+              <div class="cust-row"><span>FOLLOW RECOIL [CS2]</span><input type="checkbox" id="ch-follow"></div>
             </div>
           </div>
         </div>
@@ -137,7 +141,11 @@ export class CustomizerUI {
               <div style="font-weight: 700; color: #ff334b;">FREEZE BOTS: OFF</div>
               <div style="font-size: 11px; color: #8892a0;">Halt all AI movement & fire</div>
             </button>
-            <button class="cust-toggle-card" id="sb-respawn" style="grid-column: span 2;">
+            <button class="cust-toggle-card" id="sb-wireframes">
+              <div style="font-weight: 700; color: #ffaa00;">SHOW HITBOXES: OFF</div>
+              <div style="font-size: 11px; color: #8892a0;">5-Zone skeletal bounds</div>
+            </button>
+            <button class="cust-toggle-card" id="sb-respawn">
               <div style="font-weight: 700; color: #fff;">RESPAWN ALL BOTS</div>
               <div style="font-size: 11px; color: #8892a0;">Reset 5v5 rosters to spawn coordinates</div>
             </button>
@@ -256,6 +264,15 @@ export class CustomizerUI {
       this.renderCrosshairPreview();
     };
 
+    const followInput = this.modal.querySelector('#ch-follow') as HTMLInputElement;
+    if (followInput) {
+      followInput.checked = !!settingsStore.settings.followRecoil;
+      followInput.addEventListener('change', () => {
+        settingsStore.update('followRecoil', followInput.checked);
+        this.callbacks.onToggleFollowRecoil?.(followInput.checked);
+      });
+    }
+
     [lenInput, thickInput, gapInput, colorInput, dotInput, outlineInput, dynInput].forEach((el) => {
       el.addEventListener('input', onChUpdate);
     });
@@ -324,6 +341,13 @@ export class CustomizerUI {
       const el = this.modal.querySelector('#sb-freeze div:first-child')!;
       el.textContent = `FREEZE BOTS: ${this.freezeBots ? 'ON' : 'OFF'}`;
       this.callbacks.onToggleFreezeBots(this.freezeBots);
+    });
+    this.modal.querySelector('#sb-wireframes')?.addEventListener('click', () => {
+      this.showHitboxes = !this.showHitboxes;
+      settingsStore.update('showHitboxes', this.showHitboxes);
+      const el = this.modal.querySelector('#sb-wireframes div:first-child')!;
+      el.textContent = `SHOW HITBOXES: ${this.showHitboxes ? 'ON' : 'OFF'}`;
+      this.callbacks.onToggleHitboxes?.(this.showHitboxes);
     });
     this.modal.querySelector('#sb-respawn')?.addEventListener('click', () => this.callbacks.onRespawnBots());
   }
