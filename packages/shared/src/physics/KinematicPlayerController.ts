@@ -39,6 +39,7 @@ export interface AABBCollider {
 export class KinematicPlayerController {
   public state: PlayerState;
   public radius = 0.38;
+  public readonly MAX_STEP_HEIGHT = 0.42; // Auto-step height for stairs and curbs
 
   constructor(startX = 0, startY = 0, startZ = 25) {
     this.state = {
@@ -148,60 +149,90 @@ export class KinematicPlayerController {
       this.state.vy -= KINEMATICS.GRAVITY * dt;
     }
 
-    // Axis-by-Axis Movement Integration with Wall Collision Sliding & Auto-Step
+    // Target capsule height
     const targetHeight = input.crouch ? KINEMATICS.CAPSULE_HEIGHT_CROUCH : KINEMATICS.CAPSULE_HEIGHT_STAND;
 
-    // 1. Move X with collision
+    // 1. Resolve X movement with 0.42m Auto-Step
     let newX = this.state.x + this.state.vx * dt;
+    let steppedY = this.state.y;
+
     for (const b of colliders) {
-      if (this.intersectsBox(newX, this.state.y, this.state.z, this.radius, targetHeight, b)) {
-        // Resolve X
-        if (this.state.vx > 0) {
-          newX = b.minX - this.radius;
-        } else if (this.state.vx < 0) {
-          newX = b.maxX + this.radius;
+      if (this.intersectsBox(newX, steppedY, this.state.z, this.radius, targetHeight, b)) {
+        const stepDiff = b.maxY - this.state.y;
+        // Auto-step if curb/stair is <= 0.42m high and there is head clearance
+        if (this.state.isGrounded && stepDiff > 0 && stepDiff <= this.MAX_STEP_HEIGHT && this.hasHeadClearance(newX, b.maxY, this.state.z, targetHeight, colliders, b)) {
+          steppedY = b.maxY;
+        } else {
+          // Resolve wall collision sliding
+          if (this.state.vx > 0) {
+            newX = b.minX - this.radius;
+          } else if (this.state.vx < 0) {
+            newX = b.maxX + this.radius;
+          }
+          this.state.vx = 0;
         }
-        this.state.vx = 0;
       }
     }
     this.state.x = newX;
+    this.state.y = steppedY;
 
-    // 2. Move Z with collision
+    // 2. Resolve Z movement with 0.42m Auto-Step
     let newZ = this.state.z + this.state.vz * dt;
+    steppedY = this.state.y;
+
     for (const b of colliders) {
-      if (this.intersectsBox(this.state.x, this.state.y, newZ, this.radius, targetHeight, b)) {
-        // Resolve Z
-        if (this.state.vz > 0) {
-          newZ = b.minZ - this.radius;
-        } else if (this.state.vz < 0) {
-          newZ = b.maxZ + this.radius;
+      if (this.intersectsBox(this.state.x, steppedY, newZ, this.radius, targetHeight, b)) {
+        const stepDiff = b.maxY - this.state.y;
+        if (this.state.isGrounded && stepDiff > 0 && stepDiff <= this.MAX_STEP_HEIGHT && this.hasHeadClearance(this.state.x, b.maxY, newZ, targetHeight, colliders, b)) {
+          steppedY = b.maxY;
+        } else {
+          if (this.state.vz > 0) {
+            newZ = b.minZ - this.radius;
+          } else if (this.state.vz < 0) {
+            newZ = b.maxZ + this.radius;
+          }
+          this.state.vz = 0;
         }
-        this.state.vz = 0;
       }
     }
     this.state.z = newZ;
+    this.state.y = steppedY;
 
-    // 3. Move Y with ground & ceiling collision
+    // 3. Resolve Y movement with Ground & Ceiling checks
     let newY = this.state.y + this.state.vy * dt;
     this.state.isGrounded = false;
 
-    // Check world bounds / floor
+    // Upward ceiling collision
+    if (this.state.vy > 0) {
+      for (const b of colliders) {
+        if (
+          this.state.x + this.radius > b.minX &&
+          this.state.x - this.radius < b.maxX &&
+          this.state.z + this.radius > b.minZ &&
+          this.state.z - this.radius < b.maxZ
+        ) {
+          if (this.state.y + targetHeight <= b.minY && newY + targetHeight >= b.minY) {
+            newY = b.minY - targetHeight;
+            this.state.vy = 0;
+          }
+        }
+      }
+    }
+
+    // Downward floor & crate top landing
     if (newY <= 0) {
       newY = 0;
       this.state.vy = 0;
       this.state.isGrounded = true;
     }
 
-    // Check colliders for standing on top of crates/ledges
     for (const b of colliders) {
-      // Check if player's foot lands on top of a box
       if (
         this.state.x + this.radius > b.minX &&
         this.state.x - this.radius < b.maxX &&
         this.state.z + this.radius > b.minZ &&
         this.state.z - this.radius < b.maxZ
       ) {
-        // Stepping onto box
         if (this.state.vy <= 0 && this.state.y >= b.maxY - 0.45 && newY <= b.maxY) {
           newY = b.maxY;
           this.state.vy = 0;
@@ -209,7 +240,25 @@ export class KinematicPlayerController {
         }
       }
     }
+
     this.state.y = newY;
+  }
+
+  private hasHeadClearance(
+    px: number,
+    baseY: number,
+    pz: number,
+    height: number,
+    colliders: AABBCollider[],
+    ignoreBox: AABBCollider
+  ): boolean {
+    for (const b of colliders) {
+      if (b === ignoreBox) continue;
+      if (this.intersectsBox(px, baseY, pz, this.radius, height, b)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private intersectsBox(
