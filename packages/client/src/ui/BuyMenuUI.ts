@@ -3,7 +3,7 @@ import { EconomyManager } from '../match/EconomyManager.js';
 import { InventoryManager, SlotNumber } from '../combat/InventoryManager.js';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { HUDManager } from './HUDManager.js';
-import { WEAPONS } from '@garam/shared';
+import { WEAPONS, ECONOMY } from '@garam/shared';
 
 export interface BuyMenuUICallbacks {
   onTogglePointerLock: (lock: boolean) => void;
@@ -121,9 +121,10 @@ export class BuyMenuUI {
         this.triggerRejectionCue('KIT ALREADY EQUIPPED');
         return;
       }
-      if (this.economy.spendCash(400)) {
+      const kitPrice = ECONOMY.prices.defuseKit;
+      if (this.economy.spendCash(kitPrice)) {
         this.economy.hasDefuseKit = true;
-        this.hud.addKillfeed('Purchased Fast Defusal Kit ($400)');
+        this.hud.addKillfeed(`Purchased Fast Defusal Kit ($${kitPrice})`);
         this.audio.playReload();
       } else {
         this.triggerRejectionCue('INSUFFICIENT FUNDS');

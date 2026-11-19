@@ -21,8 +21,8 @@ export interface TickHistorySnapshot {
 export class LagCompensation {
   private history: TickHistorySnapshot[] = [];
   private readonly MAX_HISTORY_TICKS = 64; // ~1000ms at 64 ticks
-  public readonly MIN_LAG_COMPENSATION_MS = 80;
-  public readonly MAX_LAG_COMPENSATION_MS = 150; // Hard tournament ceiling
+  public readonly MIN_LAG_COMPENSATION_MS = 64; // Base interpolation & jitter window (64ms)
+  public readonly MAX_LAG_COMPENSATION_MS = 120; // Hard tournament ceiling (120ms max rewind)
 
   public recordSnapshot(tick: number, timestamp: number, targets: SnapshotTarget[]): void {
     const snapshot: TickHistorySnapshot = {
@@ -39,16 +39,17 @@ export class LagCompensation {
 
   /**
    * Rewinds target hitboxes to the exact client perspective timestamp,
-   * dynamically bounded by halfRtt + interpolation buffer delay (46.875ms),
+   * dynamically bounded by half-RTT (pingMs * 0.5) + interpolation buffer (46.875ms) + jitter margin (16ms),
+   * clamped strictly to [64ms, 120ms],
    * with smooth linear interpolation between historical snapshots.
    */
   public getRewoundTargets(serverNow: number, targetServerTime: number, pingMs?: number): TargetCollider[] {
     if (this.history.length === 0) return [];
 
-    // Dynamically clamp rewind: if ping is provided, accommodate ping + interpolation buffer (46.875ms)
-    // up to 150ms ceiling; otherwise default to strict 80ms base cap.
+    // Dynamically clamp rewind: half-RTT transit plus 46.875ms interpolation window + 16ms jitter margin
+    // Clamped strictly to [MIN_LAG_COMPENSATION_MS (64ms), MAX_LAG_COMPENSATION_MS (120ms)]
     const dynamicMaxRewind = pingMs !== undefined
-      ? Math.min(this.MAX_LAG_COMPENSATION_MS, Math.max(this.MIN_LAG_COMPENSATION_MS, pingMs + 46.875 + 16))
+      ? Math.min(this.MAX_LAG_COMPENSATION_MS, Math.max(this.MIN_LAG_COMPENSATION_MS, Math.round(pingMs * 0.5 + 46.875 + 16)))
       : this.MIN_LAG_COMPENSATION_MS;
 
     const minAllowedTime = serverNow - dynamicMaxRewind;

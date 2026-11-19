@@ -8,8 +8,12 @@ import {
   KinematicPlayerController,
   PlayerInput,
   executeTacticalRaycast,
+  hasLineOfSight,
   TargetCollider,
   Ray,
+  SpatialGrid,
+  BinaryCodec,
+  BinarySnapshotData,
   ClientPacket,
   ServerPacket,
   NetOperatorState,
@@ -17,6 +21,12 @@ import {
   validateClientPacket
 } from '@garam/shared';
 import { LagCompensation, SnapshotTarget } from './LagCompensation.js';
+
+interface QueuedInput {
+  seq: number;
+  input: PlayerInput;
+  weaponId: string;
+}
 
 interface HumanSession {
   id: string;
@@ -40,7 +50,10 @@ interface HumanSession {
   kills: number;
   deaths: number;
   ping: number;
-  simBudgetMs: number;
+  inputQueue: QueuedInput[];
+  framesProcessedThisSecond: number;
+  currentSecondBucket: number;
+  useBinary: boolean;
 }
 
 interface ServerBot {
@@ -67,7 +80,8 @@ export class GameRoom {
   private tick = 0;
   private readonly TICK_RATE = 64;
   private readonly TICK_DT = 1 / 64;
-  private intervalHandle: NodeJS.Timeout | null = null;
+  private isRunning = false;
+  private loopTimeoutHandle: NodeJS.Timeout | null = null;
 
   // MR12 Match State
   public round = 1;
@@ -89,6 +103,8 @@ export class GameRoom {
     defuseProgress: 0,
     timeRemaining: 0,
   };
+
+  private spatialGrid = new SpatialGrid(DE_CITADEL_BLOCKS, 10);
 
   constructor() {
     this.initDefaultBots();
@@ -142,12 +158,36 @@ export class GameRoom {
     }
   }
 
+  public getPlayerCount(): number {
+    return this.sessions.size;
+  }
+
   public handleConnection(ws: WebSocket, rateLimitCheck?: () => boolean): void {
     const sessionId = `player_${Math.random().toString(36).substring(2, 9)}`;
 
     ws.on('message', (data) => {
       if (rateLimitCheck && !rateLimitCheck()) {
         return;
+      }
+
+      // Fast-path 22-byte zero-allocation binary user input decoding
+      if (Buffer.isBuffer(data) && data.length >= 22 && data[0] === 0x47 && data[1] === 0x02) {
+        const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+        const decodedInput = BinaryCodec.decodeInput(ab);
+        if (decodedInput) {
+          const session = this.sessions.get(sessionId);
+          if (session) {
+            session.useBinary = true;
+            if (session.inputQueue.length < 16) {
+              session.inputQueue.push({
+                seq: decodedInput.seq,
+                input: decodedInput.input,
+                weaponId: decodedInput.weaponId,
+              });
+            }
+          }
+          return;
+        }
       }
 
       try {
@@ -206,7 +246,10 @@ export class GameRoom {
         kills: 0,
         deaths: 0,
         ping: 15,
-        simBudgetMs: 46.875,
+        inputQueue: [],
+        framesProcessedThisSecond: 0,
+        currentSecondBucket: Math.floor(Date.now() / 1000),
+        useBinary: false,
       };
 
       this.sessions.set(sessionId, session);
@@ -237,29 +280,27 @@ export class GameRoom {
     }
 
     if (packet.type === 'input') {
-      // Simulation time budget check: prevent time-dilation / input burst speedhacks
-      const stepCostMs = KINEMATICS.FIXED_DT * 1000; // 7.8125ms
-      if (session.simBudgetMs < stepCostMs * 0.5) {
-        return;
+      // Buffer legitimate input frames into session FIFO queue (cap: 16 frames = 125ms burst tolerance)
+      if (session.inputQueue.length < 16) {
+        session.inputQueue.push({
+          seq: packet.seq,
+          input: packet.input,
+          weaponId: packet.weaponId,
+        });
       }
-      session.simBudgetMs -= stepCostMs;
-      session.lastInputSeq = packet.seq;
-      const weapon = WEAPONS[packet.weaponId] || WEAPONS['garam-47'];
-
-      // Run 128Hz fixed kinematic step on server for 100% mathematical parity
-      session.controller.update(
-        packet.input,
-        KINEMATICS.FIXED_DT,
-        weapon.movementSpeed,
-        DE_CITADEL_BLOCKS.map(b => ({
-          minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY, minZ: b.minZ, maxZ: b.maxZ
-        }))
-      );
       return;
     }
 
     if (packet.type === 'fire') {
       if (session.isDead) return;
+
+      // Silent-Aim Angle Guard: reject FireAction if yaw diverges by > 15° (0.26 rad) from latest controller state
+      const yawDiff = Math.abs(packet.yaw - session.controller.state.yaw) % (Math.PI * 2);
+      const angleDelta = yawDiff > Math.PI ? (Math.PI * 2 - yawDiff) : yawDiff;
+      if (angleDelta > 0.26) {
+        return; // Silent-aim attempt dropped
+      }
+
       session.isScoped = !!packet.isScoped;
       const weapon = WEAPONS[packet.weaponId] || WEAPONS[session.activeWeaponId];
       if (!weapon) return;
@@ -307,7 +348,9 @@ export class GameRoom {
         weapon.penetrationPower,
         250,
         DE_CITADEL_BLOCKS,
-        rewoundTargets
+        rewoundTargets,
+        1.0,
+        this.spatialGrid
       );
 
       for (const hit of hits) {
@@ -376,131 +419,255 @@ export class GameRoom {
     }
   }
 
+  public stop(): void {
+    this.isRunning = false;
+    if (this.loopTimeoutHandle) {
+      clearTimeout(this.loopTimeoutHandle);
+      this.loopTimeoutHandle = null;
+    }
+  }
+
   private startLoop(): void {
-    this.intervalHandle = setInterval(() => {
-      this.tick++;
-      const now = Date.now();
+    this.isRunning = true;
+    const tickIntervalNs = BigInt(Math.round(1e9 / this.TICK_RATE)); // 15,625,000 ns (64Hz)
+    let nextTickNs = process.hrtime.bigint();
 
-      // Replenish simulation time budget per connected player (cap 46.875ms, i.e. 3 ticks)
-      this.sessions.forEach(s => {
-        s.simBudgetMs = Math.min(46.875, s.simBudgetMs + this.TICK_DT * 1000);
-      });
+    const tickStep = () => {
+      if (!this.isRunning) return;
 
-      // 1. Update Match Timers
-      this.updateMatchState();
+      const nowNs = process.hrtime.bigint();
+      if (nowNs >= nextTickNs) {
+        this.tickAuthoritative();
+        nextTickNs += tickIntervalNs;
 
-      // 2. Snapshot target hitboxes for 80ms lag compensation
-      const snapshotTargets: SnapshotTarget[] = [];
-      this.sessions.forEach(s => {
-        if (!s.isDead) {
-          snapshotTargets.push({
-            id: s.id,
-            name: s.name,
-            team: s.team,
-            x: s.controller.state.x,
-            y: s.controller.state.y,
-            z: s.controller.state.z,
-            armor: s.armor,
-            hasHelmet: s.hasHelmet,
-            isDead: s.isDead,
-          });
+        // Catch up clamp if server stalled for > 2 ticks to prevent spiral
+        if (nowNs - nextTickNs > tickIntervalNs * 2n) {
+          nextTickNs = nowNs + tickIntervalNs;
         }
-      });
-      this.bots.forEach(b => {
-        if (!b.isDead) {
-          snapshotTargets.push({
-            id: b.id,
-            name: b.name,
-            team: b.team,
-            x: b.controller.state.x,
-            y: b.controller.state.y,
-            z: b.controller.state.z,
-            armor: b.armor,
-            hasHelmet: b.hasHelmet,
-            isDead: b.isDead,
-          });
+      }
+
+      const diffNs = nextTickNs - process.hrtime.bigint();
+      const delayMs = diffNs > 1_000_000n ? Math.max(0, Number(diffNs / 1_000_000n)) : 0;
+      this.loopTimeoutHandle = setTimeout(tickStep, delayMs);
+    };
+
+    tickStep();
+  }
+
+  private tickAuthoritative(): void {
+    this.tick++;
+    const now = Date.now();
+
+    // 0. Drain queued inputs with burst tolerance (drain up to 4 per 64Hz tick, max 132/sec ceiling)
+    const secondBucket = Math.floor(now / 1000);
+    this.sessions.forEach(s => {
+      if (s.currentSecondBucket !== secondBucket) {
+        s.currentSecondBucket = secondBucket;
+        s.framesProcessedThisSecond = 0;
+      }
+
+      let drained = 0;
+      while (s.inputQueue.length > 0 && drained < 4) {
+        if (s.framesProcessedThisSecond >= 132) {
+          // Speedhack rate ceiling reached: drop excess frame
+          s.inputQueue.shift();
+          drained++;
+          continue;
         }
-      });
 
-      this.lagComp.recordSnapshot(this.tick, now, snapshotTargets);
+        const frame = s.inputQueue.shift()!;
+        s.lastInputSeq = frame.seq;
+        const weapon = WEAPONS[frame.weaponId] || WEAPONS['garam-47'];
 
-      // 3. Assemble and broadcast authoritative 64-tick state snapshot
-      const playerStates: NetOperatorState[] = [];
-      this.sessions.forEach(s => {
-        playerStates.push({
+        // Run 128Hz fixed kinematic step on server for 100% mathematical parity
+        s.controller.update(
+          frame.input,
+          KINEMATICS.FIXED_DT,
+          weapon.movementSpeed,
+          DE_CITADEL_BLOCKS.map(b => ({
+            minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY, minZ: b.minZ, maxZ: b.maxZ
+          }))
+        );
+
+        s.framesProcessedThisSecond++;
+        drained++;
+      }
+    });
+
+    // 1. Update Match Timers
+    this.updateMatchState();
+
+    // 2. Snapshot target hitboxes for 80ms lag compensation
+    const snapshotTargets: SnapshotTarget[] = [];
+    this.sessions.forEach(s => {
+      if (!s.isDead) {
+        snapshotTargets.push({
           id: s.id,
           name: s.name,
           team: s.team,
           x: s.controller.state.x,
           y: s.controller.state.y,
           z: s.controller.state.z,
-          vx: s.controller.state.vx,
-          vy: s.controller.state.vy,
-          vz: s.controller.state.vz,
-          yaw: s.controller.state.yaw,
-          pitch: s.controller.state.pitch,
-          health: s.health,
           armor: s.armor,
-          activeWeapon: s.activeWeaponId,
-          currentAmmo: s.currentAmmo,
-          reserveAmmo: s.reserveAmmo,
-          isScoped: s.isScoped,
-          isReloading: s.isReloading,
-          isCrouching: s.controller.state.isCrouching,
+          hasHelmet: s.hasHelmet,
           isDead: s.isDead,
-          ping: s.ping,
-          kills: s.kills,
-          deaths: s.deaths,
         });
-      });
-
-      this.bots.forEach(b => {
-        playerStates.push({
+      }
+    });
+    this.bots.forEach(b => {
+      if (!b.isDead) {
+        snapshotTargets.push({
           id: b.id,
           name: b.name,
           team: b.team,
           x: b.controller.state.x,
           y: b.controller.state.y,
           z: b.controller.state.z,
-          vx: b.controller.state.vx,
-          vy: b.controller.state.vy,
-          vz: b.controller.state.vz,
-          yaw: b.controller.state.yaw,
-          pitch: 0,
-          health: b.health,
           armor: b.armor,
-          activeWeapon: 'garam-47',
-          currentAmmo: 30,
-          reserveAmmo: 90,
-          isScoped: false,
-          isReloading: false,
-          isCrouching: false,
+          hasHelmet: b.hasHelmet,
           isDead: b.isDead,
-          ping: 0,
-          kills: b.kills,
-          deaths: b.deaths,
         });
-      });
+      }
+    });
 
-      // Broadcast snapshots to connected clients with their last acknowledged input sequence
-      this.sessions.forEach(s => {
+    this.lagComp.recordSnapshot(this.tick, now, snapshotTargets);
+
+    // 3. Assemble authoritative 64-tick state snapshot
+    const playerStates: NetOperatorState[] = [];
+    this.sessions.forEach(s => {
+      playerStates.push({
+        id: s.id,
+        name: s.name,
+        team: s.team,
+        x: s.controller.state.x,
+        y: s.controller.state.y,
+        z: s.controller.state.z,
+        vx: s.controller.state.vx,
+        vy: s.controller.state.vy,
+        vz: s.controller.state.vz,
+        yaw: s.controller.state.yaw,
+        pitch: s.controller.state.pitch,
+        health: s.health,
+        armor: s.armor,
+        hasHelmet: s.hasHelmet,
+        hasDefuseKit: s.hasDefuseKit,
+        activeWeapon: s.activeWeaponId,
+        currentAmmo: s.currentAmmo,
+        reserveAmmo: s.reserveAmmo,
+        isScoped: s.isScoped,
+        isReloading: s.isReloading,
+        isCrouching: s.controller.state.isCrouching,
+        isDead: s.isDead,
+        ping: s.ping,
+        kills: s.kills,
+        deaths: s.deaths,
+      });
+    });
+
+    this.bots.forEach(b => {
+      playerStates.push({
+        id: b.id,
+        name: b.name,
+        team: b.team,
+        x: b.controller.state.x,
+        y: b.controller.state.y,
+        z: b.controller.state.z,
+        vx: b.controller.state.vx,
+        vy: b.controller.state.vy,
+        vz: b.controller.state.vz,
+        yaw: b.controller.state.yaw,
+        pitch: 0,
+        health: b.health,
+        armor: b.armor,
+        hasHelmet: b.hasHelmet,
+        hasDefuseKit: false,
+        activeWeapon: 'garam-47',
+        currentAmmo: 30,
+        reserveAmmo: 90,
+        isScoped: false,
+        isReloading: false,
+        isCrouching: false,
+        isDead: b.isDead,
+        ping: 0,
+        kills: b.kills,
+        deaths: b.deaths,
+      });
+    });
+
+    // Broadcast snapshots with PVS Fog-of-War filtering to eliminate wallhack / ESP cheats
+    this.sessions.forEach(s => {
+      if (!s.ws || s.ws.readyState !== WebSocket.OPEN) return;
+
+      // Slow-consumer backpressure: drop snapshot if client buffer is congested (> 32KB)
+      if (s.ws.bufferedAmount > 32768) {
+        return;
+      }
+
+      const visiblePlayers = this.filterPlayersForSession(s, playerStates);
+
+      if (s.useBinary) {
+        const ab = BinaryCodec.encodeSnapshot({
+          tick: this.tick,
+          serverTimestamp: now,
+          lastAckSeq: s.lastInputSeq,
+          roundPhase: this.phase,
+          roundTime: Math.ceil(this.phaseTimer),
+          ctScore: this.ctScore,
+          tScore: this.tScore,
+          bomb: this.bomb,
+          players: visiblePlayers,
+        });
+        s.ws.send(Buffer.from(ab));
+      } else {
         const snapPacket: ServerPacket = {
           type: 'snapshot',
           tick: this.tick,
           serverTimestamp: now,
           lastAckSeq: s.lastInputSeq,
-          players: playerStates,
+          players: visiblePlayers,
           bomb: this.bomb,
           roundPhase: this.phase,
           roundTime: Math.ceil(this.phaseTimer),
           ctScore: this.ctScore,
           tScore: this.tScore,
         };
-        if (s.ws && s.ws.readyState === WebSocket.OPEN) {
-          s.ws.send(JSON.stringify(snapPacket));
-        }
-      });
-    }, 1000 / this.TICK_RATE);
+        s.ws.send(JSON.stringify(snapPacket));
+      }
+    });
+  }
+
+  /**
+   * PVS (Potentially Visible Set) Anti-Wallhack Filter:
+   * Teammates are always transmitted for radar/tactical coordination.
+   * Enemies are transmitted if within 16m (audio footstep radius) or if direct line-of-sight exists.
+   * Completely obstructed enemies across the map are culled, preventing ESP/wallhack cheat exploits.
+   */
+  private filterPlayersForSession(session: HumanSession, allPlayers: NetOperatorState[]): NetOperatorState[] {
+    const sPos = session.controller.state;
+    const eyeA = { x: sPos.x, y: sPos.y + 1.65, z: sPos.z };
+
+    return allPlayers.filter(p => {
+      // Always include self and teammates
+      if (p.id === session.id || p.team === session.team) {
+        return true;
+      }
+
+      // Always include dead ragdolls/spectate targets
+      if (p.isDead) return true;
+
+      // Close-proximity / audio radius (16 meters)
+      const dx = p.x - sPos.x;
+      const dy = p.y - sPos.y;
+      const dz = p.z - sPos.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      if (distSq <= 256) {
+        return true;
+      }
+
+      // Line-of-sight check via accelerated SpatialGrid broadphase
+      const eyeB = { x: p.x, y: p.y + 1.65, z: p.z };
+      return hasLineOfSight(eyeA, eyeB, DE_CITADEL_BLOCKS, [], this.spatialGrid);
+    });
   }
 
   private updateMatchState(): void {

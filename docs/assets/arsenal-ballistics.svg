@@ -47,14 +47,14 @@
       <rect width="192" height="190" rx="8" fill="rgba(20, 28, 40, 0.85)" stroke="rgba(0, 240, 255, 0.5)" stroke-width="1.2"/>
       <rect width="192" height="28" rx="8" fill="rgba(0, 240, 255, 0.15)"/>
       <text x="12" y="19" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#00F0FF">VANGUARD M4</text>
-      <text x="180" y="19" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#00FF88">$2,900</text>
+      <text x="180" y="19" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#00FF88">$2,750</text>
       
       <g transform="translate(12, 48)" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">
         <text>Class: <tspan fill="#FFF" font-weight="700">Suppressed Rifle</tspan></text>
-        <text y="20">Damage: <tspan fill="#FF2A55" font-weight="700">38 HP (140 Head)</tspan></text>
-        <text y="38">Fire Rate: <tspan fill="#FFF" font-weight="700">600 RPM</tspan></text>
-        <text y="56">Capacity: <tspan fill="#FFF" font-weight="700">20 / 80 Rounds</tspan></text>
-        <text y="74">Speed: <tspan fill="#FFF" font-weight="700">5.50 m/s</tspan></text>
+        <text y="20">Damage: <tspan fill="#FF2A55" font-weight="700">33 HP (132 Head)</tspan></text>
+        <text y="38">Fire Rate: <tspan fill="#FFF" font-weight="700">666 RPM</tspan></text>
+        <text y="56">Capacity: <tspan fill="#FFF" font-weight="700">25 / 75 Rounds</tspan></text>
+        <text y="74">Speed: <tspan fill="#FFF" font-weight="700">5.55 m/s</tspan></text>
         <text y="92">Audio Muffled: <tspan fill="#00FF88" font-weight="800">11m Radius</tspan></text>
         <text y="110" font-family="'JetBrains Mono', monospace" font-size="9" fill="#00F0FF">Cobalt Collar Barrel</text>
       </g>

@@ -53,7 +53,7 @@ export class PerfMonitor {
     this.container.style.display = this.isVisible ? 'block' : 'none';
   }
 
-  public recordFrame(dtMs: number, rttPingMs = -1): void {
+  public recordFrame(dtMs: number, rttPingMs = -1, rxKbps = 0, txKbps = 0): void {
     this.frameTimes.push(dtMs);
     if (this.frameTimes.length > this.MAX_FRAMES) {
       this.frameTimes.shift();
@@ -76,12 +76,12 @@ export class PerfMonitor {
       this.lastUpdateTime = now;
 
       if (this.isVisible) {
-        this.renderText(rttPingMs);
+        this.renderText(rttPingMs, rxKbps, txKbps);
       }
     }
   }
 
-  private renderText(rttPingMs: number): void {
+  private renderText(rttPingMs: number, rxKbps = 0, txKbps = 0): void {
     const info = this.renderer.info;
     const calls = info.render.calls;
     const triangles = info.render.triangles;
@@ -90,6 +90,9 @@ export class PerfMonitor {
 
     const fpsColor = this.currentFps >= 58 ? '#00ff88' : this.currentFps >= 45 ? '#ffaa00' : '#ff334b';
     const pingText = rttPingMs >= 0 ? `${rttPingMs} ms` : 'OFFLINE (LOCAL)';
+    const netBandwidth = rttPingMs >= 0
+      ? `RX <span style="color: #00ff88;">${rxKbps.toFixed(1)} kbps</span> | TX <span style="color: #3b9eff;">${txKbps.toFixed(1)} kbps</span>`
+      : 'LOCAL LOOPBACK';
 
     this.container.innerHTML = `
       <div style="color: ${fpsColor}; font-size: 13px; margin-bottom: 2px;">
@@ -98,6 +101,7 @@ export class PerfMonitor {
       <div style="color: #3b9eff; letter-spacing: 0.5px;">TICK: 128Hz FIXED KINEMATICS</div>
       <div style="color: #cbd5e1;">DRAW CALLS: ${calls} | TRIS: ${triangles.toLocaleString()}</div>
       <div style="color: #cbd5e1;">GEOMETRIES: ${geometries} | TEXTURES: ${textures}</div>
+      <div style="color: #cbd5e1;">BANDWIDTH: ${netBandwidth}</div>
       <div style="color: #94a3b8;">SERVER RTT: <span style="color: #f59e0b;">${pingText}</span></div>
       <div style="color: #64748b; font-size: 9px; margin-top: 2px;">[F3] TOGGLE TELEMETRY</div>
     `;

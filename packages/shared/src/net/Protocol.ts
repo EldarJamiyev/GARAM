@@ -14,6 +14,8 @@ export interface NetOperatorState {
   pitch: number;
   health: number;
   armor: number;
+  hasHelmet?: boolean;
+  hasDefuseKit?: boolean;
   activeWeapon: string;
   currentAmmo: number;
   reserveAmmo: number;

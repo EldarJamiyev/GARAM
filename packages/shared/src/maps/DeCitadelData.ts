@@ -146,7 +146,7 @@ export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   makeBlock('a_stairs_10', 'A Stairs Step 10', -24, 3.15, -44.4, 3.6, 0.35, 1.1, 'CONCRETE'),
   // A Site Triple Stack Wood Crates (Wallbangable corners & edges)
   makeBlock('crate_a_low', 'A Site Wood Crate Low', -34, 0, -28, 3.2, 2.5, 3.2, 'WOOD_THIN'),
-  makeBlock('crate_a_mid', 'A Site Wood Crate Mid', -30.5, 0, -28, 3.0, 2.0, 3.0, 'WOOD_THIN'),
+  makeBlock('crate_a_mid', 'A Site Wood Crate Mid', -30.5, 0, -28, 3.0, 1.80, 3.0, 'WOOD_THIN'),
   makeBlock('crate_a_high', 'A Site Wood Crate Top', -32.5, 2.2, -28, 2.5, 2.0, 2.5, 'WOOD_THIN'),
   makeBlock('site_a_catwalk', 'A Catwalk Ledge', -22, 0, -32, 4, 3.2, 14, 'CONCRETE'),
 

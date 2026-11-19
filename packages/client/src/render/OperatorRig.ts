@@ -9,6 +9,53 @@ export interface OperatorVisualState {
   name: string;
 }
 
+// Shared Geometries across all 10 operators to eliminate duplicate GPU buffer allocations
+const geoSpine = new THREE.BoxGeometry(0.38, 0.45, 0.26);
+const geoVest = new THREE.BoxGeometry(0.44, 0.48, 0.32);
+const geoPouch = new THREE.BoxGeometry(0.09, 0.16, 0.08);
+const geoPad = new THREE.BoxGeometry(0.12, 0.14, 0.18);
+const geoThigh = new THREE.BoxGeometry(0.14, 0.44, 0.16);
+const geoBoot = new THREE.BoxGeometry(0.15, 0.42, 0.22);
+const geoHeadBase = new THREE.SphereGeometry(0.16, 12, 12);
+const geoHelmet = new THREE.SphereGeometry(0.18, 12, 12);
+const geoNvgMount = new THREE.BoxGeometry(0.08, 0.08, 0.06);
+const geoVisor = new THREE.BoxGeometry(0.24, 0.07, 0.12);
+const geoArm = new THREE.CylinderGeometry(0.05, 0.06, 0.38, 8);
+geoArm.rotateX(Math.PI / 4);
+
+const geoReceiver = new THREE.BoxGeometry(0.06, 0.09, 0.42);
+const geoBarrel = new THREE.CylinderGeometry(0.015, 0.015, 0.38, 8);
+geoBarrel.rotateX(Math.PI / 2);
+const geoMag = new THREE.BoxGeometry(0.045, 0.14, 0.09);
+const geoStock = new THREE.BoxGeometry(0.05, 0.09, 0.18);
+const geoSight = new THREE.BoxGeometry(0.03, 0.04, 0.12);
+
+const geoHeadCollider = new THREE.SphereGeometry(0.22, 6, 6);
+const geoBodyCollider = new THREE.CylinderGeometry(0.36, 0.36, 1.25, 6);
+const matInvisibleCollider = new THREE.MeshBasicMaterial({ visible: false });
+
+const geoShadow = new THREE.PlaneGeometry(0.95, 0.95);
+geoShadow.rotateX(-Math.PI / 2);
+
+let sharedShadowTexture: THREE.CanvasTexture | null = null;
+function getSharedShadowTexture(): THREE.CanvasTexture {
+  if (!sharedShadowTexture) {
+    const shadowCanvas = document.createElement('canvas');
+    shadowCanvas.width = 128;
+    shadowCanvas.height = 128;
+    const sCtx = shadowCanvas.getContext('2d')!;
+    const sGrad = sCtx.createRadialGradient(64, 64, 4, 64, 64, 64);
+    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
+    sGrad.addColorStop(0.45, 'rgba(0, 0, 0, 0.40)');
+    sGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
+    sCtx.fillStyle = sGrad;
+    sCtx.fillRect(0, 0, 128, 128);
+    sharedShadowTexture = new THREE.CanvasTexture(shadowCanvas);
+    sharedShadowTexture.colorSpace = THREE.SRGBColorSpace;
+  }
+  return sharedShadowTexture;
+}
+
 export class OperatorRig {
   public root: THREE.Group;
   public headCollider: THREE.Mesh;
@@ -69,28 +116,28 @@ export class OperatorRig {
     });
 
     // Lower spine
-    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.45, 0.26), jacketMat);
+    const spine = new THREE.Mesh(geoSpine, jacketMat);
     spine.position.y = 0.22;
     this.torso.add(spine);
 
     // Heavy Ballistic Vest + Molle Pouches
-    const vest = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.48, 0.32), vestMat);
+    const vest = new THREE.Mesh(geoVest, vestMat);
     vest.position.set(0, 0.28, 0.01);
     this.torso.add(vest);
 
     // Front magazine pouches
     for (let i = -1; i <= 1; i++) {
-      const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.08), accentMat);
+      const pouch = new THREE.Mesh(geoPouch, accentMat);
       pouch.position.set(i * 0.11, 0.22, 0.18);
       this.torso.add(pouch);
     }
 
     // Shoulder Pauldrons / Team Insignia
-    const leftPad = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.18), accentMat);
+    const leftPad = new THREE.Mesh(geoPad, accentMat);
     leftPad.position.set(-0.26, 0.42, 0);
     this.torso.add(leftPad);
 
-    const rightPad = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.18), accentMat);
+    const rightPad = new THREE.Mesh(geoPad, accentMat);
     rightPad.position.set(0.26, 0.42, 0);
     this.torso.add(rightPad);
 
@@ -111,8 +158,7 @@ export class OperatorRig {
 
     // Head base (balaclava)
     const headMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.8 });
-    const headGeo = new THREE.SphereGeometry(0.16, 14, 14);
-    const headBase = new THREE.Mesh(headGeo, headMat);
+    const headBase = new THREE.Mesh(geoHeadBase, headMat);
     headBase.position.y = 0.16;
     this.head.add(headBase);
 
@@ -122,12 +168,12 @@ export class OperatorRig {
       roughness: 0.5,
       metalness: 0.35,
     });
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 14), helmetMat);
+    const helmet = new THREE.Mesh(geoHelmet, helmetMat);
     helmet.position.set(0, 0.20, -0.01);
     this.head.add(helmet);
 
     // NVG Mount & Ear Protection
-    const nvgMount = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.06), accentMat);
+    const nvgMount = new THREE.Mesh(geoNvgMount, accentMat);
     nvgMount.position.set(0, 0.24, 0.17);
     this.head.add(nvgMount);
 
@@ -139,8 +185,9 @@ export class OperatorRig {
       roughness: 0.1,
       metalness: 0.9,
     });
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.12), visorMat);
+    const visor = new THREE.Mesh(geoVisor, visorMat);
     visor.position.set(0, 0.16, 0.13);
+    visor.castShadow = false;
     this.head.add(visor);
 
     this.root.add(this.head);
@@ -149,15 +196,13 @@ export class OperatorRig {
     this.rightArm = new THREE.Group();
     this.rightArm.position.set(0.24, 1.34, 0);
 
-    const armGeo = new THREE.CylinderGeometry(0.05, 0.06, 0.38, 8);
-    armGeo.rotateX(Math.PI / 4);
-    const armMesh = new THREE.Mesh(armGeo, jacketMat);
+    const armMesh = new THREE.Mesh(geoArm, jacketMat);
     this.rightArm.add(armMesh);
     this.root.add(this.rightArm);
 
     this.leftArm = new THREE.Group();
     this.leftArm.position.set(-0.24, 1.34, 0);
-    const leftArmMesh = new THREE.Mesh(armGeo, jacketMat);
+    const leftArmMesh = new THREE.Mesh(geoArm, jacketMat);
     leftArmMesh.rotation.y = -0.3;
     leftArmMesh.position.set(0.12, -0.06, 0.22);
     this.leftArm.add(leftArmMesh);
@@ -169,42 +214,26 @@ export class OperatorRig {
     this.root.add(this.weaponMesh);
 
     // 5. Invisible Hitbox Colliders for RaycastEngine
-    this.headCollider = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 8, 8),
-      new THREE.MeshBasicMaterial({ visible: false })
-    );
+    this.headCollider = new THREE.Mesh(geoHeadCollider, matInvisibleCollider);
     this.headCollider.position.set(0, 1.66, 0);
+    this.headCollider.castShadow = false;
     this.root.add(this.headCollider);
 
-    this.bodyCollider = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.36, 0.36, 1.25, 8),
-      new THREE.MeshBasicMaterial({ visible: false })
-    );
+    this.bodyCollider = new THREE.Mesh(geoBodyCollider, matInvisibleCollider);
     this.bodyCollider.position.set(0, 0.95, 0);
+    this.bodyCollider.castShadow = false;
     this.root.add(this.bodyCollider);
 
-    // 6. Grounded Contact Shadow Disc (Radial Soft Gradient)
-    const shadowGeo = new THREE.PlaneGeometry(0.95, 0.95);
-    shadowGeo.rotateX(-Math.PI / 2);
-    const shadowCanvas = document.createElement('canvas');
-    shadowCanvas.width = 128;
-    shadowCanvas.height = 128;
-    const sCtx = shadowCanvas.getContext('2d')!;
-    const sGrad = sCtx.createRadialGradient(64, 64, 4, 64, 64, 64);
-    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
-    sGrad.addColorStop(0.45, 'rgba(0, 0, 0, 0.40)');
-    sGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
-    sCtx.fillStyle = sGrad;
-    sCtx.fillRect(0, 0, 128, 128);
-    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
-    shadowTex.colorSpace = THREE.SRGBColorSpace;
+    // 6. Grounded Contact Shadow Disc (Radial Soft Gradient, Shared Texture)
     const shadowMat = new THREE.MeshBasicMaterial({
-      map: shadowTex,
+      map: getSharedShadowTexture(),
       transparent: true,
       depthWrite: false,
     });
-    this.contactShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    this.contactShadow = new THREE.Mesh(geoShadow, shadowMat);
     this.contactShadow.position.y = 0.015;
+    this.contactShadow.castShadow = false;
+    this.contactShadow.receiveShadow = false;
     this.root.add(this.contactShadow);
 
     // 7. Hitbox Wireframe Debug Overlays ([F2] Sandbox)
@@ -244,6 +273,7 @@ export class OperatorRig {
     this.uiBillboard = new THREE.Sprite(spriteMat);
     this.uiBillboard.position.set(0, 2.15, 0);
     this.uiBillboard.scale.set(1.4, 0.44, 1);
+    this.uiBillboard.castShadow = false;
     this.root.add(this.uiBillboard);
 
     this.updateBillboard(1.0, team, name);
@@ -282,12 +312,12 @@ export class OperatorRig {
     const bootMat = new THREE.MeshStandardMaterial({ color: bootColor, roughness: 0.6, metalness: 0.2 });
 
     // Thigh + Knee pad
-    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.44, 0.16), pantsMat);
+    const thigh = new THREE.Mesh(geoThigh, pantsMat);
     thigh.position.y = -0.22;
     leg.add(thigh);
 
     // Shin + Combat Boot
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.42, 0.22), bootMat);
+    const boot = new THREE.Mesh(geoBoot, bootMat);
     boot.position.set(0, -0.62, 0.02);
     leg.add(boot);
 
@@ -299,15 +329,14 @@ export class OperatorRig {
     const gunMat = new THREE.MeshStandardMaterial({ color: 0x18191c, metalness: 0.8, roughness: 0.3 });
     const accMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.4 });
 
-    const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.42), gunMat);
+    const receiver = new THREE.Mesh(geoReceiver, gunMat);
     gun.add(receiver);
 
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.38, 8), gunMat);
-    barrel.rotation.x = Math.PI / 2;
+    const barrel = new THREE.Mesh(geoBarrel, gunMat);
     barrel.position.set(0, 0.02, 0.36);
     gun.add(barrel);
 
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.14, 0.09), accMat);
+    const mag = new THREE.Mesh(geoMag, accMat);
     mag.position.set(0, -0.09, 0.06);
     gun.add(mag);
 

@@ -53,6 +53,7 @@ const STORAGE_KEY = 'garam_tactical_settings_v1';
 export class SettingsStore {
   private static instance: SettingsStore;
   public settings: UserSettings;
+  public sandboxWeaponOverrides: Record<string, Partial<Record<string, number>>> = {};
 
   private constructor() {
     this.settings = this.load();

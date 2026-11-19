@@ -647,7 +647,13 @@ export class GaramGame {
     );
 
     this.hud.updateCallout(currentZone);
-    this.perfMonitor.recordFrame(frameDelta * 1000, this.networkClient.isConnected ? 14 : -1);
+    this.networkClient.updateBandwidthTelemetry();
+    this.perfMonitor.recordFrame(
+      frameDelta * 1000,
+      this.networkClient.isConnected ? this.networkClient.ping : -1,
+      this.networkClient.rxKbps,
+      this.networkClient.txKbps
+    );
 
     // Dual-Pass Rendering
     this.renderer.clear();

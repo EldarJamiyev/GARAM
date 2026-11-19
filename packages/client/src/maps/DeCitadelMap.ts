@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   DE_CITADEL_BLOCKS,
   MapBlockCollider,
@@ -247,6 +248,13 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     side: THREE.DoubleSide,
   });
 
+  const wallGeos: THREE.BufferGeometry[] = [];
+  const crateGeos: THREE.BufferGeometry[] = [];
+  const containerBlueGeos: THREE.BufferGeometry[] = [];
+  const containerRedGeos: THREE.BufferGeometry[] = [];
+  const hazardGeos: THREE.BufferGeometry[] = [];
+  const aoGeos: THREE.BufferGeometry[] = [];
+
   for (const b of blocks) {
     colliders.push({
       minX: b.minX,
@@ -257,37 +265,58 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       maxZ: b.maxZ,
     });
 
-    let chosenMat: THREE.Material = wallMat;
-    if (b.material === 'WOOD_THIN') {
-      chosenMat = crateMat;
-    } else if (b.id.includes('container_blue')) {
-      chosenMat = containerBlueMat;
-    } else if (b.id.includes('container_red')) {
-      chosenMat = containerRedMat;
-    } else if (b.id.includes('lintel')) {
-      chosenMat = hazardMat;
-    }
-
     const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
-    const mesh = new THREE.Mesh(geo, chosenMat);
-    mesh.position.set(b.x, b.y + b.h / 2, b.z);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.name = b.id;
-    scene.add(mesh);
+    geo.translate(b.x, b.y + b.h / 2, b.z);
+
+    if (b.material === 'WOOD_THIN') {
+      crateGeos.push(geo);
+    } else if (b.id.includes('container_blue')) {
+      containerBlueGeos.push(geo);
+    } else if (b.id.includes('container_red')) {
+      containerRedGeos.push(geo);
+    } else if (b.id.includes('lintel')) {
+      hazardGeos.push(geo);
+    } else {
+      wallGeos.push(geo);
+    }
 
     // Grounded Contact AO Floor Strips along wall & crate bases
     if (b.y <= 0.1 && b.h >= 1.5 && b.w <= 50) {
-      const aoFront = new THREE.Mesh(new THREE.PlaneGeometry(b.w, 0.42), aoMat);
-      aoFront.rotation.x = -Math.PI / 2;
-      aoFront.position.set(b.x, 0.015, b.z + b.d / 2 + 0.21);
-      scene.add(aoFront);
+      const gFront = new THREE.PlaneGeometry(b.w, 0.42);
+      gFront.rotateX(-Math.PI / 2);
+      gFront.translate(b.x, 0.015, b.z + b.d / 2 + 0.21);
+      aoGeos.push(gFront);
 
-      const aoBack = new THREE.Mesh(new THREE.PlaneGeometry(b.w, 0.42), aoMat);
-      aoBack.rotation.x = Math.PI / 2;
-      aoBack.position.set(b.x, 0.015, b.z - b.d / 2 - 0.21);
-      scene.add(aoBack);
+      const gBack = new THREE.PlaneGeometry(b.w, 0.42);
+      gBack.rotateX(Math.PI / 2);
+      gBack.translate(b.x, 0.015, b.z - b.d / 2 - 0.21);
+      aoGeos.push(gBack);
     }
+  }
+
+  const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, castShadow: boolean) => {
+    if (geos.length === 0) return;
+    const merged = mergeGeometries(geos, false);
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = castShadow;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    geos.forEach(g => g.dispose());
+  };
+
+  addMerged(wallGeos, wallMat, true);
+  addMerged(crateGeos, crateMat, true);
+  addMerged(containerBlueGeos, containerBlueMat, true);
+  addMerged(containerRedGeos, containerRedMat, true);
+  addMerged(hazardGeos, hazardMat, true);
+
+  if (aoGeos.length > 0) {
+    const mergedAo = mergeGeometries(aoGeos, false);
+    const aoMesh = new THREE.Mesh(mergedAo, aoMat);
+    aoMesh.receiveShadow = false;
+    aoMesh.castShadow = false;
+    scene.add(aoMesh);
+    aoGeos.forEach(g => g.dispose());
   }
 
   // Bombsite A Ground Ring

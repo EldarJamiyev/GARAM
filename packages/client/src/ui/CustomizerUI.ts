@@ -286,8 +286,10 @@ export class CustomizerUI {
     // Weapon select
     const wpSelect = this.modal.querySelector('#cust-wp-select') as HTMLSelectElement;
     const populateWeaponFields = (wpId: string) => {
-      const def = WEAPONS[wpId];
-      if (!def) return;
+      const base = WEAPONS[wpId];
+      if (!base) return;
+      const override = settingsStore.sandboxWeaponOverrides[wpId] || {};
+      const def = { ...base, ...override };
       (this.modal.querySelector('#wp-dmg') as HTMLInputElement).value = def.damage.toString();
       (this.modal.querySelector('#wp-rpm') as HTMLInputElement).value = def.fireRateRpm.toString();
       (this.modal.querySelector('#wp-mag') as HTMLInputElement).value = def.magCapacity.toString();
@@ -299,11 +301,12 @@ export class CustomizerUI {
     wpSelect.addEventListener('change', () => populateWeaponFields(wpSelect.value));
     populateWeaponFields('garam-47');
 
-    const updateWpField = (field: keyof WeaponDef, val: number) => {
-      const def = WEAPONS[wpSelect.value];
-      if (def) {
-        (def as unknown as Record<string, number>)[field] = val;
+    const updateWpField = (field: string, val: number) => {
+      const wpId = wpSelect.value;
+      if (!settingsStore.sandboxWeaponOverrides[wpId]) {
+        settingsStore.sandboxWeaponOverrides[wpId] = {};
       }
+      settingsStore.sandboxWeaponOverrides[wpId]![field] = val;
     };
 
     this.modal.querySelector('#wp-dmg')?.addEventListener('change', (e) => updateWpField('damage', parseFloat((e.target as HTMLInputElement).value)));
@@ -316,10 +319,8 @@ export class CustomizerUI {
     // Reset weapon
     this.modal.querySelector('#cust-wp-reset')?.addEventListener('click', () => {
       const wpId = wpSelect.value;
-      if (this.originalWeapons[wpId]) {
-        Object.assign(WEAPONS[wpId], this.originalWeapons[wpId]);
-        populateWeaponFields(wpId);
-      }
+      delete settingsStore.sandboxWeaponOverrides[wpId];
+      populateWeaponFields(wpId);
     });
 
     // Sandbox buttons

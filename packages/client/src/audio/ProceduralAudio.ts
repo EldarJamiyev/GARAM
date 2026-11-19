@@ -12,6 +12,12 @@ export class ProceduralAudio {
   private masterVolume = 0.85;
   private audioBufferCache: Map<string, AudioBuffer> = new Map();
   private sharedNoiseBuffer: AudioBuffer | null = null;
+  private activeSpatialVoices: Array<{
+    panner: PannerNode;
+    gain: GainNode;
+    filter: BiquadFilterNode;
+    dist: number;
+  }> = [];
 
   constructor() {
     // Preload ElevenLabs synthesized tactical audio (non-blocking)
@@ -31,8 +37,24 @@ export class ProceduralAudio {
       if (!res.ok) return null;
       const arrayBuf = await res.arrayBuffer();
       const decoded = await this.ctx.decodeAudioData(arrayBuf);
-      this.audioBufferCache.set(url, decoded);
-      return decoded;
+      let finalBuffer = decoded;
+
+      // Downmix multi-channel audio to mono for pin-point HRTF panning and phase clarity
+      if (decoded.numberOfChannels > 1) {
+        const monoBuf = this.ctx.createBuffer(1, decoded.length, decoded.sampleRate);
+        const monoData = monoBuf.getChannelData(0);
+        const numChannels = decoded.numberOfChannels;
+        for (let c = 0; c < numChannels; c++) {
+          const chData = decoded.getChannelData(c);
+          for (let i = 0; i < decoded.length; i++) {
+            monoData[i] += chData[i] / numChannels;
+          }
+        }
+        finalBuffer = monoBuf;
+      }
+
+      this.audioBufferCache.set(url, finalBuffer);
+      return finalBuffer;
     } catch {
       return null;
     }
@@ -47,6 +69,12 @@ export class ProceduralAudio {
     gain.gain.setValueAtTime(volume, this.ctx.currentTime);
     src.connect(gain);
     gain.connect(this.masterGain);
+    src.onended = () => {
+      try {
+        src.disconnect();
+        gain.disconnect();
+      } catch {}
+    };
     src.start();
     return true;
   }
@@ -181,7 +209,8 @@ export class ProceduralAudio {
   }
 
   /**
-   * Creates an HRTF spatial panner + occlusion filter node chain
+   * Creates an HRTF/equalpower spatial panner + occlusion filter node chain
+   * with voice limiting and dynamic distance tiering.
    */
   private createSpatialRoute(
     worldPos: THREE.Vector3,
@@ -192,8 +221,31 @@ export class ProceduralAudio {
     const ctx = this.ctx!;
     const t = ctx.currentTime;
 
+    const dist = listenerPos ? worldPos.distanceTo(listenerPos) : 0;
+
+    // Spatial Voice Budget: Cap active 3D voices at 20
+    if (this.activeSpatialVoices.length >= 20) {
+      let maxDist = -1;
+      let maxIdx = -1;
+      for (let i = 0; i < this.activeSpatialVoices.length; i++) {
+        if (this.activeSpatialVoices[i].dist > maxDist) {
+          maxDist = this.activeSpatialVoices[i].dist;
+          maxIdx = i;
+        }
+      }
+      if (maxIdx >= 0) {
+        const evicted = this.activeSpatialVoices.splice(maxIdx, 1)[0];
+        try {
+          evicted.filter.disconnect();
+          evicted.gain.disconnect();
+          evicted.panner.disconnect();
+        } catch {}
+      }
+    }
+
     const panner = ctx.createPanner();
-    panner.panningModel = 'HRTF';
+    // Closest voices use realistic HRTF; distant voices use efficient equalpower
+    panner.panningModel = dist <= 28.0 ? 'HRTF' : 'equalpower';
     panner.distanceModel = 'inverse';
     panner.refDistance = 3.0;
     panner.maxDistance = 85.0;
@@ -223,6 +275,22 @@ export class ProceduralAudio {
     filter.connect(gain);
     gain.connect(panner);
     panner.connect(this.masterGain!);
+
+    const voiceEntry = { panner, gain, filter, dist };
+    this.activeSpatialVoices.push(voiceEntry);
+
+    // Auto-reap voice after 3.5s to prevent dangling graph nodes
+    setTimeout(() => {
+      const idx = this.activeSpatialVoices.indexOf(voiceEntry);
+      if (idx !== -1) {
+        this.activeSpatialVoices.splice(idx, 1);
+      }
+      try {
+        filter.disconnect();
+        gain.disconnect();
+        panner.disconnect();
+      } catch {}
+    }, 3500);
 
     return { input: filter, output: panner };
   }

@@ -831,25 +831,54 @@ export class BotAISystem {
           state.stuckTimer = 0;
         }
 
-        // Apply active unstuck recovery heading
+        // Apply active unstuck recovery heading or abort early if dual-ray clearance opened
         if (state.unstuckDuration > 0) {
-          state.unstuckDuration -= dt;
-          _toTarget.lerp(state.unstuckDir, 0.75).normalize();
+          const probeDist = Math.min(distToWaypoint, 2.5);
+          const probeTargetX = botPos.x + _toTarget.x * probeDist;
+          const probeTargetZ = botPos.z + _toTarget.z * probeDist;
+          const eyeA = { x: botPos.x, y: botPos.y + 1.2, z: botPos.z };
+          const perpX = -_toTarget.z * 0.35;
+          const perpZ = _toTarget.x * 0.35;
+          const clearL = hasLineOfSight(
+            { x: eyeA.x + perpX, y: eyeA.y, z: eyeA.z + perpZ },
+            { x: probeTargetX + perpX, y: eyeA.y, z: probeTargetZ + perpZ },
+            blocks,
+            []
+          );
+          const clearR = hasLineOfSight(
+            { x: eyeA.x - perpX, y: eyeA.y, z: eyeA.z - perpZ },
+            { x: probeTargetX - perpX, y: eyeA.y, z: probeTargetZ - perpZ },
+            blocks,
+            []
+          );
+          if (clearL && clearR) {
+            state.unstuckDuration = 0; // Dual-ray clearance opened, abort unstuck immediately!
+          } else {
+            state.unstuckDuration -= dt;
+            _toTarget.lerp(state.unstuckDir, 0.75).normalize();
+          }
         }
 
-        // Staggered formation & bot-to-bot separation
+        // Staggered formation & bot-to-bot separation with corridor headway yielding
         for (let j = 0; j < bots.length; j++) {
           if (j === bIdx) continue;
           const otherBot = bots[j];
           if (otherBot.isDead) continue;
           const distBetween = botPos.distanceTo(otherBot.mesh.position);
-          if (distBetween < 1.4 && distBetween > 0.05) {
+          if (distBetween < 1.8 && distBetween > 0.05) {
             const push = new THREE.Vector3().subVectors(botPos, otherBot.mesh.position).normalize();
-            _toTarget.addScaledVector(push, (1.4 - distBetween) * 1.2).normalize();
+            _toTarget.addScaledVector(push, (1.8 - distBetween) * 1.0).normalize();
 
-            // Tactical spacing: follower bot yields speed to create single-file spacing
-            if (bIdx > j && distBetween < 1.1) {
-              currentSpeed *= 0.65;
+            // Tactical spacing: follower bot yields speed to prevent corridor bunching (cone dot > 0.70, dist < 1.6m, release at > 1.8m)
+            const toOtherX = otherBot.mesh.position.x - botPos.x;
+            const toOtherZ = otherBot.mesh.position.z - botPos.z;
+            const dotHeading = (toOtherX * _toTarget.x + toOtherZ * _toTarget.z) / distBetween;
+            if (dotHeading > 0.70 && distBetween < 1.6) {
+              if (distBetween < 1.0) {
+                currentSpeed = 0;
+              } else {
+                currentSpeed *= Math.max(0.2, (distBetween - 0.9) / 0.7);
+              }
             }
           }
         }

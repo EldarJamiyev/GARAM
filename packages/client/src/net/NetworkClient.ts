@@ -6,7 +6,8 @@ import {
   PlayerInput,
   KinematicPlayerController,
   AABBCollider,
-  WEAPONS
+  WEAPONS,
+  BinaryCodec
 } from '@garam/shared';
 import { OperatorRig } from '../render/OperatorRig.js';
 import { HUDManager } from '../ui/HUDManager.js';
@@ -41,6 +42,11 @@ export class NetworkClient {
   public ping = 15;
   public serverClockOffset = 0; // Estimated (serverTime - localClientTime)
   public readonly INTERPOLATION_DELAY_MS = 46.875; // 3 ticks at 64Hz (CS2 tournament interpolation buffer)
+  public rxKbps = 0;
+  public txKbps = 0;
+  private rxBytesAccum = 0;
+  private txBytesAccum = 0;
+  private lastBandwidthCalc = Date.now();
 
   private seq = 0;
   private unackInputs: UnackInput[] = [];
@@ -79,6 +85,7 @@ export class NetworkClient {
 
       this.ws.onopen = () => {
         this.isConnected = true;
+        this.ws!.binaryType = 'arraybuffer';
         const statusBadge = document.getElementById('server-status-badge');
         if (statusBadge) {
           statusBadge.innerText = '● CONNECTED (64-TICK)';
@@ -97,9 +104,32 @@ export class NetworkClient {
       };
 
       this.ws.onmessage = (event) => {
+        if (event.data instanceof ArrayBuffer) {
+          this.rxBytesAccum += event.data.byteLength;
+          const binarySnap = BinaryCodec.decodeSnapshot(event.data);
+          if (binarySnap) {
+            this.handleServerPacket({
+              type: 'snapshot',
+              tick: binarySnap.tick,
+              serverTimestamp: binarySnap.serverTimestamp,
+              lastAckSeq: binarySnap.lastAckSeq,
+              players: binarySnap.players,
+              bomb: binarySnap.bomb,
+              roundPhase: binarySnap.roundPhase,
+              roundTime: binarySnap.roundTime,
+              ctScore: binarySnap.ctScore,
+              tScore: binarySnap.tScore,
+            });
+            return;
+          }
+        }
+
         try {
-          const packet = JSON.parse(event.data) as ServerPacket;
-          this.handleServerPacket(packet);
+          if (typeof event.data === 'string') {
+            this.rxBytesAccum += event.data.length;
+            const packet = JSON.parse(event.data) as ServerPacket;
+            this.handleServerPacket(packet);
+          }
         } catch {
           // Ignore
         }
@@ -163,13 +193,27 @@ export class NetworkClient {
       this.unackInputs.shift();
     }
 
-    this.send({
-      type: 'input',
+    // Fast-path zero-copy 22-byte binary user input frame
+    const binInput = BinaryCodec.encodeInput({
       seq: this.seq,
       timestamp: Date.now(),
       input,
       weaponId: activeWeaponId,
     });
+    this.ws.send(binInput);
+    this.txBytesAccum += 22;
+  }
+
+  public updateBandwidthTelemetry(): void {
+    const now = Date.now();
+    const elapsed = (now - this.lastBandwidthCalc) / 1000;
+    if (elapsed >= 0.5) {
+      this.rxKbps = (this.rxBytesAccum * 8) / (elapsed * 1000);
+      this.txKbps = (this.txBytesAccum * 8) / (elapsed * 1000);
+      this.rxBytesAccum = 0;
+      this.txBytesAccum = 0;
+      this.lastBandwidthCalc = now;
+    }
   }
 
   public getEstimatedServerTime(): number {
@@ -335,7 +379,9 @@ export class NetworkClient {
 
   private send(packet: ClientPacket): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(packet));
+      const msg = JSON.stringify(packet);
+      this.txBytesAccum += msg.length;
+      this.ws.send(msg);
     }
   }
 }

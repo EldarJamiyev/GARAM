@@ -1,4 +1,5 @@
 import { WEAPONS, WeaponDef } from '@garam/shared';
+import { settingsStore } from '../core/SettingsStore.js';
 
 export interface WeaponSlotState {
   weaponId: string;
@@ -42,10 +43,15 @@ export class InventoryManager {
 
   public getActiveWeapon(): WeaponDef {
     const slotState = this.slots[this.activeSlot];
-    if (slotState && WEAPONS[slotState.weaponId]) {
-      return WEAPONS[slotState.weaponId];
+    const baseDef = (slotState && WEAPONS[slotState.weaponId])
+      ? WEAPONS[slotState.weaponId]
+      : WEAPONS['garam-karambit'];
+
+    // In offline mode, overlay user sandbox overrides without mutating immutable WEAPONS singleton
+    if (settingsStore.settings.gameMode === 'offline' && settingsStore.sandboxWeaponOverrides[baseDef.id]) {
+      return { ...baseDef, ...settingsStore.sandboxWeaponOverrides[baseDef.id] };
     }
-    return WEAPONS['garam-karambit'];
+    return baseDef;
   }
 
   public getActiveSlotState(): WeaponSlotState {

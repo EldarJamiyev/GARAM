@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { ECONOMY, getLossBonus } from '../index.js';
+import { ECONOMY, getLossBonus, WEAPONS } from '../index.js';
 
 describe('Competitive MR12 Economy System', () => {
-  it('correctly calculates round win and progressive loss streak payouts', () => {
+  it('correctly calculates round win, defuse bonus, and progressive loss streak payouts', () => {
     expect(ECONOMY.winCashElimination).toBe(3250);
     expect(ECONOMY.winCashBomb).toBe(3500);
+    expect(ECONOMY.defuseBonus).toBe(250);
+    expect(ECONOMY.prices.defuseKit).toBe(300);
+    expect(WEAPONS['vanguard-m4'].price).toBe(2750);
 
     // Consecutive loss ladder: Base $1400, Step $500, Max $3400
     expect(ECONOMY.lossBonusBase).toBe(1400);

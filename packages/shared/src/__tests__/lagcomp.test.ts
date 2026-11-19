@@ -45,48 +45,54 @@ describe('LagCompensation Hitbox Rewind Engine', () => {
     expect(targets[0].center.z).toBeCloseTo(10.0, 1);
   });
 
-  it('accurately rewinds to exact boundary at 80ms latency', () => {
+  it('accurately rewinds to exact boundary at 64ms baseline latency', () => {
     const lagComp = new LagCompensation();
-    const serverTime = 1080;
+    const serverTime = 1064;
 
     lagComp.recordSnapshot(1, 1000, makeTargets(0, 0, 0));
-    lagComp.recordSnapshot(2, 1080, makeTargets(10, 0, 20));
+    lagComp.recordSnapshot(2, 1064, makeTargets(10, 0, 20));
 
-    // Client shot fired at 1000ms (exactly 80ms in the past)
+    // Client shot fired at 1000ms (exactly 64ms in the past)
     const targets = lagComp.getRewoundTargets(serverTime, 1000);
     expect(targets.length).toBe(1);
     expect(targets[0].center.x).toBeCloseTo(0, 1);
     expect(targets[0].center.z).toBeCloseTo(0, 1);
   });
 
-  it('strictly clamps excessive latency (250ms) to the 80ms tournament cap', () => {
+  it('strictly clamps excessive latency (250ms) to the 64ms tournament baseline cap without ping', () => {
     const lagComp = new LagCompensation();
     const serverTime = 1250;
 
     lagComp.recordSnapshot(1, 1000, makeTargets(0, 0, 0));     // 250ms in past
-    lagComp.recordSnapshot(2, 1170, makeTargets(10, 0, 0));    // 80ms in past (1250 - 80 = 1170)
+    lagComp.recordSnapshot(2, 1186, makeTargets(10, 0, 0));    // 64ms in past (1250 - 64 = 1186)
     lagComp.recordSnapshot(3, 1250, makeTargets(20, 0, 0));    // Current server time
 
     // Client claims 250ms latency (timestamp 1000) without ping
     const targets = lagComp.getRewoundTargets(serverTime, 1000);
     expect(targets.length).toBe(1);
-    // Must clamp to 1170ms (80ms rewind cap), NOT 1000ms
+    // Must clamp to 1186ms (64ms rewind cap), NOT 1000ms
     expect(targets[0].center.x).toBeCloseTo(10, 1);
   });
 
-  it('adaptively expands rewind window for legitimate ping up to 150ms ceiling', () => {
+  it('adaptively clamps rewind window using half-RTT to prevent corner kills', () => {
     const lagComp = new LagCompensation();
     const serverTime = 1250;
 
-    // Ping is 60ms: dynamic rewind = min(150, max(80, 60 + 46.875 + 16)) = 122.875ms
+    // Ping is 60ms: dynamic rewind = min(120, max(64, round(30 + 46.875 + 16))) = 93ms
     lagComp.recordSnapshot(1, 1100, makeTargets(0, 0, 0));     // 150ms in past
-    lagComp.recordSnapshot(2, 1150, makeTargets(10, 0, 0));    // 100ms in past
+    lagComp.recordSnapshot(2, 1165, makeTargets(10, 0, 0));    // 85ms in past (1250 - 85 = 1165)
     lagComp.recordSnapshot(3, 1250, makeTargets(30, 0, 0));    // Current server time
 
-    // Client with 60ms ping aimed at frame from 100ms ago (1150ms)
-    const targets = lagComp.getRewoundTargets(serverTime, 1150, 60);
+    // Client with 60ms ping aimed at frame from 85ms ago (within 93ms half-RTT budget)
+    const targets = lagComp.getRewoundTargets(serverTime, 1165, 60);
     expect(targets.length).toBe(1);
     expect(targets[0].center.x).toBeCloseTo(10, 1);
+
+    // 300ms ping is strictly clamped at 120ms max ceiling
+    lagComp.recordSnapshot(4, 1130, makeTargets(15, 0, 0));    // 120ms in past (1250 - 120 = 1130)
+    const clampedTargets = lagComp.getRewoundTargets(serverTime, 1000, 300);
+    expect(clampedTargets.length).toBe(1);
+    expect(clampedTargets[0].center.x).toBeCloseTo(15, 1);
   });
 
   it('is immune to client local OS clock skew (+150ms or -150ms drift)', () => {

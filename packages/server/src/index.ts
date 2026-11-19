@@ -1,10 +1,14 @@
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { GameRoom } from './GameRoom.js';
+import { RoomRegistry } from './RoomRegistry.js';
 
 const PORT = Number(process.env.PORT) || 2567;
 const MAX_CONNECTIONS = 32;
+const MAX_CONNS_PER_IP = 3;
 const MAX_MESSAGES_PER_SEC = 150;
+
+const ipConnCounts = new Map<string, number>();
 
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:3000',
@@ -24,10 +28,25 @@ function isOriginAllowed(originHeader?: string): boolean {
   }
 }
 
+function getClientIp(req: http.IncomingMessage): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress || '127.0.0.1';
+}
+
+const roomRegistry = new RoomRegistry();
+const gameRoom = roomRegistry.getOrCreate('GRM-CITADEL').room;
+
 const server = http.createServer((req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', activeClients: wss.clients.size }));
+    res.end(JSON.stringify({
+      status: 'ok',
+      activeClients: wss.clients.size,
+      activeRooms: roomRegistry.getRoomCount(),
+    }));
     return;
   }
   res.writeHead(404);
@@ -40,12 +59,18 @@ const wss = new WebSocketServer({
   perMessageDeflate: false, // Prevents zip bomb CPU exhaustion
 });
 
-const gameRoom = new GameRoom();
-
 server.on('upgrade', (req, socket, head) => {
   const origin = req.headers.origin;
   if (origin && !isOriginAllowed(origin)) {
     socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const clientIp = getClientIp(req);
+  const currentCount = ipConnCounts.get(clientIp) || 0;
+  if (currentCount >= MAX_CONNS_PER_IP) {
+    socket.write('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;
   }
@@ -57,11 +82,29 @@ server.on('upgrade', (req, socket, head) => {
   }
 
   wss.handleUpgrade(req, socket, head, (ws) => {
+    ipConnCounts.set(clientIp, currentCount + 1);
+    ws.on('close', () => {
+      const remaining = (ipConnCounts.get(clientIp) || 1) - 1;
+      if (remaining <= 0) {
+        ipConnCounts.delete(clientIp);
+      } else {
+        ipConnCounts.set(clientIp, remaining);
+      }
+    });
     wss.emit('connection', ws, req);
   });
 });
 
-wss.on('connection', (ws: WebSocket) => {
+interface MonitoredSocket extends WebSocket {
+  isAlive?: boolean;
+}
+
+wss.on('connection', (ws: MonitoredSocket, req: http.IncomingMessage) => {
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
+
   // Token-bucket rate limiter per socket
   let messageCount = 0;
   let windowStart = Date.now();
@@ -81,11 +124,59 @@ wss.on('connection', (ws: WebSocket) => {
     return true;
   };
 
-  gameRoom.handleConnection(ws, rateLimitCheck);
+  // 5,000ms unauthenticated join timeout
+  let hasJoined = false;
+  const joinTimer = setTimeout(() => {
+    if (!hasJoined && ws.readyState === WebSocket.OPEN) {
+      console.warn('[GARAM Security] Socket failed to transmit valid join packet in 5000ms. Closing with 4001.');
+      ws.close(4001, 'Join timeout');
+    }
+  }, 5000);
+
+  const originalOn = ws.on.bind(ws);
+  ws.on = function (event: string, listener: (...args: unknown[]) => void) {
+    if (event === 'message') {
+      const wrapped = (...args: unknown[]) => {
+        try {
+          const parsed = JSON.parse(args[0]?.toString() || '{}');
+          if (parsed.type === 'join') {
+            hasJoined = true;
+            clearTimeout(joinTimer);
+          }
+        } catch {}
+        return listener(...args);
+      };
+      return originalOn(event as any, wrapped as any);
+    }
+    return originalOn(event as any, listener as any);
+  } as any;
+
+  ws.on('close', () => {
+    clearTimeout(joinTimer);
+  });
+
+  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const roomCode = url.searchParams.get('room') || 'GRM-CITADEL';
+  const { room } = roomRegistry.getOrCreate(roomCode);
+  room.handleConnection(ws, rateLimitCheck);
 });
+
+// 15,000ms heartbeat reaper to terminate half-open sockets
+const heartbeatInterval = setInterval(() => {
+  wss.clients.forEach((client) => {
+    const socket = client as MonitoredSocket;
+    if (socket.isAlive === false) {
+      console.warn('[GARAM Security] Terminating unresponsive half-open socket.');
+      return socket.terminate();
+    }
+    socket.isAlive = false;
+    socket.ping();
+  });
+}, 15000);
+heartbeatInterval.unref();
 
 server.listen(PORT, () => {
   console.log(`[GARAM Server] Authoritative 64-Tick Server running on ws://localhost:${PORT}`);
 });
 
-export { server, wss, gameRoom };
+export { server, wss, gameRoom, roomRegistry };

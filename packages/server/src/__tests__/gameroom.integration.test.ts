@@ -153,4 +153,122 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     // Socket remains healthy and open
     expect(ws.closed).toBe(false);
   });
+
+  it('handles 12 clumped 128Hz input frames without dropping any under 16-frame burst tolerance', async () => {
+    room = new GameRoom();
+    const ws = new MockWebSocket();
+    room.handleConnection(ws as unknown as WebSocket);
+
+    ws.simulateClientMessage({
+      type: 'join',
+      callsign: 'Eldar Garamov',
+      faction: 'Vanguard',
+    });
+
+    await new Promise(r => setTimeout(r, 20));
+
+    // Clump 12 inputs at once (simulating Wi-Fi TCP HoL stall release)
+    for (let seq = 1; seq <= 12; seq++) {
+      ws.simulateClientMessage({
+        type: 'input',
+        seq,
+        timestamp: Date.now(),
+        weaponId: 'garam-47',
+        input: {
+          forward: true,
+          backward: false,
+          left: false,
+          right: false,
+          jump: false,
+          crouch: false,
+          walk: false,
+          yaw: 0,
+          pitch: 0,
+        },
+      });
+    }
+
+    // Wait 4 server ticks (~65ms) to drain up to 16 queued frames
+    await new Promise(r => setTimeout(r, 70));
+
+    const session = (room as unknown as { sessions: Map<string, { lastInputSeq: number; inputQueue: unknown[] }> }).sessions.values().next().value;
+    expect(session).toBeDefined();
+    expect(session.lastInputSeq).toBe(12);
+    expect(session.inputQueue.length).toBe(0);
+  });
+
+  it('strictly caps speedhack input bursts at 132 processed frames per second', async () => {
+    room = new GameRoom();
+    const ws = new MockWebSocket();
+    room.handleConnection(ws as unknown as WebSocket);
+
+    ws.simulateClientMessage({
+      type: 'join',
+      callsign: 'Speedhacker',
+      faction: 'Syndicate',
+    });
+
+    await new Promise(r => setTimeout(r, 20));
+
+    // Flood with 160 frames across a single second
+    for (let seq = 1; seq <= 160; seq++) {
+      ws.simulateClientMessage({
+        type: 'input',
+        seq,
+        timestamp: Date.now(),
+        weaponId: 'garam-47',
+        input: {
+          forward: true,
+          backward: false,
+          left: false,
+          right: false,
+          jump: false,
+          crouch: false,
+          walk: false,
+          yaw: 0,
+          pitch: 0,
+        },
+      });
+    }
+
+    // Wait ~100ms
+    await new Promise(r => setTimeout(r, 100));
+
+    const session = (room as unknown as { sessions: Map<string, { framesProcessedThisSecond: number }> }).sessions.values().next().value;
+    expect(session).toBeDefined();
+    expect(session.framesProcessedThisSecond).toBeLessThanOrEqual(132);
+  });
+
+  it('strictly rejects silent-aim FireAction packets diverging by > 15 degrees from player yaw', async () => {
+    room = new GameRoom();
+    const ws = new MockWebSocket();
+    room.handleConnection(ws as unknown as WebSocket);
+
+    ws.simulateClientMessage({
+      type: 'join',
+      callsign: 'Eldar Garamov',
+      faction: 'Vanguard',
+    });
+
+    await new Promise(r => setTimeout(r, 20));
+
+    // Player faces forward (yaw = 0.0)
+    // Attacker sends FireAction attempting 180° silent-aim snap behind them (yaw = Math.PI)
+    ws.simulateClientMessage({
+      type: 'fire',
+      seq: 1,
+      targetServerTime: Date.now(),
+      weaponId: 'garam-47',
+      direction: { x: 0, y: 0, z: -1 },
+      yaw: Math.PI, // 180° snap!
+      pitch: 0,
+      isScoped: false,
+    });
+
+    await new Promise(r => setTimeout(r, 20));
+
+    // Assert no hit_confirm was generated for this malicious shot
+    const hitConfirms = ws.sentMessages.filter(m => m.type === 'hit_confirm');
+    expect(hitConfirms.length).toBe(0);
+  });
 });

@@ -14,6 +14,7 @@ export interface EconomyConfig {
   defuseTimeSecKit: number;
   winCashElimination: number;
   winCashBomb: number;
+  defuseBonus: number;
   lossBonusBase: number;
   lossBonusStep: number;
   lossBonusMax: number;
@@ -43,6 +44,7 @@ export const ECONOMY: EconomyConfig = {
   defuseTimeSecKit: 5.0,
   winCashElimination: 3250,
   winCashBomb: 3500,
+  defuseBonus: 250,
   lossBonusBase: 1400,
   lossBonusStep: 500,
   lossBonusMax: 3400, // $1400, $1900, $2400, $2900, $3400 (streak 0..4)
@@ -51,7 +53,7 @@ export const ECONOMY: EconomyConfig = {
     kevlar: 650,
     helmet: 350,
     kevlarHelmetCombo: 1000,
-    defuseKit: 400,
+    defuseKit: 300,
     smokeGrenade: 300,
   },
 };

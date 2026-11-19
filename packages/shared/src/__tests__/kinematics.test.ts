@@ -325,4 +325,27 @@ describe('Kinematics & SAT Collision Resolution', () => {
     // 58.5 - 0.36 = 58.14
     expect(player.state.x).toBeCloseTo(58.14, 2);
   });
+
+  it('allows solo crouch-jump tuck onto 1.80m crates (crate_a_mid reach)', () => {
+    const crate: AABBCollider = {
+      minX: -1.5,
+      maxX: 1.5,
+      minY: 0,
+      maxY: 1.80, // crate_a_mid lowered to 1.80m for solo skill jump
+      minZ: 0.5,
+      maxZ: 3.5,
+    };
+
+    // Calculate maximum crouch jump tuck vertical clearance:
+    // Jump velocity = 5.8 m/s, gravity = 19.6 m/s^2, apex time = 5.8 / 19.6 = 0.2959s
+    // Ballistic peak height = (5.8^2) / (2 * 19.6) = 0.858m
+    // Stand capsule (1.85m) - Crouch capsule (1.20m) = 0.65m mid-air leg tuck clearance
+    // Ledge auto-step reach = 0.40m (STEP_HEIGHT)
+    // Total vertical reach = 0.858m + 0.65m + 0.40m = 1.908m >= 1.80m
+    const peakHeight = (KINEMATICS.JUMP_VELOCITY * KINEMATICS.JUMP_VELOCITY) / (2 * KINEMATICS.GRAVITY);
+    const tuckClearance = KINEMATICS.CAPSULE_HEIGHT_STAND - KINEMATICS.CAPSULE_HEIGHT_CROUCH;
+    const maxSoloLedgeReach = peakHeight + tuckClearance + KINEMATICS.STEP_HEIGHT;
+
+    expect(maxSoloLedgeReach).toBeGreaterThanOrEqual(crate.maxY);
+  });
 });

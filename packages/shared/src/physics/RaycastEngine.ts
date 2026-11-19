@@ -1,5 +1,6 @@
 import { MapBlockCollider, SurfaceMaterial, SURFACE_MATERIALS, Vec3 } from '../maps/DeCitadelData.js';
 import { HITBOX } from '../constants/kinematics.js';
+import { SpatialGrid } from './SpatialGrid.js';
 
 export interface Ray {
   origin: Vec3;
@@ -250,7 +251,8 @@ export function executeTacticalRaycast(
   maxRange = 250,
   blocks: MapBlockCollider[] = [],
   targets: TargetCollider[] = [],
-  rangeDropoff = 1.0
+  rangeDropoff = 1.0,
+  spatialGrid?: SpatialGrid
 ): RaycastHit[] {
   interface HitCandidate {
     type: 'block' | 'target';
@@ -265,23 +267,45 @@ export function executeTacticalRaycast(
 
   const candidates: HitCandidate[] = [];
 
-  // 1. Gather all block intersections
-  for (const block of blocks) {
-    const res = intersectRayAABB(
-      ray,
-      block.minX, block.maxX,
-      block.minY, block.maxY,
-      block.minZ, block.maxZ
-    );
-    if (res.hit && res.tNear <= maxRange) {
-      candidates.push({
-        type: 'block',
-        distance: res.tNear,
-        normal: res.normal,
-        block,
-        tNear: res.tNear,
-        tFar: res.tFar,
-      });
+  // 1. Gather block intersections (accelerated via SpatialGrid if provided)
+  if (spatialGrid) {
+    spatialGrid.queryRay(ray, maxRange, (idx) => {
+      const block = blocks[idx];
+      const res = intersectRayAABB(
+        ray,
+        block.minX, block.maxX,
+        block.minY, block.maxY,
+        block.minZ, block.maxZ
+      );
+      if (res.hit && res.tNear <= maxRange) {
+        candidates.push({
+          type: 'block',
+          distance: res.tNear,
+          normal: res.normal,
+          block,
+          tNear: res.tNear,
+          tFar: res.tFar,
+        });
+      }
+    });
+  } else {
+    for (const block of blocks) {
+      const res = intersectRayAABB(
+        ray,
+        block.minX, block.maxX,
+        block.minY, block.maxY,
+        block.minZ, block.maxZ
+      );
+      if (res.hit && res.tNear <= maxRange) {
+        candidates.push({
+          type: 'block',
+          distance: res.tNear,
+          normal: res.normal,
+          block,
+          tNear: res.tNear,
+          tFar: res.tFar,
+        });
+      }
     }
   }
 
@@ -297,6 +321,13 @@ export function executeTacticalRaycast(
     const by = t.center.y;
     const bz = t.center.z;
     const hb = t.hitboxes;
+
+    // Fast bounding-sphere early out: distance to operator center must be <= 1.30m
+    const opCenter: Vec3 = { x: bx, y: by + 0.92, z: bz };
+    const boundCheck = intersectRaySphere(ray, opCenter, 1.30);
+    if (!boundCheck.hit || boundCheck.t > maxRange) {
+      continue;
+    }
 
     // Head Sphere (uses articulated bone position if available)
     const headPos = hb?.head ?? { x: bx, y: by + 1.66, z: bz };
@@ -510,7 +541,8 @@ export function hasLineOfSight(
   eyeA: Vec3,
   eyeB: Vec3,
   blocks: MapBlockCollider[],
-  smokeOccluders: SmokeOccluder[] = []
+  smokeOccluders: SmokeOccluder[] = [],
+  spatialGrid?: SpatialGrid
 ): boolean {
   const dx = eyeB.x - eyeA.x;
   const dy = eyeB.y - eyeA.y;
@@ -525,11 +557,26 @@ export function hasLineOfSight(
   };
 
   // Check world concrete / opaque blocks
-  for (const b of blocks) {
-    const res = intersectRayAABB(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ);
-    if (res.hit && res.tNear < dist && res.tNear > 0.05) {
-      if (b.material === 'CONCRETE') return false;
-      if (b.h >= 2.0) return false;
+  if (spatialGrid) {
+    let obstructed = false;
+    spatialGrid.queryRay(ray, dist, (idx) => {
+      const b = blocks[idx];
+      const res = intersectRayAABB(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ);
+      if (res.hit && res.tNear < dist && res.tNear > 0.05) {
+        if (b.material === 'CONCRETE' || b.h >= 2.0) {
+          obstructed = true;
+          return true; // early exit traversal
+        }
+      }
+    });
+    if (obstructed) return false;
+  } else {
+    for (const b of blocks) {
+      const res = intersectRayAABB(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ);
+      if (res.hit && res.tNear < dist && res.tNear > 0.05) {
+        if (b.material === 'CONCRETE') return false;
+        if (b.h >= 2.0) return false;
+      }
     }
   }
 

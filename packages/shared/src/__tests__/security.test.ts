@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateClientPacket } from '../index.js';
+import { validateClientPacket, WEAPONS } from '../index.js';
 
 describe('Authoritative Server Security & Input Sanitization', () => {
   it('strictly rejects prototype pollution attempts', () => {
@@ -154,5 +154,14 @@ describe('Authoritative Server Security & Input Sanitization', () => {
     // Valid ping
     const ping = validateClientPacket({ type: 'ping', timestamp: 123456789 });
     expect(ping).toEqual({ type: 'ping', timestamp: 123456789 });
+  });
+
+  it('guarantees WEAPONS singleton is deeply immutable (Object.isFrozen)', () => {
+    expect(Object.isFrozen(WEAPONS)).toBe(true);
+    expect(Object.isFrozen(WEAPONS['garam-47'])).toBe(true);
+    expect(Object.isFrozen(WEAPONS['garam-47'].sprayPattern)).toBe(true);
+    expect(() => {
+      (WEAPONS['garam-47'] as { damage: number }).damage = 999;
+    }).toThrow();
   });
 });

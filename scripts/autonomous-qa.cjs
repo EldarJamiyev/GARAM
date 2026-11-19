@@ -176,13 +176,15 @@ async function runAutonomousQASuite() {
   // 5. Test [F3] PerfMonitor Telemetry
   console.log('\n[Test 5] Toggling [F3] Performance Telemetry Graph...');
   const f3Check = await send('Runtime.evaluate', {
-    expression: `(() => {
+    expression: `(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'F3', bubbles: true }));
+      await new Promise(r => setTimeout(r, 400));
       const perfEl = document.getElementById('garam-perf-monitor');
       const isVisible = perfEl ? getComputedStyle(perfEl).display === 'block' : false;
       const content = perfEl ? perfEl.innerText : '';
       return { isVisible, content: content.split('\\n').filter(Boolean) };
     })()`,
+    awaitPromise: true,
     returnByValue: true
   });
   console.log('F3 Perf Monitor:', f3Check.result.value);
