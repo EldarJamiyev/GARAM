@@ -673,11 +673,17 @@ export class BotAISystem {
 
       _toTarget.subVectors(targetWaypoint, botPos);
       _toTarget.y = 0;
-      const distToWaypoint = _toTarget.length();
+      let distToWaypoint = _toTarget.length();
 
-      if (distToWaypoint < 1.4) {
+      // Increased waypoint tolerance (1.6m) + Corner-cutting lookahead
+      if (distToWaypoint < 1.6) {
         if (state.pathIndex < state.path.length - 1) {
           state.pathIndex++;
+          state.consecutiveStuckCount = 0;
+          targetWaypoint = state.path[state.pathIndex];
+          _toTarget.subVectors(targetWaypoint, botPos);
+          _toTarget.y = 0;
+          distToWaypoint = _toTarget.length();
         } else if (!isBombArmed) {
           // Reached destination: repath to another strategic point
           bot.waypointIndex = (bot.waypointIndex + 1) % bot.patrolWaypoints.length;
@@ -687,48 +693,131 @@ export class BotAISystem {
             nextTarget
           );
           state.pathIndex = 0;
+          state.consecutiveStuckCount = 0;
+          targetWaypoint = state.path[state.pathIndex] || nextTarget;
+          _toTarget.subVectors(targetWaypoint, botPos);
+          _toTarget.y = 0;
+          distToWaypoint = _toTarget.length();
+        }
+      } else if (state.pathIndex < state.path.length - 1) {
+        // Line-of-sight corner cutting: if bot can see next-next waypoint directly, skip current corner!
+        const nextNext = state.path[state.pathIndex + 1];
+        if (nextNext) {
+          const losNext = hasLineOfSight(
+            { x: botPos.x, y: botPos.y + 1.2, z: botPos.z },
+            { x: nextNext.x, y: nextNext.y + 1.2, z: nextNext.z },
+            blocks,
+            []
+          );
+          if (losNext) {
+            state.pathIndex++;
+            targetWaypoint = nextNext;
+            _toTarget.subVectors(targetWaypoint, botPos);
+            _toTarget.y = 0;
+            distToWaypoint = _toTarget.length();
+          }
         }
       }
 
       let isMoving = false;
       let actualSpeed = 0;
 
-      if (distToWaypoint >= 0.5) {
+      if (distToWaypoint >= 0.4) {
         _toTarget.normalize();
 
         // Lurker bot takes silent slow walk after 20s
         const isSilentWalk = state.isLurking && roundElapsed > 20;
-        const currentSpeed = isSilentWalk ? 2.1 : config.patrolSpeed;
+        let currentSpeed = isSilentWalk ? 2.1 : config.patrolSpeed;
 
-        // Anti-Stuck Displacement Monitor (0.6s / 0.25m check)
+        // Anti-Stuck Displacement Monitor (0.4s / 0.16m check)
         state.stuckTimer += dt;
-        if (state.stuckTimer >= 0.6) {
+        if (state.stuckTimer >= 0.4) {
           const displacement = botPos.distanceTo(state.lastDisplacementPos);
-          if (displacement < 0.25) {
-            // Bot stuck on crate corner or door pillar: apply perpendicular sidestep vector
-            _stepNormal.set(-_toTarget.z, 0, _toTarget.x).multiplyScalar(Math.random() > 0.5 ? 1.4 : -1.4);
-            _toTarget.add(_stepNormal).normalize();
+          if (displacement < 0.16) {
+            state.consecutiveStuckCount++;
 
-            // Repath to destination from nearest unobstructed node
-            if (state.path.length > 0) {
-              const goal = state.path[state.path.length - 1];
-              state.path = findPathAStar({ x: botPos.x, y: botPos.y, z: botPos.z }, goal);
-              state.pathIndex = 0;
+            // Find nearest colliding block and compute ejection / tangent sliding vector
+            let nearestCollider: AABBCollider | null = null;
+            let minDistToWall = Infinity;
+            for (const col of colliders) {
+              const cx = Math.max(col.minX, Math.min(botPos.x, col.maxX));
+              const cz = Math.max(col.minZ, Math.min(botPos.z, col.maxZ));
+              const d = Math.hypot(botPos.x - cx, botPos.z - cz);
+              if (d < minDistToWall) {
+                minDistToWall = d;
+                nearestCollider = col;
+              }
             }
+
+            if (nearestCollider && minDistToWall < KINEMATICS.CAPSULE_RADIUS + 0.35) {
+              const cx = Math.max(nearestCollider.minX, Math.min(botPos.x, nearestCollider.maxX));
+              const cz = Math.max(nearestCollider.minZ, Math.min(botPos.z, nearestCollider.maxZ));
+              let nx = botPos.x - cx;
+              let nz = botPos.z - cz;
+              const len = Math.hypot(nx, nz);
+              if (len > 0.001) {
+                nx /= len;
+                nz /= len;
+              } else {
+                nx = 0;
+                nz = 1;
+              }
+
+              // Compute tangent along wall that best matches waypoint heading
+              const tan1X = -nz;
+              const tan1Z = nx;
+              const tan2X = nz;
+              const tan2Z = -nx;
+              const dot1 = tan1X * _toTarget.x + tan1Z * _toTarget.z;
+              const chosenTanX = dot1 >= 0 ? tan1X : tan2X;
+              const chosenTanZ = dot1 >= 0 ? tan1Z : tan2Z;
+
+              // Blend 70% tangent slide + 50% push away from wall
+              state.unstuckDir.set(chosenTanX * 0.7 + nx * 0.5, 0, chosenTanZ * 0.7 + nz * 0.5).normalize();
+              state.unstuckDuration = 0.85;
+            } else {
+              _stepNormal.set(-_toTarget.z, 0, _toTarget.x).multiplyScalar(Math.random() > 0.5 ? 1.0 : -1.0);
+              state.unstuckDir.copy(_stepNormal).normalize();
+              state.unstuckDuration = 0.6;
+            }
+
+            // If stuck for 2+ consecutive checks, skip waypoint or repath
+            if (state.consecutiveStuckCount >= 2) {
+              if (state.pathIndex < state.path.length - 1) {
+                state.pathIndex++;
+              } else if (state.path.length > 0) {
+                const goal = state.path[state.path.length - 1];
+                state.path = findPathAStar({ x: botPos.x, y: botPos.y, z: botPos.z }, goal);
+                state.pathIndex = 0;
+              }
+            }
+          } else {
+            state.consecutiveStuckCount = 0;
           }
           state.lastDisplacementPos.copy(botPos);
           state.stuckTimer = 0;
         }
 
-        // Bot-to-bot separation force (radius 1.1m)
+        // Apply active unstuck recovery heading
+        if (state.unstuckDuration > 0) {
+          state.unstuckDuration -= dt;
+          _toTarget.lerp(state.unstuckDir, 0.75).normalize();
+        }
+
+        // Staggered formation & bot-to-bot separation
         for (let j = 0; j < bots.length; j++) {
           if (j === bIdx) continue;
           const otherBot = bots[j];
           if (otherBot.isDead) continue;
           const distBetween = botPos.distanceTo(otherBot.mesh.position);
-          if (distBetween < 1.1 && distBetween > 0.05) {
+          if (distBetween < 1.4 && distBetween > 0.05) {
             const push = new THREE.Vector3().subVectors(botPos, otherBot.mesh.position).normalize();
-            _toTarget.addScaledVector(push, (1.1 - distBetween) * 1.5).normalize();
+            _toTarget.addScaledVector(push, (1.4 - distBetween) * 1.2).normalize();
+
+            // Tactical spacing: follower bot yields speed to create single-file spacing
+            if (bIdx > j && distBetween < 1.1) {
+              currentSpeed *= 0.65;
+            }
           }
         }
 
@@ -751,15 +840,25 @@ export class BotAISystem {
         );
 
         bot.mesh.position.set(resolved.x, resolved.y, resolved.z);
+        bot.vx = resolved.vx;
+        bot.vz = resolved.vz;
+
+        const resolvedSpeed = Math.hypot(resolved.vx, resolved.vz);
+        isMoving = resolvedSpeed > 0.15;
+        actualSpeed = isMoving ? resolvedSpeed : 0;
 
         if (!state.soundInvestigateTarget) {
-          state.targetYaw = Math.atan2(_toTarget.x, _toTarget.z);
-          state.currentYaw += (state.targetYaw - state.currentYaw) * Math.min(1.0, 14 * dt);
+          if (resolvedSpeed > 0.3) {
+            state.targetYaw = Math.atan2(resolved.vx, resolved.vz);
+          } else {
+            state.targetYaw = Math.atan2(_toTarget.x, _toTarget.z);
+          }
+          let angleDiff = state.targetYaw - state.currentYaw;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          state.currentYaw += angleDiff * Math.min(1.0, 14 * dt);
           bot.mesh.rotation.y = state.currentYaw;
         }
-
-        isMoving = true;
-        actualSpeed = currentSpeed;
       }
 
       // Update operator rig animation

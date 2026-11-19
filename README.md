@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-55%20Passing-D4AF37?style=for-the-badge" alt="55 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-56%20Passing-D4AF37?style=for-the-badge" alt="56 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -24,7 +24,7 @@
   1. **Strict 128Hz Kinematic Determinism & Parity:** Pure mathematical kinematics with Circle-AABB Separating Axis Theorem (SAT) wall deflection. Discrete 1/128s server sub-stepping guarantees zero Euler drift between client and authoritative server. Includes mid-air crouch-jump tuck (+0.55m capsule lift) to mount 1.5m CT barriers and crates.
   2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin is strictly computed on server from authenticated player state (magic bullet exploits eliminated). Includes token-bucket rate limiter (150 msg/s), 4KB payload cap, origin allowlist checks, and prototype pollution defenses.
   3. **Zero Standing Spread RNG:** Stationary rifle shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy.
-  4. **A\* Tactical Bot Brain:** Connected 32-waypoint tactical navigation graph with dynamic per-round team strategies, real raycast ballistics, sound awareness, anti-stuck steering, and bot separation.
+  4. **A\* Tactical Bot Brain & Persistent Anti-Stuck Evasion:** 100% verified collision-free 32-waypoint tactical navigation graph (>= 0.55m node clearance, >= 0.40m corridor clearance). Incorporates persistent 0.85s wall-tangent sliding evasion, line-of-sight corner cutting, and single-file yielding to permanently eliminate bot wall-stuck bottlenecks.
   5. **Dual-Pass PBR Rendering & Asset Pipeline:** Depth-isolated viewmodel rendering (65° FOV) with procedural PMREM Image-Based Lighting (IBL) reflections, zero world-geometry clipping, and Box3-normalized textured GLBs with animated mechanical bone hooks.
   6. **Adaptive Clock-Skew Immune Lag Compensation:** Authoritative 64-tick server simulation with ping-adaptive historical hitbox rewind (up to 150ms ceiling), synchronized against client local OS clock drift.
 
