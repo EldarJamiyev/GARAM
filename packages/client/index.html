@@ -418,14 +418,72 @@
       letter-spacing: 2px;
       text-transform: uppercase;
       border-radius: 4px;
+      cursor: pointer;
       transition: all 0.2s ease;
     }
-    .start-prompt:hover { background: #e01b33; transform: scale(1.05); }
-    .controls-help {
-      margin-top: 28px;
+    .start-prompt:hover { background: #e01b33; transform: scale(1.02); }
+    .lobby-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: rgba(10, 14, 20, 0.78);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 28px 40px;
+      box-shadow: 0 0 50px rgba(0, 0, 0, 0.85);
+      max-width: 680px;
+      width: 92%;
+    }
+    .lobby-row {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0 16px;
+      width: 100%;
+      justify-content: center;
+    }
+    .lobby-btn {
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #c4cdd5;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .lobby-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+    }
+    .lobby-btn.active {
+      background: #ff2a44;
+      border-color: #ff596f;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(255, 42, 68, 0.5);
+    }
+    .lobby-slider-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      margin: 6px 0;
       font-size: 12px;
+      color: #9ba3af;
+      letter-spacing: 1px;
+    }
+    .lobby-slider {
+      width: 200px;
+      accent-color: #ff2a44;
+      cursor: pointer;
+    }
+    .controls-help {
+      margin-top: 22px;
+      font-size: 11px;
       color: #7b8590;
-      line-height: 2;
+      line-height: 1.9;
       text-align: center;
     }
   </style>
@@ -588,15 +646,40 @@
     </div>
   </div>
 
-  <!-- Click to Play Screen -->
+  <!-- Sleek Tactical Pre-Match Lobby & Pause Menu -->
   <div id="blocker">
-    <div class="title-banner">GARAM</div>
-    <div class="subtitle">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
-    <div class="start-prompt">CLICK TO SPAWN (ELDAR GARAMOV)</div>
-    <div class="controls-help">
-      [WASD] Move &nbsp;|&nbsp; [A / D Tap] Counter-Strafe &nbsp;|&nbsp; [SPACE] Jump &nbsp;|&nbsp; [CTRL] Crouch &nbsp;|&nbsp; [SHIFT] Silent Walk<br>
-      [MOUSE 1] Fire / Light Slash &nbsp;|&nbsp; [MOUSE 2] AWP Scope (1x/2x) / Heavy Stab &nbsp;|&nbsp; [HOLD E] Plant / Defuse<br>
-      [Q] Quick-Switch &nbsp;|&nbsp; [1, 2, 3, 4, 5] Weapon Slots &nbsp;|&nbsp; [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [P] Practice $16K
+    <div class="lobby-panel">
+      <div class="title-banner">GARAM</div>
+      <div class="subtitle">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
+
+      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">AI DIFFICULTY TIER</div>
+      <div class="lobby-row" id="diff-selector">
+        <button class="lobby-btn" data-diff="Recruit">RECRUIT</button>
+        <button class="lobby-btn active" data-diff="Veteran">VETERAN</button>
+        <button class="lobby-btn" data-diff="Elite">ELITE</button>
+        <button class="lobby-btn" data-diff="Sovereign">SOVEREIGN</button>
+      </div>
+
+      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin: 4px 0 2px; text-transform: uppercase;">TACTICAL SETTINGS</div>
+      <div class="lobby-slider-row">
+        <span>MOUSE SENSITIVITY</span>
+        <input type="range" class="lobby-slider" id="sens-slider" min="0.5" max="4.0" step="0.1" value="2.2">
+        <span id="sens-val" style="color: #fff; width: 40px; text-align: right;">2.2</span>
+      </div>
+      <div class="lobby-slider-row">
+        <span>FIELD OF VIEW</span>
+        <input type="range" class="lobby-slider" id="fov-slider" min="75" max="105" step="1" value="90">
+        <span id="fov-val" style="color: #fff; width: 40px; text-align: right;">90°</span>
+      </div>
+
+      <button class="start-prompt" id="spawn-btn" style="margin-top: 18px; width: 100%;">DEPLOY OPERATOR (ELDAR GARAMOV)</button>
+
+      <div class="controls-help">
+        [WASD] Move &nbsp;|&nbsp; [A / D Tap] Counter-Strafe &nbsp;|&nbsp; [SPACE] Jump &nbsp;|&nbsp; [CTRL] Crouch &nbsp;|&nbsp; [SHIFT] Silent Walk<br>
+        [MOUSE 1] Fire / Light Slash &nbsp;|&nbsp; [MOUSE 2] Scope (1x/2x) / Heavy Stab &nbsp;|&nbsp; [HOLD E] Plant / Defuse<br>
+        [Q] Quick-Switch &nbsp;|&nbsp; [1-5] Weapons &nbsp;|&nbsp; [F] Inspect Weapon &nbsp;|&nbsp; [R] Reload &nbsp;|&nbsp; [Z/X/C/V] Quick Utility<br>
+        [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [P] Practice $16K &nbsp;|&nbsp; [ESC] Settings / Pause
+      </div>
     </div>
   </div>
 

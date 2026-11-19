@@ -283,4 +283,73 @@ export class HUDManager {
     }
     tbody.innerHTML = html;
   }
+
+  public triggerHitmarker(isHeadshot: boolean): void {
+    let hm = document.getElementById('crosshair-hitmarker');
+    if (!hm) {
+      hm = document.createElement('div');
+      hm.id = 'crosshair-hitmarker';
+      hm.style.position = 'absolute';
+      hm.style.top = '50%';
+      hm.style.left = '50%';
+      hm.style.width = '24px';
+      hm.style.height = '24px';
+      hm.style.transform = 'translate(-50%, -50%) rotate(45deg)';
+      hm.style.pointerEvents = 'none';
+      hm.style.zIndex = '55';
+      hm.innerHTML = `
+        <div style="position: absolute; top: 0; left: 11px; width: 2px; height: 8px; background: currentColor;"></div>
+        <div style="position: absolute; bottom: 0; left: 11px; width: 2px; height: 8px; background: currentColor;"></div>
+        <div style="position: absolute; left: 0; top: 11px; width: 8px; height: 2px; background: currentColor;"></div>
+        <div style="position: absolute; right: 0; top: 11px; width: 8px; height: 2px; background: currentColor;"></div>
+      `;
+      document.body.appendChild(hm);
+    }
+
+    hm.style.color = isHeadshot ? '#ff2a44' : '#ffffff';
+    hm.style.display = 'block';
+    hm.style.opacity = '1';
+    hm.style.transform = 'translate(-50%, -50%) rotate(45deg) scale(1.3)';
+    hm.style.transition = 'transform 0.12s ease-out, opacity 0.15s ease-out';
+
+    setTimeout(() => {
+      if (hm) {
+        hm.style.transform = 'translate(-50%, -50%) rotate(45deg) scale(0.9)';
+        hm.style.opacity = '0';
+      }
+    }, 120);
+  }
+
+  public triggerDamageIndicator(angleRad: number): void {
+    let ind = document.getElementById('damage-indicator-arc');
+    if (!ind) {
+      ind = document.createElement('div');
+      ind.id = 'damage-indicator-arc';
+      ind.style.position = 'absolute';
+      ind.style.top = '50%';
+      ind.style.left = '50%';
+      ind.style.width = '280px';
+      ind.style.height = '280px';
+      ind.style.transform = 'translate(-50%, -50%)';
+      ind.style.pointerEvents = 'none';
+      ind.style.zIndex = '45';
+      ind.style.borderRadius = '50%';
+      ind.style.border = '5px solid transparent';
+      ind.style.borderTopColor = 'rgba(255, 30, 50, 0.9)';
+      ind.style.filter = 'drop-shadow(0 0 10px rgba(255, 30, 50, 0.8))';
+      document.body.appendChild(ind);
+    }
+
+    const deg = (angleRad * 180) / Math.PI;
+    ind.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
+    ind.style.opacity = '1';
+    ind.style.transition = 'none';
+
+    setTimeout(() => {
+      if (ind) {
+        ind.style.transition = 'opacity 0.4s ease-out';
+        ind.style.opacity = '0';
+      }
+    }, 80);
+  }
 }

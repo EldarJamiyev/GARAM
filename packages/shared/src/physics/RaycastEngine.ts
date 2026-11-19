@@ -155,7 +155,7 @@ export function intersectRaySphere(ray: Ray, center: Vec3, radius: number): { hi
 }
 
 /**
- * Ray-Vertical Cylinder intersection for player body parts
+ * Ray-Vertical Cylinder intersection for player body parts with planar top & bottom circular caps
  */
 export function intersectRayVerticalCylinder(
   ray: Ray,
@@ -167,40 +167,64 @@ export function intersectRayVerticalCylinder(
 ): { hit: boolean; t: number } {
   const ocX = ray.origin.x - centerX;
   const ocZ = ray.origin.z - centerZ;
+  let closestT = Infinity;
+  let hit = false;
 
+  // 1. Curved cylindrical side surface
   const a = ray.direction.x * ray.direction.x + ray.direction.z * ray.direction.z;
-  if (a < 1e-8) {
-    if (ocX * ocX + ocZ * ocZ <= radius * radius) {
-      if (ray.direction.y > 0 && ray.origin.y < minY) {
-        return { hit: true, t: (minY - ray.origin.y) / ray.direction.y };
+  if (a > 1e-8) {
+    const b = 2 * (ocX * ray.direction.x + ocZ * ray.direction.z);
+    const c = ocX * ocX + ocZ * ocZ - radius * radius;
+    const discriminant = b * b - 4 * a * c;
+
+    if (discriminant >= 0) {
+      const sqrtDisc = Math.sqrt(discriminant);
+      const t0 = (-b - sqrtDisc) / (2 * a);
+      const t1 = (-b + sqrtDisc) / (2 * a);
+
+      if (t0 > 0) {
+        const y0 = ray.origin.y + ray.direction.y * t0;
+        if (y0 >= minY && y0 <= maxY && t0 < closestT) {
+          closestT = t0;
+          hit = true;
+        }
       }
-      if (ray.direction.y < 0 && ray.origin.y > maxY) {
-        return { hit: true, t: (maxY - ray.origin.y) / ray.direction.y };
+      if (t1 > 0) {
+        const y1 = ray.origin.y + ray.direction.y * t1;
+        if (y1 >= minY && y1 <= maxY && t1 < closestT) {
+          closestT = t1;
+          hit = true;
+        }
       }
     }
-    return { hit: false, t: -1 };
   }
 
-  const b = 2 * (ocX * ray.direction.x + ocZ * ray.direction.z);
-  const c = ocX * ocX + ocZ * ocZ - radius * radius;
-  const discriminant = b * b - 4 * a * c;
+  // 2. Planar Top & Bottom Circular Caps (essential for downward/upward angled shots!)
+  if (Math.abs(ray.direction.y) > 1e-8) {
+    // Top Cap (y = maxY)
+    const tTop = (maxY - ray.origin.y) / ray.direction.y;
+    if (tTop > 0 && tTop < closestT) {
+      const xTop = ray.origin.x + ray.direction.x * tTop - centerX;
+      const zTop = ray.origin.z + ray.direction.z * tTop - centerZ;
+      if (xTop * xTop + zTop * zTop <= radius * radius) {
+        closestT = tTop;
+        hit = true;
+      }
+    }
 
-  if (discriminant < 0) return { hit: false, t: -1 };
-
-  const sqrtDisc = Math.sqrt(discriminant);
-  const t0 = (-b - sqrtDisc) / (2 * a);
-  const t1 = (-b + sqrtDisc) / (2 * a);
-
-  if (t0 > 0) {
-    const y0 = ray.origin.y + ray.direction.y * t0;
-    if (y0 >= minY && y0 <= maxY) return { hit: true, t: t0 };
+    // Bottom Cap (y = minY)
+    const tBot = (minY - ray.origin.y) / ray.direction.y;
+    if (tBot > 0 && tBot < closestT) {
+      const xBot = ray.origin.x + ray.direction.x * tBot - centerX;
+      const zBot = ray.origin.z + ray.direction.z * tBot - centerZ;
+      if (xBot * xBot + zBot * zBot <= radius * radius) {
+        closestT = tBot;
+        hit = true;
+      }
+    }
   }
-  if (t1 > 0) {
-    const y1 = ray.origin.y + ray.direction.y * t1;
-    if (y1 >= minY && y1 <= maxY) return { hit: true, t: t1 };
-  }
 
-  return { hit: false, t: -1 };
+  return hit ? { hit: true, t: closestT } : { hit: false, t: -1 };
 }
 
 /**

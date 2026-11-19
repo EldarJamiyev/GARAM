@@ -19,6 +19,7 @@ export interface WeaponCombatCallbacks {
   onCameraPunch: (pitchKick: number) => void;
   onScopeChanged: (zoomStage: number, fov: number, sens: number) => void;
   onUtilityThrown: () => void;
+  onHitmarker?: (headshot: boolean) => void;
 }
 
 export class WeaponController {
@@ -184,6 +185,7 @@ export class WeaponController {
           if (victim && !victim.isDead) {
             // Friendly-fire protection: Vanguard teammates cannot be damaged or award cash!
             if (victim.team === 'Vanguard') {
+              this.callbacks.onHitmarker?.(false);
               break;
             }
 
@@ -191,10 +193,15 @@ export class WeaponController {
               this.audio.playHeadshotDink();
             }
 
+            // Trigger operator flinch & hitmarker
+            victim.rig?.triggerFlinch();
+            this.callbacks.onHitmarker?.(!!hit.isHeadshot);
+
             victim.health = Math.max(0, victim.health - hit.awardedDamage);
             this.effects.spawnDamagePopup(hitVec, hit.awardedDamage, !!hit.isHeadshot);
 
             if (victim.health <= 0) {
+              victim.isDead = true;
               this.callbacks.onKill('Eldar Garamov', victim, !!hit.isHeadshot, weapon.name, weapon.killReward);
             }
           }
@@ -313,5 +320,9 @@ export class WeaponController {
       this.viewmodel.isScoped = false;
       this.callbacks.onScopeChanged(0, 90, 0.0022);
     }
+  }
+
+  public inspectWeapon(): void {
+    this.viewmodel.inspect();
   }
 }

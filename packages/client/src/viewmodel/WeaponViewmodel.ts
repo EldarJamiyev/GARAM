@@ -468,6 +468,10 @@ export class WeaponViewmodel {
     this.inspectTime = 0;
   }
 
+  public inspect(): void {
+    this.triggerInspect();
+  }
+
   public triggerSlash(): void {
     this.isSlashing = true;
     this.slashTime = 0;

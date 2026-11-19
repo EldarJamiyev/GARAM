@@ -15,6 +15,8 @@ export interface InputCallbacks {
   onInteractDown: () => void; // E key for plant / defuse
   onInteractUp: () => void;
   onPracticeToggle: () => void; // P key for $16K dev test
+  onInspectWeapon?: () => void; // F key for inspect
+  onUtilityQuickSelect?: (type: 'smoke' | 'flash' | 'he' | 'molotov') => void;
 }
 
 export class InputManager {
@@ -141,6 +143,11 @@ export class InputManager {
         case 'ShiftLeft': this.input.walk = true; break;
         case 'KeyR': this.callbacks.onReload(); break;
         case 'KeyQ': this.callbacks.onQuickSwitch(); break;
+        case 'KeyF': this.callbacks.onInspectWeapon?.(); break;
+        case 'KeyZ': this.callbacks.onUtilityQuickSelect?.('flash'); break;
+        case 'KeyX': this.callbacks.onUtilityQuickSelect?.('smoke'); break;
+        case 'KeyC': this.callbacks.onUtilityQuickSelect?.('he'); break;
+        case 'KeyV': this.callbacks.onUtilityQuickSelect?.('molotov'); break;
         case 'Digit1': this.callbacks.onSlotSelect(1); break;
         case 'Digit2': this.callbacks.onSlotSelect(2); break;
         case 'Digit3': this.callbacks.onSlotSelect(3); break;

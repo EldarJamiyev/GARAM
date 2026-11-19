@@ -358,14 +358,6 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       kills: 0,
       deaths: 0,
     });
-      vz: 0,
-      patrolTarget: waypoints[0] || new THREE.Vector3(botDef.startPos.x, botDef.startPos.y, botDef.startPos.z),
-      lastShotTime: 0,
-      patrolWaypoints: waypoints,
-      waypointIndex: 0,
-      kills: 0,
-      deaths: 0,
-    });
   }
 
   return {
@@ -390,18 +382,31 @@ export function updateBotSystem(
   playerPos: THREE.Vector3,
   playerEye: THREE.Vector3,
   onBotShootPlayer: (bot: BotEntity, dmg: number) => void,
-  onBotShootBot: (shooter: BotEntity, victim: BotEntity, dmg: number) => void
+  onBotShootBot: (shooter: BotEntity, victim: BotEntity, dmg: number) => void,
+  smokeOccluders: SmokeOccluder[] = []
 ): void {
   const now = performance.now();
 
   for (const bot of bots) {
-    if (bot.isDead) continue;
+    if (bot.isDead) {
+      bot.rig?.update(dt, {
+        isMoving: false,
+        speed: 0,
+        isDead: true,
+        healthRatio: 0,
+        team: bot.team,
+        name: bot.name,
+      });
+      continue;
+    }
 
     // 1. Patrol movement with strict AABB wall collision
     const target = bot.patrolTarget;
     const toTarget = new THREE.Vector3().subVectors(target, bot.mesh.position);
     toTarget.y = 0;
     const distToTarget = toTarget.length();
+    let isMoving = false;
+    let actualSpeed = 0;
 
     if (distToTarget < 1.2) {
       bot.waypointIndex = (bot.waypointIndex + 1) % bot.patrolWaypoints.length;
@@ -429,7 +434,19 @@ export function updateBotSystem(
 
       bot.mesh.position.set(resolved.x, resolved.y, resolved.z);
       bot.mesh.lookAt(target.x, bot.mesh.position.y, target.z);
+      isMoving = true;
+      actualSpeed = patrolSpeed;
     }
+
+    // Update humanoid operator rig animations (walk cycle, health bar, nameplate billboard)
+    bot.rig?.update(dt, {
+      isMoving,
+      speed: actualSpeed,
+      isDead: false,
+      healthRatio: Math.max(0, bot.health / bot.maxHealth),
+      team: bot.team,
+      name: bot.name,
+    });
 
     // 2. Team Combat: Syndicate vs Player & Vanguard Allies with strict Line of Sight
     const botEye = bot.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
@@ -438,7 +455,7 @@ export function updateBotSystem(
       // Check target Player
       const distToPlayer = bot.mesh.position.distanceTo(playerPos);
       if (distToPlayer <= 36) {
-        const losPlayer = hasLineOfSight(botEye, playerEye, blocks, []);
+        const losPlayer = hasLineOfSight(botEye, playerEye, blocks, smokeOccluders);
 
         if (losPlayer) {
           bot.mesh.lookAt(playerPos.x, bot.mesh.position.y, playerPos.z);
@@ -458,7 +475,7 @@ export function updateBotSystem(
           const distToAlly = bot.mesh.position.distanceTo(ally.mesh.position);
           if (distToAlly <= 30) {
             const allyEye = ally.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
-            const losAlly = hasLineOfSight(botEye, allyEye, blocks, []);
+            const losAlly = hasLineOfSight(botEye, allyEye, blocks, smokeOccluders);
 
             if (losAlly) {
               bot.mesh.lookAt(ally.mesh.position.x, bot.mesh.position.y, ally.mesh.position.z);
@@ -480,7 +497,7 @@ export function updateBotSystem(
           const distToEnemy = bot.mesh.position.distanceTo(enemy.mesh.position);
           if (distToEnemy <= 30) {
             const enemyEye = enemy.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
-            const losEnemy = hasLineOfSight(botEye, enemyEye, blocks, []);
+            const losEnemy = hasLineOfSight(botEye, enemyEye, blocks, smokeOccluders);
 
             if (losEnemy) {
               bot.mesh.lookAt(enemy.mesh.position.x, bot.mesh.position.y, enemy.mesh.position.z);

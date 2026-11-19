@@ -9,9 +9,10 @@ import {
   AABBCollider,
   SPAWN_POINTS
 } from '@garam/shared';
+import { SceneManager } from './render/SceneManager.js';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
 import { ProceduralAudio } from './audio/ProceduralAudio.js';
-import { buildTacticalCitadelMap, updateBotSystem, BotEntity } from './maps/DeCitadelMap.js';
+import { buildTacticalCitadelMap, BotEntity } from './maps/DeCitadelMap.js';
 import { InventoryManager, SlotNumber } from './combat/InventoryManager.js';
 import { WeaponController } from './combat/WeaponController.js';
 import { EffectsManager } from './combat/EffectsManager.js';
@@ -19,23 +20,29 @@ import { InputManager } from './core/InputManager.js';
 import { RoundManager } from './match/RoundManager.js';
 import { EconomyManager } from './match/EconomyManager.js';
 import { HUDManager } from './ui/HUDManager.js';
+import { UtilityManager, UtilityType } from './utility/UtilityManager.js';
+import { RadarRenderer } from './ui/RadarRenderer.js';
+import { BotAISystem, BotDifficulty } from './match/BotAISystem.js';
 
 export class GaramGame {
   private canvas: HTMLCanvasElement;
   private renderer: THREE.WebGLRenderer;
 
-  // Dual-pass scenes & cameras
+  // Scene & PBR Lighting Pipeline
+  private sceneManager: SceneManager;
   private worldScene: THREE.Scene;
   private worldCamera: THREE.PerspectiveCamera;
   private viewmodelScene: THREE.Scene;
   private viewmodelCamera: THREE.PerspectiveCamera;
   private viewmodel: WeaponViewmodel;
 
-  // Audio & Effects
+  // Audio, Effects & Tactical Utility
   private audio: ProceduralAudio;
   private effects: EffectsManager;
+  private utilityManager: UtilityManager;
+  private radar: RadarRenderer;
 
-  // Game Systems
+  // Gameplay & Physics Systems
   private player: KinematicPlayerController;
   private inventory: InventoryManager;
   private economy: EconomyManager;
@@ -43,6 +50,7 @@ export class GaramGame {
   private weaponController: WeaponController;
   private roundManager: RoundManager;
   private inputManager: InputManager;
+  private botAI: BotAISystem;
 
   // Map Data
   private bots: BotEntity[] = [];
@@ -80,42 +88,42 @@ export class GaramGame {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.autoClear = false;
 
-    // 1. World Scene
-    this.worldScene = new THREE.Scene();
-    this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 500);
+    // 1. Scene Pipeline with PMREM IBL, Sun & Atmospheric Sky
+    this.sceneManager = new SceneManager(this.renderer);
+    this.worldScene = this.sceneManager.worldScene;
+    this.worldCamera = this.sceneManager.worldCamera;
+    this.viewmodelScene = this.sceneManager.viewmodelScene;
+    this.viewmodelCamera = this.sceneManager.viewmodelCamera;
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    this.worldScene.add(ambientLight);
-
-    const sun = new THREE.DirectionalLight(0xfff3e0, 1.25);
-    sun.position.set(45, 70, 30);
-    sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
-    sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 150;
-    const d = 55;
-    sun.shadow.camera.left = -d;
-    sun.shadow.camera.right = d;
-    sun.shadow.camera.top = d;
-    sun.shadow.camera.bottom = -d;
-    this.worldScene.add(sun);
-
-    // 2. Viewmodel Scene (Dual-pass to completely eliminate wall clipping)
-    this.viewmodelScene = new THREE.Scene();
-    this.viewmodelCamera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.01, 10);
+    // Viewmodel dual-pass setup
     this.viewmodel = new WeaponViewmodel();
     this.viewmodelScene.add(this.viewmodel.mesh);
 
-    const vmAmb = new THREE.AmbientLight(0xffffff, 0.85);
-    this.viewmodelScene.add(vmAmb);
-    const vmDir = new THREE.DirectionalLight(0xffffff, 0.9);
-    vmDir.position.set(2, 4, 2);
-    this.viewmodelScene.add(vmDir);
-
-    // 3. Audio & Combat
+    // 2. Audio, Effects, Utility & Radar
     this.audio = new ProceduralAudio();
     this.effects = new EffectsManager(this.worldScene, this.worldCamera);
+    this.radar = new RadarRenderer();
+
+    this.utilityManager = new UtilityManager(this.worldScene, this.audio, {
+      onFlashPlayer: (durationSec) => {
+        const whiteout = document.createElement('div');
+        whiteout.style.position = 'fixed';
+        whiteout.style.inset = '0';
+        whiteout.style.background = '#ffffff';
+        whiteout.style.pointerEvents = 'none';
+        whiteout.style.zIndex = '95';
+        whiteout.style.transition = `opacity ${durationSec.toFixed(2)}s ease-out`;
+        document.body.appendChild(whiteout);
+        requestAnimationFrame(() => {
+          whiteout.style.opacity = '0';
+          setTimeout(() => whiteout.remove(), durationSec * 1000);
+        });
+      },
+      onPlayerDamage: (dmg) => this.damagePlayer(dmg, null),
+      onKillfeed: (text) => this.hud.addKillfeed(text),
+    });
+
+    // 3. Core Combat & Inventory
     this.inventory = new InventoryManager();
     this.economy = new EconomyManager();
     this.hud = new HUDManager();
@@ -124,14 +132,37 @@ export class GaramGame {
     const spawnPos = SPAWN_POINTS.VANGUARD_CT;
     this.player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
-    // 4. Build Map
+    // 4. Build Multi-Elevation Map
     const mapData = buildTacticalCitadelMap(this.worldScene);
     this.bots = mapData.bots;
     this.blocks = mapData.blocks;
     this.colliders = mapData.colliders;
     this.bombsites = mapData.bombsites;
 
-    // 5. Weapon Controller
+    // 5. Bot AI System with 4 Difficulty Tiers
+    this.botAI = new BotAISystem(
+      {
+        onBotShootPlayer: (bot, dmg) => this.damagePlayer(dmg, bot.mesh.position),
+        onBotShootBot: (shooter, victim, dmg) => {
+          if (victim.armor > 0) {
+            victim.armor = Math.max(0, victim.armor - Math.round(dmg * 0.5));
+            victim.health = Math.max(0, victim.health - Math.round(dmg * 0.5));
+          } else {
+            victim.health = Math.max(0, victim.health - dmg);
+          }
+          if (victim.health <= 0 && !victim.isDead) {
+            victim.isDead = true;
+            shooter.kills++;
+            victim.deaths++;
+            this.hud.addKillfeed(`💀 ${shooter.name} eliminated ${victim.name}`);
+            this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, this.bots);
+          }
+        },
+      },
+      'Veteran'
+    );
+
+    // 6. Weapon Controller
     this.weaponController = new WeaponController(
       this.inventory,
       this.viewmodel,
@@ -142,7 +173,6 @@ export class GaramGame {
           this.kills++;
           this.economy.addCash(reward);
           victimBot.isDead = true;
-          this.worldScene.remove(victimBot.mesh);
           this.hud.addKillfeed(`${headshot ? '🎯 [HEADSHOT] ' : '💀 '}${killerName} [${weaponName}] ${victimBot.name} (+$${reward})`);
           this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, this.bots);
         },
@@ -157,11 +187,14 @@ export class GaramGame {
         },
         onUtilityThrown: () => {
           this.hud.addKillfeed('💨 Tactical Smoke Deployed');
-        }
+        },
+        onHitmarker: (headshot) => {
+          this.hud.triggerHitmarker(headshot);
+        },
       }
     );
 
-    // 6. Round Manager (MR12 Competitive Format)
+    // 7. Round Manager (MR12 Competitive Format)
     this.roundManager = new RoundManager(this.worldScene, this.audio, {
       onPhaseChanged: (phase, round) => {
         if (phase === 'FREEZE_TIME') {
@@ -206,9 +239,6 @@ export class GaramGame {
           bot.isDead = false;
           bot.health = bot.maxHealth;
           bot.armor = 100;
-          if (!this.worldScene.children.includes(bot.mesh)) {
-            this.worldScene.add(bot.mesh);
-          }
           if (bot.patrolWaypoints.length > 0) {
             bot.waypointIndex = 0;
             bot.patrolTarget = bot.patrolWaypoints[0];
@@ -233,11 +263,16 @@ export class GaramGame {
       }
     });
 
-    // 7. Input Manager
+    // 8. Input Manager
     const blocker = document.getElementById('blocker')!;
     this.inputManager = new InputManager(this.canvas, blocker, {
       onFireDown: () => {
         this.isFiring = true;
+        const active = this.inventory.getActiveWeapon();
+        if (active.category === 'grenade') {
+          this.throwUtilityGrenade('long');
+          return;
+        }
         this.weaponController.handlePrimaryFire(
           this.worldCamera,
           this.player.getHorizontalSpeed(),
@@ -253,6 +288,11 @@ export class GaramGame {
         this.weaponController.onFireRelease();
       },
       onAltFire: () => {
+        const active = this.inventory.getActiveWeapon();
+        if (active.category === 'grenade') {
+          this.throwUtilityGrenade('short');
+          return;
+        }
         this.weaponController.handleSecondaryFire(this.worldCamera, this.blocks, this.bots);
       },
       onReload: () => {
@@ -275,11 +315,14 @@ export class GaramGame {
       onToggleBuyMenu: () => this.toggleBuyMenu(),
       onBuyItem: (key) => this.handleBuyByKey(key),
       onPracticeToggle: () => this.handlePracticeToggle(),
+      onInspectWeapon: () => this.weaponController.inspectWeapon(),
+      onUtilityQuickSelect: (type) => this.handleQuickUtility(type),
       onInteractDown: () => { this.isInteracting = true; },
       onInteractUp: () => { this.isInteracting = false; }
     });
 
-    // Setup Buy Menu listeners
+    // Setup Lobby and Buy Menu UI listeners
+    this.setupLobbyUI();
     this.setupBuyMenuUI();
 
     // Start competitive match
@@ -288,6 +331,115 @@ export class GaramGame {
 
     window.addEventListener('resize', this.onResize.bind(this));
     requestAnimationFrame(this.loop.bind(this));
+  }
+
+  private damagePlayer(dmg: number, attackerPos: THREE.Vector3 | null): void {
+    if (attackerPos) {
+      const pPos = this.worldCamera.position;
+      const angle = Math.atan2(attackerPos.x - pPos.x, attackerPos.z - pPos.z) + this.inputManager.input.yaw;
+      this.hud.triggerDamageIndicator(angle);
+    }
+
+    if (this.economy.armor > 0) {
+      this.economy.armor = Math.max(0, this.economy.armor - Math.round(dmg * 0.5));
+      this.playerHealth = Math.max(0, this.playerHealth - Math.round(dmg * 0.5));
+    } else {
+      this.playerHealth = Math.max(0, this.playerHealth - dmg);
+    }
+
+    if (this.playerHealth <= 0) {
+      this.deaths++;
+      this.hud.addKillfeed('💀 Eldar Garamov was eliminated');
+      this.playerHealth = 100;
+      this.economy.armor = 100;
+      this.player.state.x = SPAWN_POINTS.VANGUARD_CT.x;
+      this.player.state.z = SPAWN_POINTS.VANGUARD_CT.z;
+    }
+  }
+
+  private throwUtilityGrenade(mode: 'long' | 'medium' | 'short'): void {
+    const active = this.inventory.getActiveWeapon();
+    const type = (active.id as UtilityType);
+    const forward = new THREE.Vector3();
+    this.worldCamera.getWorldDirection(forward);
+    const vel = new THREE.Vector3(this.player.state.vx, this.player.state.vy, this.player.state.vz);
+
+    this.utilityManager.throwGrenade(
+      type,
+      this.worldCamera.position,
+      forward,
+      vel,
+      mode
+    );
+
+    // Consume grenade
+    this.inventory.slots[4] = null;
+    this.inventory.equipSlot(1);
+    this.syncActiveWeapon();
+  }
+
+  private handleQuickUtility(type: 'smoke' | 'flash' | 'he' | 'molotov'): void {
+    const idMap: Record<string, string> = {
+      smoke: 'smoke-grenade',
+      flash: 'flashbang',
+      he: 'he-grenade',
+      molotov: 'molotov',
+    };
+    const weaponId = idMap[type] || 'smoke-grenade';
+    this.inventory.slots[4] = { weaponId, currentAmmo: 1, reserveAmmo: 0 };
+    this.inventory.equipSlot(4);
+    this.syncActiveWeapon();
+    this.hud.addKillfeed(`Equipped ${weaponId.toUpperCase()}`);
+  }
+
+  private setupLobbyUI(): void {
+    // Difficulty Tier Selector
+    const diffBtns = document.querySelectorAll('#diff-selector .lobby-btn');
+    diffBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        diffBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const diff = btn.getAttribute('data-diff') as BotDifficulty;
+        if (diff) {
+          this.botAI.setDifficulty(diff);
+          this.hud.addKillfeed(`Bot Difficulty Set: ${diff.toUpperCase()}`);
+        }
+      });
+    });
+
+    // Sensitivity Slider
+    const sensSlider = document.getElementById('sens-slider') as HTMLInputElement;
+    const sensVal = document.getElementById('sens-val');
+    if (sensSlider && sensVal) {
+      sensSlider.addEventListener('input', (e) => {
+        e.stopPropagation();
+        const val = parseFloat(sensSlider.value);
+        sensVal.innerText = val.toFixed(1);
+        this.inputManager.setSensitivity(val * 0.001);
+      });
+    }
+
+    // FOV Slider
+    const fovSlider = document.getElementById('fov-slider') as HTMLInputElement;
+    const fovVal = document.getElementById('fov-val');
+    if (fovSlider && fovVal) {
+      fovSlider.addEventListener('input', (e) => {
+        e.stopPropagation();
+        const val = parseInt(fovSlider.value, 10);
+        fovVal.innerText = `${val}°`;
+        this.worldCamera.fov = val;
+        this.worldCamera.updateProjectionMatrix();
+      });
+    }
+
+    // Deploy Button
+    const spawnBtn = document.getElementById('spawn-btn');
+    if (spawnBtn) {
+      spawnBtn.addEventListener('click', () => {
+        this.inputManager.requestPointerLock();
+      });
+    }
   }
 
   private syncActiveWeapon(): void {
@@ -408,7 +560,7 @@ export class GaramGame {
       return;
     }
 
-    // Weapons (Garam-47, M4A1-S, AWP, Desert Eagle)
+    // Firearms
     if (WEAPONS[item]) {
       const def = WEAPONS[item];
       if (this.economy.spendCash(def.price)) {
@@ -508,50 +660,43 @@ export class GaramGame {
       this.bots
     );
 
-    // Bot AI update with line-of-sight checks and wall collisions
+    // Update Tactical Utility Manager (smoke clouds, flashbangs, HE shockwaves, molotovs)
+    this.utilityManager.update(
+      frameDelta,
+      this.colliders,
+      this.blocks,
+      this.worldCamera.position,
+      this.worldCamera,
+      this.bots
+    );
+
+    // Live Smoke Occluders for Bot LOS and Radar
+    const smokeOccluders = this.utilityManager.getActiveSmokeOccluders();
+
+    // Bot AI update with 4-Tier Objective FSM, Line of Sight, and AABB Collision
     const playerEye = this.worldCamera.position.clone();
-    updateBotSystem(
+    this.botAI.update(
       this.bots,
       frameDelta,
       this.colliders,
       this.blocks,
       this.worldCamera.position,
       playerEye,
-      (bot, dmg) => {
-        // Player damaged by bot
-        if (this.economy.armor > 0) {
-          this.economy.armor = Math.max(0, this.economy.armor - Math.round(dmg * 0.5));
-          this.playerHealth = Math.max(0, this.playerHealth - Math.round(dmg * 0.5));
-        } else {
-          this.playerHealth = Math.max(0, this.playerHealth - dmg);
-        }
+      smokeOccluders,
+      this.roundManager.isBombPlanted,
+      this.roundManager.bombPlantSite
+    );
 
-        if (this.playerHealth <= 0) {
-          this.deaths++;
-          this.hud.addKillfeed(`💀 ${bot.name} eliminated Eldar Garamov`);
-          this.playerHealth = 100;
-          this.economy.armor = 100;
-          this.player.state.x = SPAWN_POINTS.VANGUARD_CT.x;
-          this.player.state.z = SPAWN_POINTS.VANGUARD_CT.z;
-        }
-      },
-      (shooter, victim, dmg) => {
-        // Bot vs Bot combat
-        if (victim.armor > 0) {
-          victim.armor = Math.max(0, victim.armor - Math.round(dmg * 0.5));
-          victim.health = Math.max(0, victim.health - Math.round(dmg * 0.5));
-        } else {
-          victim.health = Math.max(0, victim.health - dmg);
-        }
-
-        if (victim.health <= 0 && !victim.isDead) {
-          victim.isDead = true;
-          this.worldScene.remove(victim.mesh);
-          shooter.kills++;
-          victim.deaths++;
-          this.hud.addKillfeed(`💀 ${shooter.name} eliminated ${victim.name}`);
-        }
-      }
+    // Update 2D Tactical Radar
+    const bombPos = this.roundManager.bombPosition;
+    this.radar.update(
+      this.worldCamera.position,
+      this.inputManager.input.yaw,
+      this.blocks,
+      this.bots,
+      smokeOccluders,
+      bombPos,
+      this.roundManager.isBombPlanted
     );
 
     // Camera transform with view-punch
@@ -587,7 +732,7 @@ export class GaramGame {
 
     this.hud.updateCrosshair(hozSpeed, this.weaponController.consecutiveShots, isPinpoint);
 
-    // DUAL-PASS RENDERING (World then Viewmodel without depth clipping)
+    // DUAL-PASS PBR RENDERING (World then Viewmodel without depth clipping)
     this.renderer.clear();
     this.renderer.render(this.worldScene, this.worldCamera);
 
