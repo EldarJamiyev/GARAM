@@ -156,11 +156,16 @@ export class InputManager {
         case 'KeyX': this.callbacks.onUtilityQuickSelect?.('flash'); break;
         case 'KeyC': this.callbacks.onUtilityQuickSelect?.('he'); break;
         case 'KeyV': this.callbacks.onUtilityQuickSelect?.('molotov'); break;
-        case 'Digit1': this.callbacks.onSlotSelect(1); break;
-        case 'Digit2': this.callbacks.onSlotSelect(2); break;
-        case 'Digit3': this.callbacks.onSlotSelect(3); break;
-        case 'Digit4': this.callbacks.onSlotSelect(4); break;
-        case 'Digit5': this.callbacks.onSlotSelect(5); break;
+        case 'Digit1':
+        case 'Numpad1': this.callbacks.onSlotSelect(1); break;
+        case 'Digit2':
+        case 'Numpad2': this.callbacks.onSlotSelect(2); break;
+        case 'Digit3':
+        case 'Numpad3': this.callbacks.onSlotSelect(3); break;
+        case 'Digit4':
+        case 'Numpad4': this.callbacks.onSlotSelect(4); break;
+        case 'Digit5':
+        case 'Numpad5': this.callbacks.onSlotSelect(5); break;
       }
     });
 

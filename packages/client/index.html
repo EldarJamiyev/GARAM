@@ -465,6 +465,19 @@
       color: #fff;
       box-shadow: 0 0 12px rgba(255, 42, 68, 0.5);
     }
+    .lobby-btn.vanguard-btn.active {
+      background: #2563eb !important;
+      border-color: #60a5fa !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 14px rgba(37, 99, 235, 0.6) !important;
+    }
+    .lobby-btn.syndicate-btn.active {
+      background: #f59e0b !important;
+      border-color: #fcd34d !important;
+      color: #0c0d0e !important;
+      font-weight: 800 !important;
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.6) !important;
+    }
     .lobby-slider-row {
       display: flex;
       align-items: center;
@@ -656,8 +669,8 @@
       <!-- Faction Selection -->
       <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">STARTING FACTION</div>
       <div class="lobby-row" id="faction-selector">
-        <button class="lobby-btn active" data-faction="Vanguard" style="border-color: #3b9eff; color: #3b9eff;">VANGUARD (DEFENDERS)</button>
-        <button class="lobby-btn" data-faction="Syndicate" style="border-color: #ffaa00; color: #ffaa00;">SYNDICATE (ATTACKERS)</button>
+        <button class="lobby-btn vanguard-btn active" data-faction="Vanguard">VANGUARD (DEFENDERS)</button>
+        <button class="lobby-btn syndicate-btn" data-faction="Syndicate">SYNDICATE (ATTACKERS)</button>
       </div>
 
       <!-- AI Difficulty -->
@@ -674,6 +687,18 @@
       <div class="lobby-row" id="mode-selector">
         <button class="lobby-btn active" data-mode="offline">OFFLINE 5V5 PRACTICE</button>
         <button class="lobby-btn" data-mode="multiplayer">ONLINE MULTIPLAYER (64-TICK)</button>
+      </div>
+
+      <!-- Multiplayer Config Panel (Shown when Multiplayer selected) -->
+      <div id="multiplayer-config-panel" style="display: none; background: rgba(14, 18, 24, 0.7); border: 1px solid rgba(59, 158, 255, 0.3); border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; width: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 11px; letter-spacing: 2px; color: #3b9eff; font-weight: 800;">64-TICK SERVER CONNECTION</span>
+          <span id="server-status-badge" style="font-size: 11px; font-weight: 800; color: #00ff88; letter-spacing: 1px;">● SERVER READY</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="player-callsign-input" value="Eldar Garamov" placeholder="Callsign" style="flex: 1; background: #0c0e12; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 6px 10px; color: #fff; font-size: 12px;">
+          <input type="text" id="server-url-input" value="ws://localhost:2567" placeholder="ws://localhost:2567" style="flex: 1.5; background: #0c0e12; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 6px 10px; color: #fff; font-size: 12px;">
+        </div>
       </div>
 
       <!-- Tactical Settings -->

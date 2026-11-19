@@ -4,3 +4,4 @@ export * from './constants/economy.js';
 export * from './physics/KinematicPlayerController.js';
 export * from './maps/DeCitadelData.js';
 export * from './physics/RaycastEngine.js';
+export * from './net/Protocol.js';

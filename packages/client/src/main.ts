@@ -332,12 +332,15 @@ export class GaramGame {
         if (this.inventory.quickSwitch()) this.syncActiveWeapon();
       },
       onSlotSelect: (slot) => {
-        if (this.inventory.equipSlot(slot)) this.syncActiveWeapon();
+        if (this.inventory.equipSlot(slot)) {
+          this.syncActiveWeapon();
+        } else if (!this.inventory.hasSlot(slot)) {
+          this.audio.playDryFire();
+        }
       },
       onCycleWeapon: (dir) => {
-        if (dir > 0) this.inventory.cycleNext();
-        else this.inventory.cyclePrev();
-        this.syncActiveWeapon();
+        const switched = dir > 0 ? this.inventory.cycleNext() : this.inventory.cyclePrev();
+        if (switched) this.syncActiveWeapon();
       },
       onToggleBuyMenu: () => this.toggleBuyMenu(),
       onBuyItem: (key) => this.handleBuyByKey(key),
@@ -481,6 +484,7 @@ export class GaramGame {
 
     // Game Mode Selector
     const modeBtns = document.querySelectorAll('#mode-selector .lobby-btn');
+    const mpPanel = document.getElementById('multiplayer-config-panel');
     modeBtns.forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -489,6 +493,9 @@ export class GaramGame {
         const mode = btn.getAttribute('data-mode') as GameMode;
         if (mode) {
           settingsStore.update('gameMode', mode);
+          if (mpPanel) {
+            mpPanel.style.display = mode === 'multiplayer' ? 'block' : 'none';
+          }
           this.hud.addKillfeed(`Mode: ${mode.toUpperCase()}`);
         }
       });
@@ -701,7 +708,7 @@ export class GaramGame {
           currentAmmo: def.magCapacity,
           reserveAmmo: def.reserveAmmo
         };
-        this.inventory.equipSlot(slot);
+        this.inventory.equipSlot(slot, true);
         this.syncActiveWeapon();
         this.hud.addKillfeed(`Requisitioned ${def.name} ($${def.price})`);
         this.audio.playReload();

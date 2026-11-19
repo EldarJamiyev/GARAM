@@ -116,24 +116,26 @@ export function resolveHorizontalAABB(
 
   // Substepping prevents tunneling even at high velocities
   const moveDist = Math.hypot(vx * dt, vz * dt);
-  const numSteps = Math.max(1, Math.min(4, Math.ceil(moveDist / (radius * 0.4))));
+  const numSteps = Math.max(1, Math.min(6, Math.ceil(moveDist / (radius * 0.35))));
   const subDt = dt / numSteps;
 
   for (let s = 0; s < numSteps; s++) {
+    const stepPrevX = curX;
+    const stepPrevZ = curZ;
+
     // Integrate velocity for this substep
     curX += outVx * subDt;
     curZ += outVz * subDt;
 
-    // Iterative solver passes (handles corners and tight crevices between adjacent boxes)
-    for (let pass = 0; pass < 2; pass++) {
+    // 4 Iterative solver passes (handles corners, tight crevices, and multi-box intersections)
+    for (let pass = 0; pass < 4; pass++) {
       for (const b of colliders) {
         // Vertical height check
         if (curY >= b.maxY || curY + height <= b.minY) continue;
 
-        // Check if player can step up onto obstacle
+        // Check if player can step up onto obstacle (only if moving towards it and grounded)
         const stepDiff = b.maxY - curY;
         if (canStep && stepDiff > 0 && stepDiff <= maxStep) {
-          // Check if horizontally overlapping
           const cx = Math.max(b.minX, Math.min(curX, b.maxX));
           const cz = Math.max(b.minZ, Math.min(curZ, b.maxZ));
           const dx = curX - cx;
@@ -142,6 +144,7 @@ export function resolveHorizontalAABB(
             if (hasHeadClearance(curX, b.maxY, curZ, height, colliders, b)) {
               curY = b.maxY;
               didStep = true;
+              // Continue checking other colliders at the new elevation
               continue;
             }
           }
@@ -166,38 +169,59 @@ export function resolveHorizontalAABB(
             curX += nx * (pen + 0.001);
             curZ += nz * (pen + 0.001);
 
-            // Project velocity onto tangent plane (remove velocity into the surface, preserve sliding)
+            // Project velocity onto tangent plane (remove velocity into surface, preserve slide)
             const vn = outVx * nx + outVz * nz;
             if (vn < 0) {
               outVx -= vn * nx;
               outVz -= vn * nz;
             }
           } else {
-            // Case 2: Circle center is inside the box - find shallowest face to eject
-            const distMinX = curX - b.minX;
-            const distMaxX = b.maxX - curX;
-            const distMinZ = curZ - b.minZ;
-            const distMaxZ = b.maxZ - curZ;
-            const minDist = Math.min(distMinX, distMaxX, distMinZ, distMaxZ);
+            // Case 2: Circle center penetrated INSIDE the box
+            // Priority: Push back towards where the player came from (stepPrevX, stepPrevZ)
+            // This prevents teleporting to the other side of thin walls or doors!
+            const fromPrevX = curX - stepPrevX;
+            const fromPrevZ = curZ - stepPrevZ;
+            const travelDist = Math.hypot(fromPrevX, fromPrevZ);
 
-            if (minDist === distMinX) {
-              curX = b.minX - radius - 0.002;
-              if (outVx > 0) outVx = 0;
-            } else if (minDist === distMaxX) {
-              curX = b.maxX + radius + 0.002;
-              if (outVx < 0) outVx = 0;
-            } else if (minDist === distMinZ) {
-              curZ = b.minZ - radius - 0.002;
-              if (outVz > 0) outVz = 0;
+            if (travelDist > 0.0001) {
+              // Eject along reverse movement vector
+              const revX = -fromPrevX / travelDist;
+              const revZ = -fromPrevZ / travelDist;
+              curX = stepPrevX + revX * 0.01;
+              curZ = stepPrevZ + revZ * 0.01;
+              outVx = 0;
+              outVz = 0;
             } else {
-              curZ = b.maxZ + radius + 0.002;
-              if (outVz < 0) outVz = 0;
+              // Fallback to closest boundary face
+              const distMinX = curX - b.minX;
+              const distMaxX = b.maxX - curX;
+              const distMinZ = curZ - b.minZ;
+              const distMaxZ = b.maxZ - curZ;
+              const minDist = Math.min(distMinX, distMaxX, distMinZ, distMaxZ);
+
+              if (minDist === distMinX) {
+                curX = b.minX - radius - 0.002;
+                if (outVx > 0) outVx = 0;
+              } else if (minDist === distMaxX) {
+                curX = b.maxX + radius + 0.002;
+                if (outVx < 0) outVx = 0;
+              } else if (minDist === distMinZ) {
+                curZ = b.minZ - radius - 0.002;
+                if (outVz > 0) outVz = 0;
+              } else {
+                curZ = b.maxZ + radius + 0.002;
+                if (outVz < 0) outVz = 0;
+              }
             }
           }
         }
       }
     }
   }
+
+  // Hard clamp against DE_CITADEL map perimeter (120m x 120m arena with walls at +/-58.5)
+  curX = Math.max(-58.05, Math.min(58.05, curX));
+  curZ = Math.max(-58.05, Math.min(58.05, curZ));
 
   return {
     x: curX,
@@ -384,13 +408,14 @@ export class KinematicPlayerController {
     }
 
     for (const b of colliders) {
-      if (
-        this.state.x + this.radius > b.minX &&
-        this.state.x - this.radius < b.maxX &&
-        this.state.z + this.radius > b.minZ &&
-        this.state.z - this.radius < b.maxZ
-      ) {
-        if (this.state.vy <= 0 && this.state.y >= b.maxY - 0.45 && newY <= b.maxY) {
+      // Must be falling or standing (vy <= 0)
+      if (this.state.vy <= 0 && this.state.y >= b.maxY - 0.40 && newY <= b.maxY) {
+        // Player's horizontal foot circle must be firmly planted on the top face
+        const cx = Math.max(b.minX, Math.min(this.state.x, b.maxX));
+        const cz = Math.max(b.minZ, Math.min(this.state.z, b.maxZ));
+        const dx = this.state.x - cx;
+        const dz = this.state.z - cz;
+        if ((dx * dx + dz * dz) <= (this.radius * this.radius * 0.75)) {
           newY = b.maxY;
           this.state.vy = 0;
           this.state.isGrounded = true;

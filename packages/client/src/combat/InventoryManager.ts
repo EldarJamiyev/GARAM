@@ -61,8 +61,8 @@ export class InventoryManager {
     return this.slots[slot] !== null;
   }
 
-  public equipSlot(slot: SlotNumber): boolean {
-    if (slot === this.activeSlot || !this.slots[slot]) return false;
+  public equipSlot(slot: SlotNumber, force = false): boolean {
+    if ((slot === this.activeSlot && !force) || !this.slots[slot]) return false;
 
     this.previousSlot = this.activeSlot;
     this.activeSlot = slot;
@@ -73,36 +73,37 @@ export class InventoryManager {
   }
 
   public quickSwitch(): boolean {
-    if (this.slots[this.previousSlot]) {
+    if (this.slots[this.previousSlot] && this.previousSlot !== this.activeSlot) {
       return this.equipSlot(this.previousSlot);
     }
     if (this.activeSlot === 1 && this.slots[2]) return this.equipSlot(2);
     if (this.slots[1]) return this.equipSlot(1);
+    if (this.slots[3]) return this.equipSlot(3);
     return false;
   }
 
-  public cycleNext(): void {
+  public cycleNext(): boolean {
     const order: SlotNumber[] = [1, 2, 3, 4, 5];
     const currentIndex = order.indexOf(this.activeSlot);
     for (let i = 1; i < order.length; i++) {
       const nextSlot = order[(currentIndex + i) % order.length];
       if (this.slots[nextSlot]) {
-        this.equipSlot(nextSlot);
-        break;
+        return this.equipSlot(nextSlot);
       }
     }
+    return false;
   }
 
-  public cyclePrev(): void {
+  public cyclePrev(): boolean {
     const order: SlotNumber[] = [1, 2, 3, 4, 5];
     const currentIndex = order.indexOf(this.activeSlot);
     for (let i = 1; i < order.length; i++) {
       const prevSlot = order[(currentIndex - i + order.length) % order.length];
       if (this.slots[prevSlot]) {
-        this.equipSlot(prevSlot);
-        break;
+        return this.equipSlot(prevSlot);
       }
     }
+    return false;
   }
 
   public buyWeapon(weaponId: string): void {

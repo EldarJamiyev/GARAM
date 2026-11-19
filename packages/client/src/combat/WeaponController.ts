@@ -13,6 +13,7 @@ import { WeaponViewmodel } from '../viewmodel/WeaponViewmodel.js';
 import { EffectsManager } from './EffectsManager.js';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
+import { settingsStore } from '../core/SettingsStore.js';
 
 export interface WeaponCombatCallbacks {
   onKill: (killerName: string, victimBot: BotEntity, headshot: boolean, weaponName: string, reward: number) => void;
@@ -70,6 +71,7 @@ export class WeaponController {
     const canFireCheck = this.inventory.canFire(now, true);
     if (!canFireCheck.canFire) {
       if (canFireCheck.reason === 'out_of_ammo') {
+        this.audio.playDryFire();
         this.inventory.startReload();
       }
       return;
@@ -235,15 +237,15 @@ export class WeaponController {
     // 2. Sovereign AWP 2-Stage Optical Zoom
     if (weapon.id === 'sovereign-awp') {
       this.zoomStage = (this.zoomStage + 1) % 3;
-      let fov = 90;
-      let sens = 0.0022;
+      let fov = settingsStore.settings.fov;
+      let sens = settingsStore.settings.mouseSensitivity * 0.001;
 
       if (this.zoomStage === 1) {
         fov = 28; // 1x Magnification
-        sens = 0.0008;
+        sens = (settingsStore.settings.mouseSensitivity * 0.001) * 0.38;
       } else if (this.zoomStage === 2) {
         fov = 10; // 2x Extreme Magnification
-        sens = 0.00035;
+        sens = (settingsStore.settings.mouseSensitivity * 0.001) * 0.16;
       }
 
       this.viewmodel.isScoped = this.zoomStage > 0;
@@ -318,7 +320,9 @@ export class WeaponController {
     if (this.zoomStage > 0) {
       this.zoomStage = 0;
       this.viewmodel.isScoped = false;
-      this.callbacks.onScopeChanged(0, 90, 0.0022);
+      const baseFov = settingsStore.settings.fov;
+      const baseSens = settingsStore.settings.mouseSensitivity * 0.001;
+      this.callbacks.onScopeChanged(0, baseFov, baseSens);
     }
   }
 

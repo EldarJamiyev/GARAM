@@ -3,10 +3,11 @@ import * as THREE from 'three';
 export class WeaponViewmodel {
   public mesh: THREE.Group;
   private weaponContainer: THREE.Group;
-  private rightArm: THREE.Mesh;
-  private leftArm: THREE.Mesh;
+  private rightArm: THREE.Group;
+  private leftArm: THREE.Group;
   private muzzleFlashLight: THREE.PointLight;
   private muzzleFlashMesh: THREE.Group;
+  private flashTimer = 0;
   private currentWeaponId = 'garam-47';
 
   // Cached 5 Weapon Groups
@@ -49,24 +50,11 @@ export class WeaponViewmodel {
     this.mesh.add(this.weaponContainer);
 
     // 1. Right Tactical Gloved Arm
-    const armMat = new THREE.MeshStandardMaterial({
-      color: 0x141618,
-      roughness: 0.8,
-      metalness: 0.15,
-    });
-
-    const armGeo = new THREE.CylinderGeometry(0.045, 0.054, 0.44, 14);
-    armGeo.rotateX(Math.PI / 3);
-    this.rightArm = new THREE.Mesh(armGeo, armMat);
-    this.rightArm.position.set(0.12, -0.18, 0.08);
+    this.rightArm = this.buildTacticalGlove(false);
     this.mesh.add(this.rightArm);
 
     // 2. Left Support Arm & Gloved Hand
-    const leftArmGeo = new THREE.CylinderGeometry(0.042, 0.05, 0.44, 14);
-    leftArmGeo.rotateX(Math.PI / 3.4);
-    leftArmGeo.rotateY(-Math.PI / 6);
-    this.leftArm = new THREE.Mesh(leftArmGeo, armMat);
-    this.leftArm.position.set(-0.16, -0.20, -0.06);
+    this.leftArm = this.buildTacticalGlove(true);
     this.mesh.add(this.leftArm);
 
     // 3. Muzzle Flash Point Light & 3D Star Planes
@@ -83,6 +71,66 @@ export class WeaponViewmodel {
     this.buildAllWeaponMeshes();
     this.setWeapon('garam-47');
     this.mesh.position.copy(this.currentPos);
+  }
+
+  private buildTacticalGlove(isLeft: boolean): THREE.Group {
+    const glove = new THREE.Group();
+    const fabricMat = new THREE.MeshStandardMaterial({
+      color: 0x16181b,
+      roughness: 0.85,
+      metalness: 0.12,
+    });
+    const knuckleMat = new THREE.MeshStandardMaterial({
+      color: 0x0c0e10,
+      roughness: 0.3,
+      metalness: 0.75,
+    });
+    const cuffMat = new THREE.MeshStandardMaterial({
+      color: 0x242830,
+      roughness: 0.6,
+      metalness: 0.35,
+    });
+
+    // Forearm sleeve angled into frame
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.054, 0.36, 12), fabricMat);
+    sleeve.position.set(0, -0.04, 0.16);
+    sleeve.rotation.x = Math.PI / 2.3;
+    glove.add(sleeve);
+
+    // Tactical Glove Cuff
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.035, 12), cuffMat);
+    cuff.position.set(0, -0.02, 0.04);
+    cuff.rotation.x = Math.PI / 2.3;
+    glove.add(cuff);
+
+    // Palm & Back of Hand
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.038, 0.075), fabricMat);
+    palm.position.set(0, 0, -0.015);
+    glove.add(palm);
+
+    // Carbon-Fiber Armor Knuckle Guard
+    const knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.064, 0.014, 0.032), knuckleMat);
+    knuckles.position.set(0, 0.02, -0.015);
+    glove.add(knuckles);
+
+    // 4 Articulated Fingers (Curled around grip)
+    for (let f = 0; f < 4; f++) {
+      const fx = (f - 1.5) * 0.015 * (isLeft ? -1 : 1);
+      const finger = new THREE.Mesh(new THREE.BoxGeometry(0.013, 0.016, 0.042), fabricMat);
+      finger.position.set(fx, -0.01, -0.055);
+      finger.rotation.x = 0.55;
+      glove.add(finger);
+    }
+
+    // Opposable Thumb
+    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.016, 0.04), fabricMat);
+    const thumbX = isLeft ? 0.032 : -0.032;
+    thumb.position.set(thumbX, 0.01, -0.035);
+    thumb.rotation.y = isLeft ? 0.6 : -0.6;
+    thumb.rotation.x = 0.3;
+    glove.add(thumb);
+
+    return glove;
   }
 
   private buildMuzzleFlash(): THREE.Group {
@@ -142,21 +190,24 @@ export class WeaponViewmodel {
 
     // Adjust left & right arms depending on weapon type
     if (weaponId === 'desert-eagle') {
-      // 2-handed Weaver pistol grip
-      this.rightArm.position.set(0.08, -0.16, 0.08);
+      // 2-handed Weaver pistol grip firmly supporting .50 AE frame
+      this.rightArm.position.set(0.05, -0.08, -0.06);
+      this.rightArm.rotation.set(0.22, -0.08, 0.12);
       this.leftArm.visible = true;
-      this.leftArm.position.set(-0.02, -0.18, -0.04);
-      this.leftArm.rotation.set(0.2, -0.3, 0);
+      this.leftArm.position.set(0.0, -0.10, -0.08);
+      this.leftArm.rotation.set(0.28, 0.42, -0.18);
     } else if (weaponId === 'garam-karambit') {
-      // 1-handed knife stance
-      this.rightArm.position.set(0.08, -0.14, 0.08);
+      // 1-handed reverse tactical knife grip through index ring
+      this.rightArm.position.set(0.07, -0.07, -0.08);
+      this.rightArm.rotation.set(0.32, -0.18, 0.22);
       this.leftArm.visible = false;
     } else {
       // 2-handed rifle support with visible gloved left hand holding handguard
-      this.rightArm.position.set(0.12, -0.18, 0.08);
+      this.rightArm.position.set(0.06, -0.10, 0.02);
+      this.rightArm.rotation.set(0.18, -0.1, 0.1);
       this.leftArm.visible = true;
-      this.leftArm.position.set(-0.10, -0.16, -0.16);
-      this.leftArm.rotation.set(-0.15, 0.25, -0.08);
+      this.leftArm.position.set(-0.06, -0.08, -0.24);
+      this.leftArm.rotation.set(-0.15, 0.45, -0.1);
     }
   }
 
@@ -164,46 +215,81 @@ export class WeaponViewmodel {
   private createDesertEagleMesh(): THREE.Group {
     const group = new THREE.Group();
 
-    // Frame
-    const frameGeo = new THREE.BoxGeometry(0.042, 0.14, 0.13);
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1c20, roughness: 0.35, metalness: 0.85 });
+    // Heavy Steel Frame
+    const frameGeo = new THREE.BoxGeometry(0.038, 0.13, 0.12);
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.35, metalness: 0.85 });
     const frame = new THREE.Mesh(frameGeo, frameMat);
-    frame.position.set(0, -0.06, 0.02);
+    frame.position.set(0, -0.05, 0.01);
     frame.rotation.x = -0.22;
     group.add(frame);
 
-    // Gold medallion on grip
-    const medGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.045, 16);
+    // Textured Grip Panels
+    const gripPanelMat = new THREE.MeshStandardMaterial({ color: 0x121416, roughness: 0.88, metalness: 0.1 });
+    const gripL = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.10, 0.07), gripPanelMat);
+    gripL.position.set(-0.018, -0.05, 0.01);
+    gripL.rotation.x = -0.22;
+    group.add(gripL);
+    const gripR = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.10, 0.07), gripPanelMat);
+    gripR.position.set(0.018, -0.05, 0.01);
+    gripR.rotation.x = -0.22;
+    group.add(gripR);
+
+    // Gold GARAM Medallion on Grip
+    const medGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.042, 16);
     medGeo.rotateZ(Math.PI / 2);
     const medMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.15, metalness: 0.95 });
     const medallion = new THREE.Mesh(medGeo, medMat);
-    medallion.position.set(0, -0.05, 0.02);
+    medallion.position.set(0, -0.045, 0.01);
     group.add(medallion);
 
-    // Chamfered Slide
-    const slideGeo = new THREE.BoxGeometry(0.046, 0.062, 0.25);
-    const slideMat = new THREE.MeshStandardMaterial({ color: 0x3a3f45, roughness: 0.2, metalness: 0.9 });
+    // Trigger Guard & Trigger
+    const triggerGuard = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, 0.04, 0.05),
+      new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.4, metalness: 0.8 })
+    );
+    triggerGuard.position.set(0, -0.03, -0.04);
+    group.add(triggerGuard);
+
+    // Chamfered Slide (.50 AE Heavy Blowback)
+    const slideGeo = new THREE.BoxGeometry(0.042, 0.055, 0.22);
+    const slideMat = new THREE.MeshStandardMaterial({ color: 0x363b42, roughness: 0.25, metalness: 0.9 });
     const slide = new THREE.Mesh(slideGeo, slideMat);
-    slide.position.set(0, 0.02, -0.05);
+    slide.position.set(0, 0.015, -0.04);
     group.add(slide);
     this.slideMeshes.set('desert-eagle', slide);
 
     // Crimson Top Stripe
-    const topGeo = new THREE.BoxGeometry(0.048, 0.012, 0.23);
-    const topMat = new THREE.MeshStandardMaterial({ color: 0xd91438, roughness: 0.25, metalness: 0.7 });
+    const topGeo = new THREE.BoxGeometry(0.044, 0.01, 0.20);
+    const topMat = new THREE.MeshStandardMaterial({ color: 0xd91438, roughness: 0.25, metalness: 0.65 });
     const topStripe = new THREE.Mesh(topGeo, topMat);
-    topStripe.position.set(0, 0.035, 0);
+    topStripe.position.set(0, 0.03, 0);
     slide.add(topStripe);
 
-    // Fluted Barrel
-    const barrelGeo = new THREE.CylinderGeometry(0.016, 0.016, 0.10, 16);
+    // Rear Combat Sights
+    const rearSight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.034, 0.014, 0.01),
+      new THREE.MeshBasicMaterial({ color: 0x10ff66 })
+    );
+    rearSight.position.set(0, 0.035, 0.09);
+    slide.add(rearSight);
+
+    // Front Sight Post
+    const frontSight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.008, 0.016, 0.01),
+      new THREE.MeshBasicMaterial({ color: 0x10ff66 })
+    );
+    frontSight.position.set(0, 0.035, -0.09);
+    slide.add(frontSight);
+
+    // Fluted Barrel with Recessed Crown
+    const barrelGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.09, 16);
     barrelGeo.rotateX(Math.PI / 2);
-    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x08090a, metalness: 0.95, roughness: 0.15 });
+    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x0c0d0f, metalness: 0.95, roughness: 0.15 });
     const barrel = new THREE.Mesh(barrelGeo, barrelMat);
-    barrel.position.set(0, 0.02, -0.19);
+    barrel.position.set(0, 0.015, -0.16);
     group.add(barrel);
 
-    group.position.set(0.02, -0.01, -0.1);
+    group.position.set(0.03, 0.01, -0.14);
     group.visible = false;
     return group;
   }
@@ -452,14 +538,11 @@ export class WeaponViewmodel {
       this.boltKick = 0.085;
     }
 
-    // Flash light & 3D star-plane muzzle flash
-    this.muzzleFlashLight.intensity = 5.5;
+    // Flash light & 3D star-plane muzzle flash (deterministic frame-based timer)
+    this.flashTimer = 0.055;
+    this.muzzleFlashLight.intensity = 6.0;
     this.muzzleFlashMesh.visible = true;
     this.muzzleFlashMesh.rotation.z = Math.random() * Math.PI * 2;
-    setTimeout(() => {
-      this.muzzleFlashLight.intensity = 0.0;
-      this.muzzleFlashMesh.visible = false;
-    }, 45);
   }
 
   public triggerInspect(): void {
@@ -483,6 +566,16 @@ export class WeaponViewmodel {
   }
 
   public update(dt: number, mouseDeltaX: number, mouseDeltaY: number, walkBob: number, strafeRoll: number): void {
+    // Muzzle flash decay
+    if (this.flashTimer > 0) {
+      this.flashTimer -= dt;
+      this.muzzleFlashLight.intensity = 6.0;
+      this.muzzleFlashMesh.visible = true;
+    } else {
+      this.muzzleFlashLight.intensity = 0.0;
+      this.muzzleFlashMesh.visible = false;
+    }
+
     if (this.isScoped) {
       this.mesh.visible = false;
       return;

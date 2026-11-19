@@ -206,6 +206,19 @@ export class ProceduralAudio {
     noiseGain.connect(destinationNode);
     whiteNoise.start(t);
     whiteNoise.stop(t + dur);
+
+    // 3. Crisp mechanical hammer / bolt action transient click
+    const clickOsc = this.ctx.createOscillator();
+    const clickGain = this.ctx.createGain();
+    clickOsc.type = 'square';
+    clickOsc.frequency.setValueAtTime(isSuppressed ? 1600 : isAWP ? 4200 : 3200, t);
+    clickOsc.frequency.exponentialRampToValueAtTime(400, t + 0.02);
+    clickGain.gain.setValueAtTime(isSuppressed ? 0.15 : 0.45, t);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    clickOsc.connect(clickGain);
+    clickGain.connect(destinationNode);
+    clickOsc.start(t);
+    clickOsc.stop(t + 0.025);
   }
 
   // --- Tactical Foley Suite ---
