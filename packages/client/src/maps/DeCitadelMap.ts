@@ -3,10 +3,12 @@ import {
   DE_CITADEL_BLOCKS,
   MapBlockCollider,
   TACTICAL_BOTS,
-  BotSpawnDef,
   BOMBSITES,
-  SurfaceMaterial,
-  Vec3
+  Vec3,
+  resolveHorizontalAABB,
+  AABBCollider,
+  KINEMATICS,
+  hasLineOfSight
 } from '@garam/shared';
 
 export interface BotEntity {
@@ -17,6 +19,8 @@ export interface BotEntity {
   bodyCollider: THREE.Mesh;
   health: number;
   maxHealth: number;
+  armor: number;
+  hasHelmet: boolean;
   isDead: boolean;
   team: 'Vanguard' | 'Syndicate';
   vx: number;
@@ -25,6 +29,8 @@ export interface BotEntity {
   lastShotTime: number;
   patrolWaypoints: THREE.Vector3[];
   waypointIndex: number;
+  kills: number;
+  deaths: number;
 }
 
 export function createProceduralTextures() {
@@ -37,7 +43,6 @@ export function createProceduralTextures() {
   ctxC.fillStyle = '#3a3f45';
   ctxC.fillRect(0, 0, 512, 512);
 
-  // Surface grit
   for (let i = 0; i < 40000; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
@@ -46,7 +51,6 @@ export function createProceduralTextures() {
     ctxC.fillRect(x, y, 2, 2);
   }
 
-  // Expansion seams
   ctxC.strokeStyle = 'rgba(12, 14, 18, 0.6)';
   ctxC.lineWidth = 4;
   ctxC.strokeRect(0, 0, 512, 512);
@@ -58,7 +62,7 @@ export function createProceduralTextures() {
   concreteTex.wrapT = THREE.RepeatWrapping;
   concreteTex.repeat.set(16, 16);
 
-  // 2. Fortified Citadel Wall (Weathered stone plaster with dark foundation trim)
+  // 2. Fortified Citadel Wall
   const canvasWall = document.createElement('canvas');
   canvasWall.width = 512;
   canvasWall.height = 512;
@@ -74,7 +78,6 @@ export function createProceduralTextures() {
     ctxW.fillRect(x, y, 3, 3);
   }
 
-  // Baseboard kickplate & top parapet coping
   ctxW.fillStyle = '#1e2226';
   ctxW.fillRect(0, 484, 512, 28);
   ctxW.fillRect(0, 0, 512, 20);
@@ -87,7 +90,7 @@ export function createProceduralTextures() {
   wallTex.wrapS = THREE.RepeatWrapping;
   wallTex.wrapT = THREE.RepeatWrapping;
 
-  // 3. Military Wooden Crate with Steel Brackets & Stencil
+  // 3. Military Wooden Crate
   const canvasCrate = document.createElement('canvas');
   canvasCrate.width = 256;
   canvasCrate.height = 256;
@@ -101,7 +104,6 @@ export function createProceduralTextures() {
     ctxCr.fillRect(0, y, 256, 3);
   }
 
-  // Corner steel brackets
   ctxCr.strokeStyle = '#221e1a';
   ctxCr.lineWidth = 16;
   ctxCr.strokeRect(0, 0, 256, 256);
@@ -110,7 +112,6 @@ export function createProceduralTextures() {
   ctxCr.lineTo(256, 256);
   ctxCr.stroke();
 
-  // Tactical stencil
   ctxCr.fillStyle = 'rgba(255, 255, 255, 0.35)';
   ctxCr.font = 'bold 20px monospace';
   ctxCr.textAlign = 'center';
@@ -142,7 +143,7 @@ export function createProceduralTextures() {
   hazardTex.wrapT = THREE.RepeatWrapping;
   hazardTex.repeat.set(4, 1);
 
-  // 5. Corrugated Shipping Container Texture
+  // 5. Corrugated Shipping Container
   const canvasCorrugated = document.createElement('canvas');
   canvasCorrugated.width = 256;
   canvasCorrugated.height = 256;
@@ -166,12 +167,12 @@ export function createProceduralTextures() {
 export function buildTacticalCitadelMap(scene: THREE.Scene): {
   bots: BotEntity[];
   blocks: MapBlockCollider[];
-  colliders: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number }[];
+  colliders: AABBCollider[];
   bombsites: { A: THREE.Vector3; B: THREE.Vector3 };
 } {
   const { concreteTex, wallTex, crateTex, hazardTex, containerBlueTex } = createProceduralTextures();
 
-  // Sky Dome Gradient (Atmospheric high-altitude tactical atmosphere)
+  // Sky Dome Gradient
   const skyGeo = new THREE.SphereGeometry(300, 32, 16);
   const skyMat = new THREE.MeshBasicMaterial({
     color: 0x82b2d6,
@@ -192,9 +193,9 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // Shared colliders from DE_CITADEL_BLOCKS
+  // Shared map colliders
   const blocks = DE_CITADEL_BLOCKS;
-  const colliders: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number }[] = [];
+  const colliders: AABBCollider[] = [];
 
   const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.72, metalness: 0.12 });
   const crateMat = new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.82, metalness: 0.05 });
@@ -202,7 +203,6 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   const containerBlueMat = new THREE.MeshStandardMaterial({ map: containerBlueTex, roughness: 0.45, metalness: 0.7 });
   const containerRedMat = new THREE.MeshStandardMaterial({ color: 0x8a2828, roughness: 0.45, metalness: 0.7 });
 
-  // Instantiate 3D meshes for all shared map blocks
   for (const b of blocks) {
     colliders.push({
       minX: b.minX,
@@ -233,7 +233,7 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     scene.add(mesh);
   }
 
-  // Bombsite A Ground Ring & Pulse Core Beacon
+  // Bombsite A Ground Ring
   const siteAGround = new THREE.Mesh(
     new THREE.RingGeometry(5.2, 5.8, 32),
     new THREE.MeshBasicMaterial({ color: 0xff3344, side: THREE.DoubleSide })
@@ -242,7 +242,6 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   siteAGround.position.set(BOMBSITES.A.center.x, 0.02, BOMBSITES.A.center.z);
   scene.add(siteAGround);
 
-  // A Site Stencil Indicator
   const canvasA = document.createElement('canvas');
   canvasA.width = 128; canvasA.height = 128;
   const ctxA = canvasA.getContext('2d')!;
@@ -259,7 +258,7 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   aMesh.position.set(BOMBSITES.A.center.x, 0.03, BOMBSITES.A.center.z);
   scene.add(aMesh);
 
-  // Bombsite B Ground Ring & Pulse Core Beacon
+  // Bombsite B Ground Ring
   const siteBGround = new THREE.Mesh(
     new THREE.RingGeometry(5.2, 5.8, 32),
     new THREE.MeshBasicMaterial({ color: 0x3388ff, side: THREE.DoubleSide })
@@ -284,13 +283,12 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   bMesh.position.set(BOMBSITES.B.center.x, 0.03, BOMBSITES.B.center.z);
   scene.add(bMesh);
 
-  // Spawn Tactical Bots
+  // Spawn Full 5v5 Roster Bots
   const bots: BotEntity[] = [];
 
   for (const botDef of TACTICAL_BOTS) {
     const botGroup = new THREE.Group();
 
-    // Body Capsule (1.15m height, 0.3m radius)
     const bodyGeo = new THREE.CylinderGeometry(0.3, 0.3, 1.15, 16);
     const bodyMat = new THREE.MeshStandardMaterial({
       color: botDef.team === 'Syndicate' ? 0x444950 : 0x181a1d,
@@ -302,7 +300,6 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     bodyMesh.castShadow = true;
     botGroup.add(bodyMesh);
 
-    // Tactical Balistic Vest
     const vestGeo = new THREE.BoxGeometry(0.66, 0.68, 0.46);
     const vestMat = new THREE.MeshStandardMaterial({
       color: botDef.team === 'Syndicate' ? 0x7a6245 : 0x22262a,
@@ -312,7 +309,6 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     vest.position.set(0, 1.05, 0);
     botGroup.add(vest);
 
-    // Ballistic Helmet (Head sphere 0.18m radius)
     const headGeo = new THREE.SphereGeometry(0.18, 16, 16);
     const headMat = new THREE.MeshStandardMaterial({
       color: 0x141618,
@@ -324,7 +320,6 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     headMesh.castShadow = true;
     botGroup.add(headMesh);
 
-    // Glowing Tactical Visor (Crimson for Vanguard, Amber for Syndicate)
     const visorGeo = new THREE.BoxGeometry(0.24, 0.08, 0.15);
     const visorMat = new THREE.MeshStandardMaterial({
       color: botDef.team === 'Syndicate' ? 0xffaa00 : 0xd91438,
@@ -336,7 +331,6 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     visor.position.set(0, 1.68, 0.12);
     botGroup.add(visor);
 
-    // Weapon mesh
     const gunGeo = new THREE.BoxGeometry(0.06, 0.08, 0.5);
     const gunMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.3 });
     const gun = new THREE.Mesh(gunGeo, gunMat);
@@ -356,6 +350,8 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       bodyCollider: bodyMesh,
       health: 100,
       maxHealth: 100,
+      armor: 100,
+      hasHelmet: true,
       isDead: false,
       team: botDef.team,
       vx: 0,
@@ -364,6 +360,8 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       lastShotTime: 0,
       patrolWaypoints: waypoints,
       waypointIndex: 0,
+      kills: 0,
+      deaths: 0,
     });
   }
 
@@ -376,4 +374,154 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       B: new THREE.Vector3(BOMBSITES.B.center.x, BOMBSITES.B.center.y, BOMBSITES.B.center.z),
     },
   };
+}
+
+/**
+ * Update bot movement and team combat with mandatory wall collision and line of sight checks
+ */
+export function updateBotSystem(
+  bots: BotEntity[],
+  dt: number,
+  colliders: AABBCollider[],
+  blocks: MapBlockCollider[],
+  playerPos: THREE.Vector3,
+  playerEye: THREE.Vector3,
+  onBotShootPlayer: (bot: BotEntity, dmg: number) => void,
+  onBotShootBot: (shooter: BotEntity, victim: BotEntity, dmg: number) => void
+): void {
+  const now = performance.now();
+
+  for (const bot of bots) {
+    if (bot.isDead) continue;
+
+    // 1. Patrol movement with strict AABB wall collision
+    const target = bot.patrolTarget;
+    const toTarget = new THREE.Vector3().subVectors(target, bot.mesh.position);
+    toTarget.y = 0;
+    const distToTarget = toTarget.length();
+
+    if (distToTarget < 1.2) {
+      bot.waypointIndex = (bot.waypointIndex + 1) % bot.patrolWaypoints.length;
+      bot.patrolTarget = bot.patrolWaypoints[bot.waypointIndex];
+    } else {
+      toTarget.normalize();
+      const patrolSpeed = 3.2;
+      const vx = toTarget.x * patrolSpeed;
+      const vz = toTarget.z * patrolSpeed;
+
+      // Apply resolveHorizontalAABB to bot movement so bots NEVER walk through walls or crates!
+      const resolved = resolveHorizontalAABB(
+        bot.mesh.position.x,
+        bot.mesh.position.y,
+        bot.mesh.position.z,
+        vx,
+        vz,
+        dt,
+        KINEMATICS.CAPSULE_RADIUS,
+        KINEMATICS.CAPSULE_HEIGHT_STAND,
+        colliders,
+        true,
+        KINEMATICS.STEP_HEIGHT
+      );
+
+      bot.mesh.position.set(resolved.x, resolved.y, resolved.z);
+      bot.mesh.lookAt(target.x, bot.mesh.position.y, target.z);
+    }
+
+    // 2. Team Combat: Syndicate vs Player & Vanguard Allies with strict Line of Sight
+    const botEye = bot.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
+
+    if (bot.team === 'Syndicate') {
+      // Check target Player
+      const distToPlayer = bot.mesh.position.distanceTo(playerPos);
+      if (distToPlayer <= 36) {
+        const toPlayer = new THREE.Vector3().subVectors(playerEye, botEye);
+        toPlayer.normalize();
+        const losPlayer = hasLineOfSight(
+          {
+            origin: { x: botEye.x, y: botEye.y, z: botEye.z },
+            direction: { x: toPlayer.x, y: toPlayer.y, z: toPlayer.z },
+            maxDistance: distToPlayer,
+          },
+          blocks,
+          []
+        );
+
+        if (losPlayer) {
+          bot.mesh.lookAt(playerPos.x, bot.mesh.position.y, playerPos.z);
+          if (now - bot.lastShotTime > 920) {
+            bot.lastShotTime = now;
+            if (Math.random() < 0.32) {
+              onBotShootPlayer(bot, 24);
+            }
+          }
+          continue;
+        }
+      }
+
+      // Check target Vanguard AI allies
+      for (const ally of bots) {
+        if (ally.team === 'Vanguard' && !ally.isDead) {
+          const distToAlly = bot.mesh.position.distanceTo(ally.mesh.position);
+          if (distToAlly <= 30) {
+            const allyEye = ally.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
+            const toAlly = new THREE.Vector3().subVectors(allyEye, botEye);
+            toAlly.normalize();
+            const losAlly = hasLineOfSight(
+              {
+                origin: { x: botEye.x, y: botEye.y, z: botEye.z },
+                direction: { x: toAlly.x, y: toAlly.y, z: toAlly.z },
+                maxDistance: distToAlly,
+              },
+              blocks,
+              []
+            );
+
+            if (losAlly) {
+              bot.mesh.lookAt(ally.mesh.position.x, bot.mesh.position.y, ally.mesh.position.z);
+              if (now - bot.lastShotTime > 950) {
+                bot.lastShotTime = now;
+                if (Math.random() < 0.35) {
+                  onBotShootBot(bot, ally, 26);
+                }
+              }
+              break;
+            }
+          }
+        }
+      }
+    } else if (bot.team === 'Vanguard') {
+      // Vanguard AI ally fights Syndicate enemies
+      for (const enemy of bots) {
+        if (enemy.team === 'Syndicate' && !enemy.isDead) {
+          const distToEnemy = bot.mesh.position.distanceTo(enemy.mesh.position);
+          if (distToEnemy <= 30) {
+            const enemyEye = enemy.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
+            const toEnemy = new THREE.Vector3().subVectors(enemyEye, botEye);
+            toEnemy.normalize();
+            const losEnemy = hasLineOfSight(
+              {
+                origin: { x: botEye.x, y: botEye.y, z: botEye.z },
+                direction: { x: toEnemy.x, y: toEnemy.y, z: toEnemy.z },
+                maxDistance: distToEnemy,
+              },
+              blocks,
+              []
+            );
+
+            if (losEnemy) {
+              bot.mesh.lookAt(enemy.mesh.position.x, bot.mesh.position.y, enemy.mesh.position.z);
+              if (now - bot.lastShotTime > 950) {
+                bot.lastShotTime = now;
+                if (Math.random() < 0.35) {
+                  onBotShootBot(bot, enemy, 26);
+                }
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
 }

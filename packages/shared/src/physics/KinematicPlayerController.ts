@@ -91,7 +91,8 @@ export interface HorizontalResolutionResult {
 
 /**
  * Reusable horizontal AABB collision resolution with smooth continuous sliding and auto-step.
- * Used identically for both player and AI bots to prevent clipping through walls.
+ * Uses exact Circle-AABB closest-point projection and collision normal deflection.
+ * Used identically for both player and AI bots to prevent clipping through walls and eliminates kickback.
  */
 export function resolveHorizontalAABB(
   startX: number,
@@ -113,54 +114,89 @@ export function resolveHorizontalAABB(
   let outVz = vz;
   let didStep = false;
 
-  // Integrate movement with substeps for high velocity stability
+  // Substepping prevents tunneling even at high velocities
   const moveDist = Math.hypot(vx * dt, vz * dt);
-  const numSteps = Math.max(1, Math.min(4, Math.ceil(moveDist / (radius * 0.5))));
+  const numSteps = Math.max(1, Math.min(4, Math.ceil(moveDist / (radius * 0.4))));
   const subDt = dt / numSteps;
 
   for (let s = 0; s < numSteps; s++) {
-    // 1. Move X
-    let targetX = curX + outVx * subDt;
-    for (const b of colliders) {
-      if (testCapsuleAABBOverlap(targetX, curY, curZ, radius, height, b)) {
-        const stepDiff = b.maxY - curY;
-        if (canStep && stepDiff > 0 && stepDiff <= maxStep && hasHeadClearance(targetX, b.maxY, curZ, height, colliders, b)) {
-          curY = b.maxY;
-          curX = targetX;
-          didStep = true;
-        } else {
-          // Slide along wall plane without bouncy kickback
-          if (outVx > 0) {
-            targetX = Math.min(targetX, b.minX - radius);
-          } else if (outVx < 0) {
-            targetX = Math.max(targetX, b.maxX + radius);
-          }
-          outVx = 0;
-        }
-      }
-    }
-    curX = targetX;
+    // Integrate velocity for this substep
+    curX += outVx * subDt;
+    curZ += outVz * subDt;
 
-    // 2. Move Z
-    let targetZ = curZ + outVz * subDt;
-    for (const b of colliders) {
-      if (testCapsuleAABBOverlap(curX, curY, targetZ, radius, height, b)) {
+    // Iterative solver passes (handles corners and tight crevices between adjacent boxes)
+    for (let pass = 0; pass < 2; pass++) {
+      for (const b of colliders) {
+        // Vertical height check
+        if (curY >= b.maxY || curY + height <= b.minY) continue;
+
+        // Check if player can step up onto obstacle
         const stepDiff = b.maxY - curY;
-        if (canStep && stepDiff > 0 && stepDiff <= maxStep && hasHeadClearance(curX, b.maxY, targetZ, height, colliders, b)) {
-          curY = b.maxY;
-          curZ = targetZ;
-          didStep = true;
-        } else {
-          if (outVz > 0) {
-            targetZ = Math.min(targetZ, b.minZ - radius);
-          } else if (outVz < 0) {
-            targetZ = Math.max(targetZ, b.maxZ + radius);
+        if (canStep && stepDiff > 0 && stepDiff <= maxStep) {
+          // Check if horizontally overlapping
+          const cx = Math.max(b.minX, Math.min(curX, b.maxX));
+          const cz = Math.max(b.minZ, Math.min(curZ, b.maxZ));
+          const dx = curX - cx;
+          const dz = curZ - cz;
+          if ((dx * dx + dz * dz) < (radius * radius)) {
+            if (hasHeadClearance(curX, b.maxY, curZ, height, colliders, b)) {
+              curY = b.maxY;
+              didStep = true;
+              continue;
+            }
           }
-          outVz = 0;
+        }
+
+        // Closest point on AABB to cylinder center
+        const cx = Math.max(b.minX, Math.min(curX, b.maxX));
+        const cz = Math.max(b.minZ, Math.min(curZ, b.maxZ));
+        const dx = curX - cx;
+        const dz = curZ - cz;
+        const distSq = dx * dx + dz * dz;
+
+        if (distSq < radius * radius) {
+          if (distSq > 0.000001) {
+            // Case 1: Circle center is outside box, touching face or corner
+            const dist = Math.sqrt(distSq);
+            const pen = radius - dist;
+            const nx = dx / dist;
+            const nz = dz / dist;
+
+            // Push out along collision normal
+            curX += nx * (pen + 0.001);
+            curZ += nz * (pen + 0.001);
+
+            // Project velocity onto tangent plane (remove velocity into the surface, preserve sliding)
+            const vn = outVx * nx + outVz * nz;
+            if (vn < 0) {
+              outVx -= vn * nx;
+              outVz -= vn * nz;
+            }
+          } else {
+            // Case 2: Circle center is inside the box - find shallowest face to eject
+            const distMinX = curX - b.minX;
+            const distMaxX = b.maxX - curX;
+            const distMinZ = curZ - b.minZ;
+            const distMaxZ = b.maxZ - curZ;
+            const minDist = Math.min(distMinX, distMaxX, distMinZ, distMaxZ);
+
+            if (minDist === distMinX) {
+              curX = b.minX - radius - 0.002;
+              if (outVx > 0) outVx = 0;
+            } else if (minDist === distMaxX) {
+              curX = b.maxX + radius + 0.002;
+              if (outVx < 0) outVx = 0;
+            } else if (minDist === distMinZ) {
+              curZ = b.minZ - radius - 0.002;
+              if (outVz > 0) outVz = 0;
+            } else {
+              curZ = b.maxZ + radius + 0.002;
+              if (outVz < 0) outVz = 0;
+            }
+          }
         }
       }
     }
-    curZ = targetZ;
   }
 
   return {

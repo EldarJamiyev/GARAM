@@ -45,7 +45,7 @@
       position: absolute;
       background: #00ff66;
       box-shadow: 0 0 2px #000;
-      transition: background 0.1s ease;
+      transition: background 0.08s ease;
     }
     .crosshair-top { width: 2px; height: 8px; left: -1px; top: -12px; }
     .crosshair-bottom { width: 2px; height: 8px; left: -1px; top: 4px; }
@@ -121,7 +121,7 @@
       left: 50%;
       transform: translateX(-50%);
       display: grid;
-      grid-template-columns: 200px 110px 200px;
+      grid-template-columns: 200px 130px 200px;
       align-items: center;
       background: rgba(12, 15, 20, 0.92);
       border: 1px solid rgba(255, 255, 255, 0.16);
@@ -157,7 +157,7 @@
     }
     .header-timer {
       text-align: center;
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 800;
       letter-spacing: 1px;
       color: #fff;
@@ -290,8 +290,8 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 740px;
-      background: rgba(10, 13, 17, 0.95);
+      width: 780px;
+      background: rgba(10, 13, 17, 0.96);
       border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 8px;
       padding: 24px;
@@ -321,8 +321,8 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 780px;
-      background: rgba(12, 16, 22, 0.97);
+      width: 820px;
+      background: rgba(12, 16, 22, 0.98);
       border: 2px solid #3b9eff;
       border-radius: 8px;
       padding: 28px;
@@ -332,16 +332,23 @@
       z-index: 150;
       pointer-events: auto;
     }
+    .buy-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      padding-bottom: 14px;
+    }
     .buy-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
       margin-top: 20px;
     }
     .buy-card {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.14);
-      padding: 16px;
+      padding: 14px;
       border-radius: 6px;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -351,8 +358,9 @@
       border-color: #3b9eff;
       transform: translateY(-2px);
     }
-    .buy-name { font-size: 16px; font-weight: 700; color: #fff; }
-    .buy-price { font-size: 14px; font-weight: 700; color: #00ff88; margin-top: 4px; }
+    .buy-key { font-size: 11px; font-weight: 800; color: #3b9eff; margin-bottom: 4px; }
+    .buy-name { font-size: 15px; font-weight: 700; color: #fff; }
+    .buy-price { font-size: 13px; font-weight: 700; color: #00ff88; margin-top: 4px; }
     .buy-close-btn {
       padding: 6px 14px;
       background: rgba(255, 255, 255, 0.08);
@@ -437,7 +445,7 @@
         <span>VANGUARD</span>
         <span class="header-score" id="score-ct">0</span>
       </div>
-      <div class="header-timer" id="round-timer">01:45</div>
+      <div class="header-timer" id="round-timer">01:55</div>
       <div class="header-team syndicate">
         <span class="header-score" id="score-t">0</span>
         <span>SYNDICATE</span>
@@ -480,6 +488,7 @@
           <div class="slot-item" id="slot-2">[2] PISTOL</div>
           <div class="slot-item" id="slot-3">[3] KNIFE</div>
           <div class="slot-item" id="slot-4">[4] UTILITY</div>
+          <div class="slot-item" id="slot-5">[5] CORE</div>
         </div>
 
         <div style="display: flex; gap: 16px;">
@@ -500,7 +509,7 @@
   <!-- Scoreboard (TAB) -->
   <div id="scoreboard-modal">
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(255, 255, 255, 0.12); padding-bottom: 12px;">
-      <h2 style="font-size: 20px; letter-spacing: 2px;">DE_CITADEL — 5V5 COMPETITIVE</h2>
+      <h2 style="font-size: 20px; letter-spacing: 2px;">DE_CITADEL — 5V5 COMPETITIVE MR12</h2>
       <span style="color: #00ff88; font-size: 13px;">64-TICK AUTHORITATIVE</span>
     </div>
     <table class="score-table">
@@ -514,80 +523,62 @@
         </tr>
       </thead>
       <tbody id="score-tbody">
-        <tr>
-          <td style="color: #3b9eff; font-weight: 700;">★ Eldar Garamov (You)</td>
-          <td>Garam Vanguard</td>
-          <td id="sb-kills">0</td>
-          <td id="sb-deaths">0</td>
-          <td style="color: #00ff88;">12ms</td>
-        </tr>
-        <tr>
-          <td>Vanguard Alex</td>
-          <td>Garam Vanguard</td>
-          <td>0</td>
-          <td>0</td>
-          <td style="color: #00ff88;">15ms</td>
-        </tr>
-        <tr>
-          <td style="color: #ffaa00;">Syndicate Kaine</td>
-          <td>Obsidian Syndicate</td>
-          <td>0</td>
-          <td>0</td>
-          <td style="color: #00ff88;">18ms</td>
-        </tr>
-        <tr>
-          <td style="color: #ffaa00;">Syndicate Ghost</td>
-          <td>Obsidian Syndicate</td>
-          <td>0</td>
-          <td>0</td>
-          <td style="color: #00ff88;">21ms</td>
-        </tr>
-        <tr>
-          <td style="color: #ffaa00;">Syndicate Viper</td>
-          <td>Obsidian Syndicate</td>
-          <td>0</td>
-          <td>0</td>
-          <td style="color: #00ff88;">19ms</td>
-        </tr>
+        <!-- Injected dynamically by HUDManager -->
       </tbody>
     </table>
   </div>
 
   <!-- Buy Menu (B Key) -->
   <div id="buy-menu">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-      <h2 style="font-size: 22px; letter-spacing: 2px;">TACTICAL REQUISITION (BUY MENU)</h2>
-      <button class="buy-close-btn" id="buy-close-btn">[ESC / B] CLOSE</button>
+    <div class="buy-header">
+      <div>
+        <h2 style="font-size: 22px; letter-spacing: 2px;">TACTICAL REQUISITION (BUY MENU)</h2>
+        <span style="color: #00ff88; font-size: 12px; font-weight: 700;" id="buy-zone-status">BUY ZONE ACTIVE</span>
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button class="buy-close-btn" id="practice-btn">[P] PRACTICE $16K</button>
+        <button class="buy-close-btn" id="buy-close-btn">[ESC / B] CLOSE</button>
+      </div>
     </div>
     <div class="buy-grid">
-      <div class="buy-card" data-buy="garam-47">
+      <div class="buy-card" data-buy="garam-47" data-key="1">
+        <div class="buy-key">[1] RIFLE</div>
         <div class="buy-name">Garam-47</div>
-        <div style="font-size: 12px; color: #a0aab5;">Assault Rifle • 1-Tap Headshot</div>
         <div class="buy-price">$2,700</div>
       </div>
-      <div class="buy-card" data-buy="vanguard-m4">
+      <div class="buy-card" data-buy="vanguard-m4" data-key="2">
+        <div class="buy-key">[2] RIFLE</div>
         <div class="buy-name">Vanguard M4A1-S</div>
-        <div style="font-size: 12px; color: #a0aab5;">Suppressed Rifle • Tight Burst</div>
         <div class="buy-price">$2,900</div>
       </div>
-      <div class="buy-card" data-buy="sovereign-awp">
+      <div class="buy-card" data-buy="sovereign-awp" data-key="3">
+        <div class="buy-key">[3] SNIPER</div>
         <div class="buy-name">Sovereign AWP</div>
-        <div style="font-size: 12px; color: #a0aab5;">Sniper Rifle • 1-Shot Kill Scope</div>
         <div class="buy-price">$4,750</div>
       </div>
-      <div class="buy-card" data-buy="desert-eagle">
-        <div class="buy-name">Eldar's Desert Eagle</div>
-        <div style="font-size: 12px; color: #a0aab5;">Heavy Pistol • Crimson Slide</div>
+      <div class="buy-card" data-buy="desert-eagle" data-key="4">
+        <div class="buy-key">[4] PISTOL</div>
+        <div class="buy-name">Desert Eagle</div>
         <div class="buy-price">$700</div>
       </div>
-      <div class="buy-card" data-buy="kevlar-helmet">
+      <div class="buy-card" data-buy="kevlar" data-key="5">
+        <div class="buy-key">[5] GEAR</div>
+        <div class="buy-name">Kevlar Vest</div>
+        <div class="buy-price">$650</div>
+      </div>
+      <div class="buy-card" data-buy="kevlar-helmet" data-key="6">
+        <div class="buy-key">[6] GEAR</div>
         <div class="buy-name">Kevlar + Helmet</div>
-        <div style="font-size: 12px; color: #a0aab5;">Ballistic Body Armor & Helmet</div>
         <div class="buy-price">$1,000</div>
       </div>
-      <div class="buy-card" data-buy="smoke-grenade">
+      <div class="buy-card" data-buy="defuse-kit" data-key="7">
+        <div class="buy-key">[7] GEAR</div>
+        <div class="buy-name">Defuse Kit</div>
+        <div class="buy-price">$400</div>
+      </div>
+      <div class="buy-card" data-buy="smoke-grenade" data-key="8">
+        <div class="buy-key">[8] UTILITY</div>
         <div class="buy-name">Smoke Grenade</div>
-        <div style="font-size: 12px; color: #a0aab5;">Tactical Sightline Denial Cloud</div>
         <div class="buy-price">$300</div>
       </div>
     </div>
@@ -600,8 +591,8 @@
     <div class="start-prompt">CLICK TO SPAWN (ELDAR GARAMOV)</div>
     <div class="controls-help">
       [WASD] Move &nbsp;|&nbsp; [A / D Tap] Counter-Strafe &nbsp;|&nbsp; [SPACE] Jump &nbsp;|&nbsp; [CTRL] Crouch &nbsp;|&nbsp; [SHIFT] Silent Walk<br>
-      [MOUSE 1] Fire with Recoil &nbsp;|&nbsp; [MOUSE 2] AWP Scope Zoom &nbsp;|&nbsp; [Q] Quick-Switch &nbsp;|&nbsp; [1, 2, 3, 4] Weapon Slots<br>
-      [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [R] Reload &nbsp;|&nbsp; [ESC] Pause
+      [MOUSE 1] Fire / Light Slash &nbsp;|&nbsp; [MOUSE 2] AWP Scope (1x/2x) / Heavy Stab &nbsp;|&nbsp; [HOLD E] Plant / Defuse<br>
+      [Q] Quick-Switch &nbsp;|&nbsp; [1, 2, 3, 4, 5] Weapon Slots &nbsp;|&nbsp; [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [P] Practice $16K
     </div>
   </div>
 

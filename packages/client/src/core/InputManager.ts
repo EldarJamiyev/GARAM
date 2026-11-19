@@ -8,8 +8,10 @@ export interface InputCallbacks {
   onAltFire: () => void;
   onReload: () => void;
   onQuickSwitch: () => void;
+  onCycleWeapon?: (dir: 1 | -1) => void;
   onSlotSelect: (slot: 1 | 2 | 3 | 4 | 5) => void;
   onToggleBuyMenu: () => void;
+  onBuyItem?: (itemKey: number) => void;
   onInteractDown: () => void; // E key for plant / defuse
   onInteractUp: () => void;
   onPracticeToggle: () => void; // P key for $16K dev test
@@ -93,6 +95,17 @@ export class InputManager {
         return;
       }
 
+      // If Buy Menu is open, Digit 1-8 buy items directly
+      if (this.uiState === 'BUY_MENU') {
+        if (e.code.startsWith('Digit')) {
+          const num = parseInt(e.code.replace('Digit', ''), 10);
+          if (num >= 1 && num <= 8 && this.callbacks.onBuyItem) {
+            this.callbacks.onBuyItem(num);
+            return;
+          }
+        }
+      }
+
       // Escape key handles closing modals cleanly
       if (e.code === 'Escape') {
         if (this.uiState === 'BUY_MENU') {
@@ -172,6 +185,15 @@ export class InputManager {
         this.callbacks.onFireUp();
       }
     });
+
+    window.addEventListener('wheel', (e) => {
+      if (!this.isLocked || this.uiState !== 'PLAYING') return;
+      if (e.deltaY > 0) {
+        if (this.callbacks.onCycleWeapon) this.callbacks.onCycleWeapon(1);
+      } else if (e.deltaY < 0) {
+        if (this.callbacks.onCycleWeapon) this.callbacks.onCycleWeapon(-1);
+      }
+    }, { passive: true });
 
     window.addEventListener('contextmenu', (e) => e.preventDefault());
   }
