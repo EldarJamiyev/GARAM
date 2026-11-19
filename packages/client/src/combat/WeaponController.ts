@@ -297,14 +297,14 @@ export class WeaponController {
     if (weapon.id === 'sovereign-awp') {
       this.zoomStage = (this.zoomStage + 1) % 3;
       let fov = settingsStore.settings.fov;
-      let sens = settingsStore.settings.mouseSensitivity * 0.001;
+      let sens = settingsStore.settings.mouseSensitivity;
 
       if (this.zoomStage === 1) {
         fov = 28; // 1x Magnification
-        sens = (settingsStore.settings.mouseSensitivity * 0.001) * 0.38;
+        sens = settingsStore.settings.mouseSensitivity * 0.38;
       } else if (this.zoomStage === 2) {
         fov = 10; // 2x Extreme Magnification
-        sens = (settingsStore.settings.mouseSensitivity * 0.001) * 0.16;
+        sens = settingsStore.settings.mouseSensitivity * 0.16;
       }
 
       this.viewmodel.isScoped = this.zoomStage > 0;
@@ -380,7 +380,7 @@ export class WeaponController {
       this.zoomStage = 0;
       this.viewmodel.isScoped = false;
       const baseFov = settingsStore.settings.fov;
-      const baseSens = settingsStore.settings.mouseSensitivity * 0.001;
+      const baseSens = settingsStore.settings.mouseSensitivity;
       this.callbacks.onScopeChanged(0, baseFov, baseSens);
     }
   }

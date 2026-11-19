@@ -381,7 +381,7 @@ export class GaramGame {
     });
 
     // Apply stored sensitivity & FOV
-    this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity * 0.001);
+    this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
     this.worldCamera.fov = settingsStore.settings.fov;
     this.worldCamera.updateProjectionMatrix();
 
@@ -559,7 +559,7 @@ export class GaramGame {
         e.stopPropagation();
         const val = parseFloat(sensSlider.value);
         sensVal.innerText = val.toFixed(1);
-        this.inputManager.setSensitivity(val * 0.001);
+        this.inputManager.setSensitivity(val);
         settingsStore.update('mouseSensitivity', val);
       });
     }
@@ -630,7 +630,7 @@ export class GaramGame {
       this.worldCamera.fov = settingsStore.settings.fov;
       this.worldCamera.updateProjectionMatrix();
       this.hud.setScopeOverlay(false);
-      this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity * 0.001);
+      this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
     }
     this.viewmodel.setWeapon(active.id);
   }
