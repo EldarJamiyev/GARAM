@@ -1,4 +1,5 @@
 import { MapBlockCollider, SurfaceMaterial, SURFACE_MATERIALS, Vec3 } from '../maps/DeCitadelData.js';
+import { HITBOX } from '../constants/kinematics.js';
 
 export interface Ray {
   origin: Vec3;
@@ -12,16 +13,21 @@ export interface RayIntersectionResult {
   normal: Vec3;
 }
 
+export type HitZone = 'HEAD' | 'CHEST' | 'STOMACH' | 'ARMS' | 'LEGS';
+
 export interface RaycastHit {
   hit: boolean;
   point: Vec3;
+  exitPoint?: Vec3;
   normal: Vec3;
   distance: number;
   material: SurfaceMaterial;
   blockId?: string;
   targetId?: string;
+  hitZone?: HitZone;
   isHeadshot?: boolean;
   awardedDamage: number;
+  armorDamage: number;
   penetratedWalls: number;
 }
 
@@ -29,11 +35,9 @@ export interface TargetCollider {
   id: string;
   name: string;
   team: 'Vanguard' | 'Syndicate';
-  headCenter: Vec3;
-  headRadius: number;
-  bodyCenter: Vec3;
-  bodyRadius: number;
-  bodyHeight: number;
+  center: Vec3; // Base center
+  hasHelmet: boolean;
+  armor: number;
   isDead: boolean;
 }
 
@@ -151,23 +155,22 @@ export function intersectRaySphere(ray: Ray, center: Vec3, radius: number): { hi
 }
 
 /**
- * Ray-Vertical Cylinder intersection for player body
+ * Ray-Vertical Cylinder intersection for player body parts
  */
 export function intersectRayVerticalCylinder(
   ray: Ray,
-  center: Vec3,
-  radius: number,
-  height: number
+  centerX: number,
+  centerZ: number,
+  minY: number,
+  maxY: number,
+  radius: number
 ): { hit: boolean; t: number } {
-  const ocX = ray.origin.x - center.x;
-  const ocZ = ray.origin.z - center.z;
+  const ocX = ray.origin.x - centerX;
+  const ocZ = ray.origin.z - centerZ;
 
   const a = ray.direction.x * ray.direction.x + ray.direction.z * ray.direction.z;
   if (a < 1e-8) {
-    // Ray parallel to cylinder axis
     if (ocX * ocX + ocZ * ocZ <= radius * radius) {
-      const minY = center.y - height / 2;
-      const maxY = center.y + height / 2;
       if (ray.direction.y > 0 && ray.origin.y < minY) {
         return { hit: true, t: (minY - ray.origin.y) / ray.direction.y };
       }
@@ -188,9 +191,6 @@ export function intersectRayVerticalCylinder(
   const t0 = (-b - sqrtDisc) / (2 * a);
   const t1 = (-b + sqrtDisc) / (2 * a);
 
-  const minY = center.y - height / 2;
-  const maxY = center.y + height / 2;
-
   if (t0 > 0) {
     const y0 = ray.origin.y + ray.direction.y * t0;
     if (y0 >= minY && y0 <= maxY) return { hit: true, t: t0 };
@@ -204,22 +204,25 @@ export function intersectRayVerticalCylinder(
 }
 
 /**
- * Perform a deterministic, distance-sorted tactical raycast with multi-material penetration.
+ * Perform a deterministic, distance-sorted tactical raycast with 5-zone hitboxes,
+ * Kevlar/Helmet armor calculations, and multi-material penetration.
  */
 export function executeTacticalRaycast(
   ray: Ray,
   baseDamage: number,
-  headMultiplier: number,
+  armorPenetration: number,
+  penetrationPower: number,
   maxRange = 250,
   blocks: MapBlockCollider[] = [],
   targets: TargetCollider[] = []
 ): RaycastHit[] {
   interface HitCandidate {
-    type: 'block' | 'target_head' | 'target_body';
+    type: 'block' | 'target';
     distance: number;
     normal: Vec3;
     block?: MapBlockCollider;
     target?: TargetCollider;
+    hitZone?: HitZone;
     tNear: number;
     tFar: number;
   }
@@ -246,43 +249,85 @@ export function executeTacticalRaycast(
     }
   }
 
-  // 2. Gather all target intersections (Head sphere + Body cylinder)
+  // 2. Gather 5-Zone Target Hitbox intersections
+  // Head: y in [1.50, 1.82], r=0.18
+  // Chest: y in [1.18, 1.50], r=0.34
+  // Stomach: y in [0.88, 1.18], r=0.34
+  // Arms: y in [0.95, 1.48], r=0.44 (shoulder/arm width)
+  // Legs: y in [0.0, 0.88], r=0.28
   for (const t of targets) {
     if (t.isDead) continue;
+    const bx = t.center.x;
+    const by = t.center.y;
+    const bz = t.center.z;
 
-    // Head
-    const headHit = intersectRaySphere(ray, t.headCenter, t.headRadius);
+    // Head Sphere
+    const headHit = intersectRaySphere(ray, { x: bx, y: by + 1.66, z: bz }, 0.18);
     if (headHit.hit && headHit.t <= maxRange) {
-      const normal: Vec3 = {
-        x: (ray.origin.x + ray.direction.x * headHit.t - t.headCenter.x) / t.headRadius,
-        y: (ray.origin.y + ray.direction.y * headHit.t - t.headCenter.y) / t.headRadius,
-        z: (ray.origin.z + ray.direction.z * headHit.t - t.headCenter.z) / t.headRadius,
-      };
       candidates.push({
-        type: 'target_head',
+        type: 'target',
         distance: headHit.t,
-        normal,
+        normal: { x: 0, y: 0, z: 1 },
         target: t,
+        hitZone: 'HEAD',
         tNear: headHit.t,
-        tFar: headHit.t + t.headRadius * 2,
+        tFar: headHit.t + 0.36,
       });
     }
 
-    // Body
-    const bodyHit = intersectRayVerticalCylinder(ray, t.bodyCenter, t.bodyRadius, t.bodyHeight);
-    if (bodyHit.hit && bodyHit.t <= maxRange) {
-      const normal: Vec3 = {
-        x: (ray.origin.x + ray.direction.x * bodyHit.t - t.bodyCenter.x) / t.bodyRadius,
-        y: 0,
-        z: (ray.origin.z + ray.direction.z * bodyHit.t - t.bodyCenter.z) / t.bodyRadius,
-      };
+    // Chest Cylinder
+    const chestHit = intersectRayVerticalCylinder(ray, bx, bz, by + 1.18, by + 1.50, 0.34);
+    if (chestHit.hit && chestHit.t <= maxRange) {
       candidates.push({
-        type: 'target_body',
-        distance: bodyHit.t,
-        normal,
+        type: 'target',
+        distance: chestHit.t,
+        normal: { x: 0, y: 0, z: 1 },
         target: t,
-        tNear: bodyHit.t,
-        tFar: bodyHit.t + t.bodyRadius * 2,
+        hitZone: 'CHEST',
+        tNear: chestHit.t,
+        tFar: chestHit.t + 0.68,
+      });
+    }
+
+    // Stomach Cylinder
+    const stomHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.88, by + 1.18, 0.34);
+    if (stomHit.hit && stomHit.t <= maxRange) {
+      candidates.push({
+        type: 'target',
+        distance: stomHit.t,
+        normal: { x: 0, y: 0, z: 1 },
+        target: t,
+        hitZone: 'STOMACH',
+        tNear: stomHit.t,
+        tFar: stomHit.t + 0.68,
+      });
+    }
+
+    // Arms (Outer shoulder cylinders)
+    const armsHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.95, by + 1.48, 0.45);
+    if (armsHit.hit && armsHit.t <= maxRange && !chestHit.hit) {
+      candidates.push({
+        type: 'target',
+        distance: armsHit.t,
+        normal: { x: 0, y: 0, z: 1 },
+        target: t,
+        hitZone: 'ARMS',
+        tNear: armsHit.t,
+        tFar: armsHit.t + 0.9,
+      });
+    }
+
+    // Legs Cylinder
+    const legsHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.0, by + 0.88, 0.30);
+    if (legsHit.hit && legsHit.t <= maxRange) {
+      candidates.push({
+        type: 'target',
+        distance: legsHit.t,
+        normal: { x: 0, y: 0, z: 1 },
+        target: t,
+        hitZone: 'LEGS',
+        tNear: legsHit.t,
+        tFar: legsHit.t + 0.6,
       });
     }
   }
@@ -295,7 +340,7 @@ export function executeTacticalRaycast(
   let wallsPenetrated = 0;
 
   for (const c of candidates) {
-    if (currentDamage <= 0) break;
+    if (currentDamage <= 1) break;
 
     const hitPoint: Vec3 = {
       x: ray.origin.x + ray.direction.x * c.distance,
@@ -307,56 +352,99 @@ export function executeTacticalRaycast(
       const mat = c.block.material;
       const matProps = SURFACE_MATERIALS[mat];
 
+      const exitPoint: Vec3 = {
+        x: ray.origin.x + ray.direction.x * c.tFar,
+        y: ray.origin.y + ray.direction.y * c.tFar,
+        z: ray.origin.z + ray.direction.z * c.tFar,
+      };
+
       results.push({
         hit: true,
         point: hitPoint,
+        exitPoint,
         normal: c.normal,
         distance: c.distance,
         material: mat,
         blockId: c.block.id,
         awardedDamage: 0,
+        armorDamage: 0,
         penetratedWalls: wallsPenetrated,
       });
 
-      // If impenetrable concrete, bullet stops dead!
+      // Concrete is strictly impenetrable
       if (matProps.isImpenetrable) {
         currentDamage = 0;
         break;
       }
 
-      // Compute wall thickness
+      // Wall thickness
       const thickness = Math.max(0.05, c.tFar - c.tNear);
       if (thickness > matProps.maxThickness) {
-        // Wall is too thick to penetrate
         currentDamage = 0;
         break;
       }
 
-      // Penetrate: Damage_exit = Damage_entry * mu - thickness * cost
-      currentDamage = currentDamage * matProps.mu - thickness * matProps.cost;
+      // Penetration damage calculation factored by weapon penetrationPower
+      const penFactor = Math.max(0.5, 200 / Math.max(100, penetrationPower));
+      currentDamage = currentDamage * matProps.mu - thickness * matProps.cost * penFactor;
       wallsPenetrated++;
 
       if (currentDamage <= 2) {
         currentDamage = 0;
         break;
       }
-    } else if (c.target) {
-      const isHead = c.type === 'target_head';
-      const dmg = Math.round(currentDamage * (isHead ? headMultiplier : 1.0));
+    } else if (c.target && c.hitZone) {
+      // 5-Zone Damage Multipliers
+      let zoneMultiplier = 1.0;
+      let isArmoredZone = false;
+
+      switch (c.hitZone) {
+        case 'HEAD':
+          zoneMultiplier = HITBOX.HEAD_MULTIPLIER; // 4.0x
+          isArmoredZone = c.target.hasHelmet;
+          break;
+        case 'CHEST':
+          zoneMultiplier = HITBOX.CHEST_MULTIPLIER; // 1.0x
+          isArmoredZone = c.target.armor > 0;
+          break;
+        case 'STOMACH':
+          zoneMultiplier = HITBOX.STOMACH_MULTIPLIER; // 1.15x
+          isArmoredZone = c.target.armor > 0;
+          break;
+        case 'ARMS':
+          zoneMultiplier = HITBOX.ARMS_MULTIPLIER; // 0.75x
+          isArmoredZone = c.target.armor > 0;
+          break;
+        case 'LEGS':
+          zoneMultiplier = HITBOX.LEGS_MULTIPLIER; // 0.75x
+          isArmoredZone = false; // Legs are unarmored in CS!
+          break;
+      }
+
+      const rawDamage = currentDamage * zoneMultiplier;
+      let healthDamage = Math.round(rawDamage);
+      let armorDamage = 0;
+
+      if (isArmoredZone && c.target.armor > 0) {
+        healthDamage = Math.round(rawDamage * armorPenetration);
+        armorDamage = Math.round(rawDamage * (1 - armorPenetration) * 0.5);
+      }
 
       results.push({
         hit: true,
         point: hitPoint,
         normal: c.normal,
         distance: c.distance,
-        material: 'WOOD_THIN', // Flesh equivalent
+        material: 'WOOD_THIN', // Flesh
         targetId: c.target.id,
-        isHeadshot: isHead,
-        awardedDamage: dmg,
+        hitZone: c.hitZone,
+        isHeadshot: c.hitZone === 'HEAD',
+        awardedDamage: healthDamage,
+        armorDamage,
         penetratedWalls: wallsPenetrated,
       });
 
-      // Target absorbs damage; bullet terminates on human target
+      // Target absorbs bullet
       currentDamage = 0;
       break;
     }
@@ -390,9 +478,7 @@ export function hasLineOfSight(
   for (const b of blocks) {
     const res = intersectRayAABB(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ);
     if (res.hit && res.tNear < dist && res.tNear > 0.05) {
-      // Concrete stops line of sight completely
       if (b.material === 'CONCRETE') return false;
-      // Tall crates also break vision
       if (b.h >= 2.0) return false;
     }
   }
@@ -401,7 +487,7 @@ export function hasLineOfSight(
   for (const s of smokeOccluders) {
     const hit = intersectRaySphere(ray, s.center, s.radius);
     if (hit.hit && hit.t < dist && hit.t > 0) {
-      return false; // Smoke blocks vision
+      return false;
     }
   }
 

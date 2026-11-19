@@ -36,10 +36,147 @@ export interface AABBCollider {
   maxZ: number;
 }
 
+/**
+ * Checks if a cylinder capsule overlaps an AABB box vertically and horizontally
+ */
+export function testCapsuleAABBOverlap(
+  px: number,
+  py: number,
+  pz: number,
+  r: number,
+  h: number,
+  b: AABBCollider
+): boolean {
+  // Vertical test
+  if (py >= b.maxY || py + h <= b.minY) return false;
+
+  // Clamped horizontal distance
+  const cx = Math.max(b.minX, Math.min(px, b.maxX));
+  const cz = Math.max(b.minZ, Math.min(pz, b.maxZ));
+
+  const dx = px - cx;
+  const dz = pz - cz;
+
+  return (dx * dx + dz * dz) < (r * r);
+}
+
+/**
+ * Checks if there is headroom clearance above base Y for a standing height
+ */
+export function hasHeadClearance(
+  px: number,
+  baseY: number,
+  pz: number,
+  height: number,
+  colliders: AABBCollider[],
+  ignoreBox?: AABBCollider
+): boolean {
+  for (const b of colliders) {
+    if (b === ignoreBox) continue;
+    if (testCapsuleAABBOverlap(px, baseY, pz, KINEMATICS.CAPSULE_RADIUS, height, b)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export interface HorizontalResolutionResult {
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vz: number;
+  stepped: boolean;
+}
+
+/**
+ * Reusable horizontal AABB collision resolution with smooth continuous sliding and auto-step.
+ * Used identically for both player and AI bots to prevent clipping through walls.
+ */
+export function resolveHorizontalAABB(
+  startX: number,
+  startY: number,
+  startZ: number,
+  vx: number,
+  vz: number,
+  dt: number,
+  radius: number,
+  height: number,
+  colliders: AABBCollider[],
+  canStep = true,
+  maxStep = KINEMATICS.STEP_HEIGHT
+): HorizontalResolutionResult {
+  let curX = startX;
+  let curY = startY;
+  let curZ = startZ;
+  let outVx = vx;
+  let outVz = vz;
+  let didStep = false;
+
+  // Integrate movement with substeps for high velocity stability
+  const moveDist = Math.hypot(vx * dt, vz * dt);
+  const numSteps = Math.max(1, Math.min(4, Math.ceil(moveDist / (radius * 0.5))));
+  const subDt = dt / numSteps;
+
+  for (let s = 0; s < numSteps; s++) {
+    // 1. Move X
+    let targetX = curX + outVx * subDt;
+    for (const b of colliders) {
+      if (testCapsuleAABBOverlap(targetX, curY, curZ, radius, height, b)) {
+        const stepDiff = b.maxY - curY;
+        if (canStep && stepDiff > 0 && stepDiff <= maxStep && hasHeadClearance(targetX, b.maxY, curZ, height, colliders, b)) {
+          curY = b.maxY;
+          curX = targetX;
+          didStep = true;
+        } else {
+          // Slide along wall plane without bouncy kickback
+          if (outVx > 0) {
+            targetX = Math.min(targetX, b.minX - radius);
+          } else if (outVx < 0) {
+            targetX = Math.max(targetX, b.maxX + radius);
+          }
+          outVx = 0;
+        }
+      }
+    }
+    curX = targetX;
+
+    // 2. Move Z
+    let targetZ = curZ + outVz * subDt;
+    for (const b of colliders) {
+      if (testCapsuleAABBOverlap(curX, curY, targetZ, radius, height, b)) {
+        const stepDiff = b.maxY - curY;
+        if (canStep && stepDiff > 0 && stepDiff <= maxStep && hasHeadClearance(curX, b.maxY, targetZ, height, colliders, b)) {
+          curY = b.maxY;
+          curZ = targetZ;
+          didStep = true;
+        } else {
+          if (outVz > 0) {
+            targetZ = Math.min(targetZ, b.minZ - radius);
+          } else if (outVz < 0) {
+            targetZ = Math.max(targetZ, b.maxZ + radius);
+          }
+          outVz = 0;
+        }
+      }
+    }
+    curZ = targetZ;
+  }
+
+  return {
+    x: curX,
+    y: curY,
+    z: curZ,
+    vx: outVx,
+    vz: outVz,
+    stepped: didStep,
+  };
+}
+
 export class KinematicPlayerController {
   public state: PlayerState;
-  public radius = 0.38;
-  public readonly MAX_STEP_HEIGHT = 0.42; // Auto-step height for stairs and curbs
+  public radius = KINEMATICS.CAPSULE_RADIUS;
+  public actualCrouching = false;
 
   constructor(startX = 0, startY = 0, startZ = 25) {
     this.state = {
@@ -66,16 +203,26 @@ export class KinematicPlayerController {
   ): void {
     this.state.yaw = input.yaw;
     this.state.pitch = input.pitch;
-    this.state.isCrouching = input.crouch;
     this.state.isWalking = input.walk;
 
-    // Smooth eye height interpolation (crouch peeking / standing)
-    const targetEyeHeight = input.crouch ? KINEMATICS.EYE_HEIGHT_CROUCH : KINEMATICS.EYE_HEIGHT_STAND;
+    // Headroom check when uncrouching
+    if (input.crouch) {
+      this.actualCrouching = true;
+    } else if (this.actualCrouching) {
+      // Check ceiling clearance before expanding to standing height
+      if (hasHeadClearance(this.state.x, this.state.y, this.state.z, KINEMATICS.CAPSULE_HEIGHT_STAND, colliders)) {
+        this.actualCrouching = false;
+      }
+    }
+    this.state.isCrouching = this.actualCrouching;
+
+    // Eye height interpolation
+    const targetEyeHeight = this.actualCrouching ? KINEMATICS.EYE_HEIGHT_CROUCH : KINEMATICS.EYE_HEIGHT_STAND;
     this.state.currentEyeHeight += (targetEyeHeight - this.state.currentEyeHeight) * (1 - Math.exp(-KINEMATICS.CROUCH_LERP_SPEED * dt));
 
-    // Target max speed determined by stance and weapon
+    // Stance speed
     let maxSpeed = weaponMaxSpeed;
-    if (input.crouch) {
+    if (this.actualCrouching) {
       maxSpeed = KINEMATICS.SPEED_CROUCH;
     } else if (input.walk) {
       maxSpeed = KINEMATICS.SPEED_WALK_SILENT;
@@ -104,11 +251,11 @@ export class KinematicPlayerController {
       wishDirZ = -normX * sinYaw + normZ * cosYaw;
     }
 
-    // Counter-strafing ground physics
+    // Ground counter-strafing kinematics
     if (this.state.isGrounded) {
       const currentHozSpeed = Math.hypot(this.state.vx, this.state.vz);
 
-      // Friction
+      // Source-accurate ground friction
       if (currentHozSpeed > 0.0001) {
         const drop = currentHozSpeed * KINEMATICS.FRICTION_GROUND * dt;
         const newSpeed = Math.max(0, currentHozSpeed - drop);
@@ -117,7 +264,7 @@ export class KinematicPlayerController {
         this.state.vz *= frictionRatio;
       }
 
-      // Acceleration
+      // Ground acceleration
       if (length > 0.0001) {
         const currentSpeedInWishDir = this.state.vx * wishDirX + this.state.vz * wishDirZ;
         const addSpeed = maxSpeed - currentSpeedInWishDir;
@@ -149,56 +296,30 @@ export class KinematicPlayerController {
       this.state.vy -= KINEMATICS.GRAVITY * dt;
     }
 
-    // Target capsule height
-    const targetHeight = input.crouch ? KINEMATICS.CAPSULE_HEIGHT_CROUCH : KINEMATICS.CAPSULE_HEIGHT_STAND;
+    const currentHeight = this.actualCrouching ? KINEMATICS.CAPSULE_HEIGHT_CROUCH : KINEMATICS.CAPSULE_HEIGHT_STAND;
 
-    // 1. Resolve X movement with 0.42m Auto-Step
-    let newX = this.state.x + this.state.vx * dt;
-    let steppedY = this.state.y;
+    // Horizontal movement integration with smooth wall sliding
+    const horzRes = resolveHorizontalAABB(
+      this.state.x,
+      this.state.y,
+      this.state.z,
+      this.state.vx,
+      this.state.vz,
+      dt,
+      this.radius,
+      currentHeight,
+      colliders,
+      this.state.isGrounded,
+      KINEMATICS.STEP_HEIGHT
+    );
 
-    for (const b of colliders) {
-      if (this.intersectsBox(newX, steppedY, this.state.z, this.radius, targetHeight, b)) {
-        const stepDiff = b.maxY - this.state.y;
-        // Auto-step if curb/stair is <= 0.42m high and there is head clearance
-        if (this.state.isGrounded && stepDiff > 0 && stepDiff <= this.MAX_STEP_HEIGHT && this.hasHeadClearance(newX, b.maxY, this.state.z, targetHeight, colliders, b)) {
-          steppedY = b.maxY;
-        } else {
-          // Resolve wall collision sliding
-          if (this.state.vx > 0) {
-            newX = b.minX - this.radius;
-          } else if (this.state.vx < 0) {
-            newX = b.maxX + this.radius;
-          }
-          this.state.vx = 0;
-        }
-      }
-    }
-    this.state.x = newX;
-    this.state.y = steppedY;
+    this.state.x = horzRes.x;
+    this.state.y = horzRes.y;
+    this.state.z = horzRes.z;
+    this.state.vx = horzRes.vx;
+    this.state.vz = horzRes.vz;
 
-    // 2. Resolve Z movement with 0.42m Auto-Step
-    let newZ = this.state.z + this.state.vz * dt;
-    steppedY = this.state.y;
-
-    for (const b of colliders) {
-      if (this.intersectsBox(this.state.x, steppedY, newZ, this.radius, targetHeight, b)) {
-        const stepDiff = b.maxY - this.state.y;
-        if (this.state.isGrounded && stepDiff > 0 && stepDiff <= this.MAX_STEP_HEIGHT && this.hasHeadClearance(this.state.x, b.maxY, newZ, targetHeight, colliders, b)) {
-          steppedY = b.maxY;
-        } else {
-          if (this.state.vz > 0) {
-            newZ = b.minZ - this.radius;
-          } else if (this.state.vz < 0) {
-            newZ = b.maxZ + this.radius;
-          }
-          this.state.vz = 0;
-        }
-      }
-    }
-    this.state.z = newZ;
-    this.state.y = steppedY;
-
-    // 3. Resolve Y movement with Ground & Ceiling checks
+    // Vertical Y movement with Ceiling & Landing checks
     let newY = this.state.y + this.state.vy * dt;
     this.state.isGrounded = false;
 
@@ -211,8 +332,8 @@ export class KinematicPlayerController {
           this.state.z + this.radius > b.minZ &&
           this.state.z - this.radius < b.maxZ
         ) {
-          if (this.state.y + targetHeight <= b.minY && newY + targetHeight >= b.minY) {
-            newY = b.minY - targetHeight;
+          if (this.state.y + currentHeight <= b.minY && newY + currentHeight >= b.minY) {
+            newY = b.minY - currentHeight;
             this.state.vy = 0;
           }
         }
@@ -242,45 +363,6 @@ export class KinematicPlayerController {
     }
 
     this.state.y = newY;
-  }
-
-  private hasHeadClearance(
-    px: number,
-    baseY: number,
-    pz: number,
-    height: number,
-    colliders: AABBCollider[],
-    ignoreBox: AABBCollider
-  ): boolean {
-    for (const b of colliders) {
-      if (b === ignoreBox) continue;
-      if (this.intersectsBox(px, baseY, pz, this.radius, height, b)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private intersectsBox(
-    px: number,
-    py: number,
-    pz: number,
-    r: number,
-    h: number,
-    b: AABBCollider
-  ): boolean {
-    const closestX = Math.max(b.minX, Math.min(px, b.maxX));
-    const closestY = Math.max(b.minY, Math.min(py + h / 2, b.maxY));
-    const closestZ = Math.max(b.minZ, Math.min(pz, b.maxZ));
-
-    const distanceX = px - closestX;
-    const distanceZ = pz - closestZ;
-
-    // Vertical overlap check
-    const yOverlap = (py < b.maxY) && (py + h > b.minY);
-    if (!yOverlap) return false;
-
-    return (distanceX * distanceX + distanceZ * distanceZ) < (r * r);
   }
 
   public getHorizontalSpeed(): number {

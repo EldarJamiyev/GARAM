@@ -17,19 +17,19 @@ export const SURFACE_MATERIALS: Record<SurfaceMaterial, MaterialProperties> = {
   WOOD_THIN: {
     mu: 0.75,
     cost: 18,
-    maxThickness: 0.65,
+    maxThickness: 2.2, // Allows crate corners, edges, and doors to penetrate cleanly
     isImpenetrable: false,
   },
   DRYWALL: {
     mu: 0.70,
     cost: 22,
-    maxThickness: 0.50,
+    maxThickness: 1.5,
     isImpenetrable: false,
   },
   METAL_SHEET: {
     mu: 0.45,
     cost: 45,
-    maxThickness: 0.25,
+    maxThickness: 1.2, // Allows grazing container edges and sheet metal
     isImpenetrable: false,
   },
 };
@@ -63,6 +63,15 @@ export interface BombsiteDef {
   name: string;
   center: Vec3;
   radius: number;
+}
+
+export interface BuyZoneDef {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  minZ: number;
+  maxZ: number;
 }
 
 export interface BotSpawnDef {
@@ -103,7 +112,7 @@ function makeBlock(
   };
 }
 
-// 120m x 120m DE_CITADEL Map Specification
+// 120m x 120m DE_CITADEL Map Block Specification
 export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   // --- Outer Perimeter Walls (Impenetrable Concrete) ---
   makeBlock('wall_north', 'North Perimeter Wall', 0, 0, -60, 120, 9, 3, 'CONCRETE'),
@@ -114,7 +123,7 @@ export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   // --- Bombsite A: Armory Courtyard ---
   makeBlock('site_a_back_wall', 'Armory Back Wall', -32, 0, -42, 28, 7, 3, 'CONCRETE'),
   makeBlock('site_a_long_wall', 'A Long Partition Wall', -44, 0, -25, 3, 6, 25, 'CONCRETE'),
-  // A Site Triple Stack Wood Crates (Wallbangable!)
+  // A Site Triple Stack Wood Crates (Wallbangable corners & edges)
   makeBlock('crate_a_low', 'A Site Wood Crate Low', -34, 0, -28, 3.2, 2.5, 3.2, 'WOOD_THIN'),
   makeBlock('crate_a_mid', 'A Site Wood Crate Mid', -30.5, 0, -28, 3.0, 2.0, 3.0, 'WOOD_THIN'),
   makeBlock('crate_a_high', 'A Site Wood Crate Top', -32.5, 2.2, -28, 2.5, 2.0, 2.5, 'WOOD_THIN'),
@@ -135,7 +144,7 @@ export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   // --- Bombsite B: Reactor Vault ---
   makeBlock('site_b_back_wall', 'Reactor Back Wall', 35, 0, -45, 30, 8, 3, 'CONCRETE'),
   makeBlock('site_b_inner_wall', 'Reactor Inner Partition', 18, 0, -28, 3, 6, 20, 'CONCRETE'),
-  // Industrial Cargo Containers (Metal Sheet - Wallbangable with high penetration!)
+  // Industrial Cargo Containers (Metal Sheet - Wallbangable across thin axes/edges)
   makeBlock('container_blue', 'B Site Blue Cargo Container', 32, 0, -32, 14, 4.2, 5.5, 'METAL_SHEET'),
   makeBlock('container_red', 'B Site Red Cargo Container', 42, 0, -20, 5.5, 4.2, 14, 'METAL_SHEET'),
   makeBlock('crate_b_stack', 'B Site Staging Crates', 26, 0, -18, 4.0, 3.0, 4.0, 'WOOD_THIN'),
@@ -168,50 +177,127 @@ export const SPAWN_POINTS = {
   OBSIDIAN_T: { x: 0, y: 0, z: -48 },
 };
 
+export const SPAWN_ZONES = {
+  VANGUARD_BUY_ZONE: {
+    minX: -24,
+    maxX: 24,
+    minY: 0,
+    maxY: 6,
+    minZ: 24,
+    maxZ: 58,
+  },
+  SYNDICATE_BUY_ZONE: {
+    minX: -24,
+    maxX: 24,
+    minY: 0,
+    maxY: 6,
+    minZ: -58,
+    maxZ: -32,
+  },
+};
+
+// Full 5v5 Roster: 4 Vanguard AI allies (with player as 5th) + 5 Obsidian Syndicate AI enemies
 export const TACTICAL_BOTS: BotSpawnDef[] = [
+  // --- Vanguard Allies (CT) ---
+  {
+    id: 'bot_vanguard_1',
+    name: 'Vanguard Alex',
+    team: 'Vanguard',
+    startPos: { x: 6, y: 0, z: 36 },
+    waypoints: [
+      { x: 8, y: 0, z: 18 },
+      { x: 3, y: 0, z: 8 },
+      { x: 12, y: 0, z: 12 },
+    ],
+  },
+  {
+    id: 'bot_vanguard_2',
+    name: 'Vanguard Elena',
+    team: 'Vanguard',
+    startPos: { x: -6, y: 0, z: 36 },
+    waypoints: [
+      { x: -14, y: 0, z: 20 },
+      { x: -26, y: 0, z: -10 },
+      { x: -28, y: 0, z: -25 },
+    ],
+  },
+  {
+    id: 'bot_vanguard_3',
+    name: 'Vanguard Marcus',
+    team: 'Vanguard',
+    startPos: { x: 12, y: 0, z: 40 },
+    waypoints: [
+      { x: 22, y: 0, z: 20 },
+      { x: 32, y: 0, z: -10 },
+      { x: 34, y: 0, z: -25 },
+    ],
+  },
+  {
+    id: 'bot_vanguard_4',
+    name: 'Vanguard Dmitri',
+    team: 'Vanguard',
+    startPos: { x: -12, y: 0, z: 40 },
+    waypoints: [
+      { x: -4, y: 0, z: 16 },
+      { x: 3, y: 0, z: 2 },
+      { x: 0, y: 0, z: 14 },
+    ],
+  },
+
+  // --- Obsidian Syndicate Enemies (T) ---
   {
     id: 'bot_syndicate_1',
     name: 'Syndicate Kaine',
     team: 'Syndicate',
-    startPos: { x: 3, y: 0, z: -20 },
+    startPos: { x: 0, y: 0, z: -46 },
     waypoints: [
-      { x: 3, y: 0, z: -4 },
-      { x: 6, y: 0, z: 2 },
-      { x: 1, y: 0, z: -12 },
-      { x: 4, y: 0, z: -22 },
+      { x: 2, y: 0, z: -25 },
+      { x: 3, y: 0, z: -8 },
+      { x: 4, y: 0, z: 4 },
     ],
   },
   {
     id: 'bot_syndicate_2',
     name: 'Syndicate Ghost',
     team: 'Syndicate',
-    startPos: { x: -30, y: 0, z: -38 },
+    startPos: { x: -10, y: 0, z: -48 },
     waypoints: [
-      { x: -32, y: 0, z: -24 },
-      { x: -26, y: 0, z: -18 },
-      { x: -36, y: 0, z: -28 },
+      { x: -22, y: 0, z: -40 },
+      { x: -32, y: 0, z: -30 },
+      { x: -30, y: 0, z: -22 },
     ],
   },
   {
     id: 'bot_syndicate_3',
     name: 'Syndicate Viper',
     team: 'Syndicate',
-    startPos: { x: 36, y: 0, z: -38 },
+    startPos: { x: 10, y: 0, z: -48 },
     waypoints: [
-      { x: 34, y: 0, z: -22 },
-      { x: 42, y: 0, z: -16 },
-      { x: 28, y: 0, z: -25 },
+      { x: 26, y: 0, z: -38 },
+      { x: 35, y: 0, z: -32 },
+      { x: 32, y: 0, z: -18 },
     ],
   },
   {
-    id: 'bot_vanguard_1',
-    name: 'Vanguard Alex',
-    team: 'Vanguard',
-    startPos: { x: 12, y: 0, z: 22 },
+    id: 'bot_syndicate_4',
+    name: 'Syndicate Jax',
+    team: 'Syndicate',
+    startPos: { x: -6, y: 0, z: -44 },
     waypoints: [
-      { x: 10, y: 0, z: 8 },
-      { x: 3, y: 0, z: 5 },
-      { x: 14, y: 0, z: 18 },
+      { x: -12, y: 0, z: -30 },
+      { x: -28, y: 0, z: -28 },
+      { x: -34, y: 0, z: -32 },
+    ],
+  },
+  {
+    id: 'bot_syndicate_5',
+    name: 'Syndicate Raven',
+    team: 'Syndicate',
+    startPos: { x: 6, y: 0, z: -44 },
+    waypoints: [
+      { x: 16, y: 0, z: -30 },
+      { x: 30, y: 0, z: -28 },
+      { x: 36, y: 0, z: -34 },
     ],
   },
 ];

@@ -9,13 +9,18 @@ export interface WeaponSlotState {
 export type SlotNumber = 1 | 2 | 3 | 4 | 5;
 
 export class InventoryManager {
-  // Slots: 1: Primary, 2: Secondary, 3: Melee, 4: Utility, 5: Bomb
+  // Slots:
+  // 1: Primary (Rifle/Sniper)
+  // 2: Secondary (Pistol)
+  // 3: Melee (Karambit)
+  // 4: Utility (Smoke Grenade)
+  // 5: Bomb (Pulse Core)
   public slots: Record<SlotNumber, WeaponSlotState | null> = {
     1: { weaponId: 'garam-47', currentAmmo: 30, reserveAmmo: 90 },
     2: { weaponId: 'desert-eagle', currentAmmo: 7, reserveAmmo: 35 },
     3: { weaponId: 'garam-karambit', currentAmmo: 1, reserveAmmo: 0 },
-    4: null,
-    5: null,
+    4: null, // Must be bought or picked up!
+    5: null, // Assigned to Syndicate carrier
   };
 
   public activeSlot: SlotNumber = 1;
@@ -29,8 +34,10 @@ export class InventoryManager {
   public boltCycleRemaining = 0;
   public isSemiTriggerReleased = true;
 
+  public onReloadCancelled?: () => void;
+
   constructor() {
-    // Default loadout: Garam-47, Desert Eagle, Karambit
+    // Default loadout
   }
 
   public getActiveWeapon(): WeaponDef {
@@ -38,7 +45,6 @@ export class InventoryManager {
     if (slotState && WEAPONS[slotState.weaponId]) {
       return WEAPONS[slotState.weaponId];
     }
-    // Fallback to knife
     return WEAPONS['garam-karambit'];
   }
 
@@ -49,6 +55,10 @@ export class InventoryManager {
       slotState = this.slots[3]!;
     }
     return slotState;
+  }
+
+  public hasSlot(slot: SlotNumber): boolean {
+    return this.slots[slot] !== null;
   }
 
   public equipSlot(slot: SlotNumber): boolean {
@@ -66,7 +76,6 @@ export class InventoryManager {
     if (this.slots[this.previousSlot]) {
       return this.equipSlot(this.previousSlot);
     }
-    // Fallback to secondary or melee
     if (this.activeSlot === 1 && this.slots[2]) return this.equipSlot(2);
     if (this.slots[1]) return this.equipSlot(1);
     return false;
@@ -109,6 +118,45 @@ export class InventoryManager {
     this.equipSlot(slot);
   }
 
+  public addUtility(utilityId: string): void {
+    this.slots[4] = {
+      weaponId: utilityId,
+      currentAmmo: 1,
+      reserveAmmo: 0,
+    };
+  }
+
+  public consumeUtility(): boolean {
+    if (this.slots[4]) {
+      this.slots[4] = null;
+      // Switch back to primary or secondary
+      if (this.slots[1]) {
+        this.equipSlot(1);
+      } else if (this.slots[2]) {
+        this.equipSlot(2);
+      } else {
+        this.equipSlot(3);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  public setBombCarrier(isCarrier: boolean): void {
+    if (isCarrier) {
+      this.slots[5] = {
+        weaponId: 'pulse-core',
+        currentAmmo: 1,
+        reserveAmmo: 0,
+      };
+    } else {
+      this.slots[5] = null;
+      if (this.activeSlot === 5) {
+        this.equipSlot(1);
+      }
+    }
+  }
+
   public canFire(now: number, isMouseDown: boolean): { canFire: boolean; reason?: string } {
     if (this.isReloading) {
       return { canFire: false, reason: 'reloading' };
@@ -125,7 +173,6 @@ export class InventoryManager {
       return { canFire: false, reason: 'out_of_ammo' };
     }
 
-    // Semi-auto click requirement
     if (weapon.fireMode === 'semi' && !this.isSemiTriggerReleased) {
       return { canFire: false, reason: 'semi_held' };
     }
@@ -146,7 +193,7 @@ export class InventoryManager {
     }
 
     if (weapon.fireMode === 'bolt') {
-      this.boltCycleRemaining = 1.15; // 1.15s AWP bolt cycle
+      this.boltCycleRemaining = 1.15; // 1.15s AWP bolt pull cycle
     }
   }
 
@@ -170,20 +217,23 @@ export class InventoryManager {
   }
 
   public cancelReload(): void {
-    this.isReloading = false;
-    this.reloadRemaining = 0;
-    this.reloadDuration = 0;
+    if (this.isReloading) {
+      this.isReloading = false;
+      this.reloadRemaining = 0;
+      this.reloadDuration = 0;
+      if (this.onReloadCancelled) {
+        this.onReloadCancelled();
+      }
+    }
   }
 
   public update(dt: number): { reloadCompleted: boolean } {
     let reloadCompleted = false;
 
-    // Bolt cycle tick
     if (this.boltCycleRemaining > 0) {
       this.boltCycleRemaining = Math.max(0, this.boltCycleRemaining - dt);
     }
 
-    // Reload tick
     if (this.isReloading) {
       this.reloadRemaining -= dt;
       if (this.reloadRemaining <= 0) {
@@ -199,5 +249,14 @@ export class InventoryManager {
     }
 
     return { reloadCompleted };
+  }
+
+  public resetToPistolRound(): void {
+    this.slots[1] = null;
+    this.slots[2] = { weaponId: 'desert-eagle', currentAmmo: 7, reserveAmmo: 35 };
+    this.slots[3] = { weaponId: 'garam-karambit', currentAmmo: 1, reserveAmmo: 0 };
+    this.slots[4] = null;
+    this.slots[5] = null;
+    this.equipSlot(2);
   }
 }
