@@ -33,7 +33,9 @@ export interface WeaponDef {
 }
 
 // 30-round spray pattern for Garam-47 (AK variant)
+// Index 0 is [0.0, 0.0] for 100% pinpoint first-shot accuracy
 const GARAM_47_SPRAY: Array<[number, number]> = [
+  [0.0, 0.0],
   [0.35, 0.0],
   [0.70, 0.05],
   [1.10, 0.10],
@@ -67,7 +69,9 @@ const GARAM_47_SPRAY: Array<[number, number]> = [
 ];
 
 // Vanguard M4A1-S pattern (tighter, laser precision)
+// Index 0 is [0.0, 0.0] for 100% pinpoint first-shot accuracy
 const VANGUARD_M4_SPRAY: Array<[number, number]> = [
+  [0.0, 0.0],
   [0.25, 0.0],
   [0.55, 0.0],
   [0.85, 0.05],
@@ -164,7 +168,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     damage: 115,
     headDamageMultiplier: 4.0,
     armorPenetration: 0.975,
-    fireRateRpm: 41,
+    fireRateRpm: 45,
     magCapacity: 5,
     reserveAmmo: 30,
     reloadTime: 3.5,
@@ -172,7 +176,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     penetrationPower: 300,
     baseSpread: 0.0, // Scoped base spread
     killReward: 100,
-    sprayPattern: [[2.5, 0.0]],
+    sprayPattern: [[0.0, 0.0]],
     recoilViewPunchScale: 2.2,
     recoveryTimeStand: 0.45,
     recoveryTimeCrouch: 0.3375,
@@ -202,6 +206,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     baseSpread: 0.0,
     killReward: 300,
     sprayPattern: [
+      [0.0, 0.0],
       [1.2, 0.0],
       [2.2, 0.15],
       [3.0, -0.2],

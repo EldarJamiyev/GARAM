@@ -380,4 +380,60 @@ describe('RaycastEngine & Ballistics', () => {
     expect(headHit?.hitZone).toBe('HEAD');
     expect(headHit?.awardedDamage).toBeGreaterThanOrEqual(100);
   });
+
+  it('guarantees 100% pinpoint first-shot accuracy: sprayPattern[0] is strictly [0, 0] across all firearms', () => {
+    const firearms = ['sovereign-awp', 'garam-47', 'vanguard-m4', 'desert-eagle'] as const;
+    for (const id of firearms) {
+      const wp = WEAPONS[id];
+      expect(wp.sprayPattern.length).toBeGreaterThan(0);
+      expect(wp.sprayPattern[0][0]).toBe(0);
+      expect(wp.sprayPattern[0][1]).toBe(0);
+    }
+  });
+
+  it('Sovereign AWP delivers lethal 1-shot chest kill at 30m and 60m with 0.0 vertical deflection', () => {
+    const awp = WEAPONS['sovereign-awp'];
+    expect(awp.sprayPattern[0]).toEqual([0, 0]);
+
+    for (const dist of [30, 60]) {
+      const target: TargetCollider = {
+        id: `awp_target_${dist}m`,
+        name: `Syndicate Defender @${dist}m`,
+        team: 'Syndicate',
+        center: { x: 0, y: 0, z: dist },
+        armor: 100,
+        hasHelmet: true,
+        isDead: false,
+      };
+
+      // Ray aimed dead-center at chest (chest center is at y = 1.34) with 0.0 deflection
+      const ray: Ray = {
+        origin: { x: 0, y: 1.34, z: 0 },
+        direction: { x: 0, y: 0, z: 1 },
+      };
+
+      const hits = executeTacticalRaycast(
+        ray,
+        awp.damage,
+        awp.armorPenetration,
+        awp.penetrationPower,
+        100,
+        [],
+        [target],
+        awp.damageDropoffPer10m
+      );
+
+      const chestHit = hits.find(h => h.targetId === `awp_target_${dist}m`);
+      expect(chestHit).toBeDefined();
+      expect(chestHit?.hitZone).toBe('CHEST');
+      expect(chestHit?.awardedDamage).toBeGreaterThanOrEqual(100);
+    }
+  });
+
+  it('Sovereign AWP fire rate is calibrated to 45 RPM yielding an exact 1.333s bolt cycle', () => {
+    const awp = WEAPONS['sovereign-awp'];
+    expect(awp.fireRateRpm).toBe(45);
+    const boltCycleDuration = 60 / awp.fireRateRpm;
+    expect(boltCycleDuration).toBeCloseTo(1.3333, 3);
+  });
 });

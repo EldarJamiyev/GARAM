@@ -194,7 +194,7 @@ export class InventoryManager {
     }
 
     if (weapon.fireMode === 'bolt') {
-      this.boltCycleRemaining = 1.15; // 1.15s AWP bolt pull cycle
+      this.boltCycleRemaining = 60 / weapon.fireRateRpm; // Driven authoritatively by weapon fireRateRpm
     }
   }
 

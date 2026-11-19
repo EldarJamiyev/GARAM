@@ -31,6 +31,7 @@ export interface WeaponCombatCallbacks {
   onScopeChanged: (zoomStage: number, fov: number, sens: number) => void;
   onUtilityThrown: () => void;
   onHitmarker?: (headshot: boolean) => void;
+  onFire?: (weapon: WeaponDef, isScoped: boolean, rayDir: THREE.Vector3, isSecondaryMelee: boolean) => void;
 }
 
 export class WeaponController {
@@ -141,49 +142,18 @@ export class WeaponController {
     this.lastShotTime = now;
     this.inventory.onFireExecuted(now);
 
-    // Audio & Viewmodel kicks
+    // Audio & gunshot sound
     this.audio.playGunshot(weapon.id);
 
-    // Per-weapon camera punch pitch
-    let punchKick = 0.026;
-    if (weapon.id === 'sovereign-awp') punchKick = 0.075;
-    else if (weapon.id === 'desert-eagle') punchKick = 0.048;
-    else if (weapon.id === 'vanguard-m4') punchKick = 0.015;
-
-    this.callbacks.onCameraPunch(punchKick);
-    this.viewmodel.fireRecoil(punchKick * 2.5, 0.05);
-
-    // Auto-unscope immediately on AWP fire for bolt-action pull!
-    if (weapon.id === 'sovereign-awp' && this.zoomStage > 0) {
-      this.resetZoom();
-    }
+    // Snapshot scoped state BEFORE any unscope or spread calculations
+    const wasScoped = this.zoomStage > 0;
 
     // Eject spinning brass shell casing to the right
     camera.getWorldDirection(_forward);
     _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
     this.effects.spawnShellCasing(camera.position, _forward, _right);
 
-    // Recoil spray calculation from weapon spray pattern
-    let sprayPitchDeg = 0;
-    let sprayYawDeg = 0;
-    if (weapon.sprayPattern.length > 0) {
-      const idx = Math.min(this.consecutiveShots, weapon.sprayPattern.length - 1);
-      const spray = weapon.sprayPattern[idx];
-      sprayPitchDeg = spray[0];
-      sprayYawDeg = spray[1];
-    }
-    this.consecutiveShots++;
-
-    // Calculate physical aim-punch kick scaled by recoilViewPunchScale
-    const punchScale = weapon.recoilViewPunchScale;
-    const punchPitchRad = (sprayPitchDeg * Math.PI / 180) * punchScale;
-    const punchYawRad = (sprayYawDeg * Math.PI / 180) * punchScale;
-
-    this.aimPunchPitch = punchPitchRad;
-    this.aimPunchYaw = punchYawRad;
-    this.callbacks.onCameraPunch(punchPitchRad, punchYawRad);
-
-    // Spread calculation: zero standing spread RNG when counter-strafed!
+    // Spread calculation: zero standing spread RNG when counter-strafed / scoped!
     let dynamicSpread = 0;
     if (currentSpeed > 0.38) {
       dynamicSpread = (currentSpeed / weapon.movementSpeed) * (weapon.inaccuracyMove || 0.045);
@@ -191,13 +161,14 @@ export class WeaponController {
     if (!isGrounded) {
       dynamicSpread += (weapon.inaccuracyJump || 0.16);
     }
-    if (weapon.id === 'sovereign-awp' && this.zoomStage === 0) {
+    if (weapon.id === 'sovereign-awp' && !wasScoped) {
       dynamicSpread += 0.085; // Heavy noscope spread penalty
     }
 
     const spreadX = (Math.random() - 0.5) * dynamicSpread;
     const spreadY = (Math.random() - 0.5) * dynamicSpread;
 
+    // Exact rendered crosshair aim vector (aimPunchPitch is 0.0 on Shot #1 when recovered!)
     const pitchRad = inputPitch + this.aimPunchPitch + spreadY;
     const yawRad = inputYaw + this.aimPunchYaw + spreadX;
 
@@ -207,6 +178,9 @@ export class WeaponController {
       Math.sin(pitchRad),
       -Math.cos(yawRad) * Math.cos(pitchRad)
     ).normalize();
+
+    // Notify onFire callback with wasScoped BEFORE any zoom resets
+    this.callbacks.onFire?.(weapon, wasScoped, _rayDir, false);
 
     // Map targets for RaycastEngine with live 1:1 articulated hitboxes
     const targets: TargetCollider[] = bots.map(b => ({
@@ -286,6 +260,38 @@ export class WeaponController {
 
     // Draw ONE continuous tracer beam to the terminal hit point
     this.effects.spawnTracer(eyePos, _terminalPoint, weapon.id);
+
+    // Recoil spray calculation from weapon spray pattern (strictly post-shot kick!)
+    let sprayPitchDeg = 0;
+    let sprayYawDeg = 0;
+    if (weapon.sprayPattern.length > 0) {
+      const idx = Math.min(this.consecutiveShots, weapon.sprayPattern.length - 1);
+      const spray = weapon.sprayPattern[idx];
+      sprayPitchDeg = spray[0];
+      sprayYawDeg = spray[1];
+    }
+    this.consecutiveShots++;
+
+    // Calculate physical aim-punch kick scaled by recoilViewPunchScale
+    const punchScale = weapon.recoilViewPunchScale;
+    const punchPitchRad = (sprayPitchDeg * Math.PI / 180) * punchScale;
+    const punchYawRad = (sprayYawDeg * Math.PI / 180) * punchScale;
+
+    // Per-weapon camera punch pitch
+    let punchKick = 0.026;
+    if (weapon.id === 'sovereign-awp') punchKick = 0.075;
+    else if (weapon.id === 'desert-eagle') punchKick = 0.048;
+    else if (weapon.id === 'vanguard-m4') punchKick = 0.015;
+
+    this.aimPunchPitch = punchPitchRad + (weapon.id === 'sovereign-awp' ? punchKick : 0);
+    this.aimPunchYaw = punchYawRad;
+    this.callbacks.onCameraPunch(punchPitchRad + punchKick, punchYawRad);
+    this.viewmodel.fireRecoil(punchKick * 2.5, 0.05);
+
+    // Auto-unscope immediately on AWP fire for bolt-action pull AFTER raycast!
+    if (weapon.id === 'sovereign-awp' && wasScoped) {
+      this.resetZoom();
+    }
   }
 
   public handleSecondaryFire(camera: THREE.PerspectiveCamera, blocks: MapBlockCollider[], bots: BotEntity[]): void {
@@ -342,6 +348,8 @@ export class WeaponController {
     const eye = camera.position;
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
+
+    this.callbacks.onFire?.(this.inventory.getActiveWeapon(), false, forward, isHeavyStab);
 
     for (const bot of bots) {
       if (bot.isDead || bot.team === 'Vanguard') continue;

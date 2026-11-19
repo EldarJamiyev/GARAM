@@ -260,6 +260,7 @@ export class GameRoom {
 
     if (packet.type === 'fire') {
       if (session.isDead) return;
+      session.isScoped = !!packet.isScoped;
       const weapon = WEAPONS[packet.weaponId] || WEAPONS[session.activeWeaponId];
       if (!weapon) return;
 
