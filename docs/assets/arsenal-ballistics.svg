@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 440" width="1100" height="440">
+  <defs>
+    <linearGradient id="card-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0E131C"/>
+      <stop offset="100%" stop-color="#080C11"/>
+    </linearGradient>
+    <pattern id="arsenal-grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="rgba(255, 255, 255, 0.03)" stroke-width="0.8"/>
+    </pattern>
+  </defs>
+
+  <rect width="1100" height="440" rx="14" fill="url(#card-grad)" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1.5"/>
+  <rect width="1100" height="440" rx="14" fill="url(#arsenal-grid)"/>
+
+  <!-- Header -->
+  <g transform="translate(40, 42)">
+    <text font-family="'Inter', sans-serif" font-size="22" font-weight="900" fill="#FFFFFF" letter-spacing="1">
+      GARAM ARSENAL &amp; BALLISTICS TELEMETRY
+    </text>
+    <text y="24" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#FFDF73" letter-spacing="1.5">
+      5 COMPETITIVE WEAPON ARCHETYPES • 5-ZONE HITBOXES • CS2 RECOIL SPRAY PATTERNS
+    </text>
+  </g>
+
+  <!-- WEAPON CARDS ROW (5 Weapons) -->
+  <g transform="translate(40, 95)">
+    <!-- Card 1: Garam-47 -->
+    <g transform="translate(0, 0)">
+      <rect width="192" height="190" rx="8" fill="rgba(20, 28, 40, 0.85)" stroke="rgba(212, 175, 55, 0.5)" stroke-width="1.2"/>
+      <rect width="192" height="28" rx="8" fill="rgba(212, 175, 55, 0.15)"/>
+      <text x="12" y="19" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#FFDF73">GARAM-47</text>
+      <text x="180" y="19" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#00FF88">$2,700</text>
+      
+      <g transform="translate(12, 48)" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">
+        <text>Class: <tspan fill="#FFF" font-weight="700">Assault Rifle</tspan></text>
+        <text y="20">Damage: <tspan fill="#FF2A55" font-weight="700">36 HP (144 Head)</tspan></text>
+        <text y="38">Fire Rate: <tspan fill="#FFF" font-weight="700">600 RPM</tspan></text>
+        <text y="56">Capacity: <tspan fill="#FFF" font-weight="700">30 / 90 Rounds</tspan></text>
+        <text y="74">Speed: <tspan fill="#FFF" font-weight="700">5.41 m/s</tspan></text>
+        <text y="92">1-Shot Headshot: <tspan fill="#00FF88" font-weight="800">YES</tspan></text>
+        <text y="110" font-family="'JetBrains Mono', monospace" font-size="9" fill="#D4AF37">Banana Mag Profile</text>
+      </g>
+    </g>
+
+    <!-- Card 2: Vanguard M4A1-S -->
+    <g transform="translate(206, 0)">
+      <rect width="192" height="190" rx="8" fill="rgba(20, 28, 40, 0.85)" stroke="rgba(0, 240, 255, 0.5)" stroke-width="1.2"/>
+      <rect width="192" height="28" rx="8" fill="rgba(0, 240, 255, 0.15)"/>
+      <text x="12" y="19" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#00F0FF">VANGUARD M4</text>
+      <text x="180" y="19" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#00FF88">$2,900</text>
+      
+      <g transform="translate(12, 48)" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">
+        <text>Class: <tspan fill="#FFF" font-weight="700">Suppressed Rifle</tspan></text>
+        <text y="20">Damage: <tspan fill="#FF2A55" font-weight="700">38 HP (140 Head)</tspan></text>
+        <text y="38">Fire Rate: <tspan fill="#FFF" font-weight="700">600 RPM</tspan></text>
+        <text y="56">Capacity: <tspan fill="#FFF" font-weight="700">20 / 80 Rounds</tspan></text>
+        <text y="74">Speed: <tspan fill="#FFF" font-weight="700">5.50 m/s</tspan></text>
+        <text y="92">Audio Muffled: <tspan fill="#00FF88" font-weight="800">11m Radius</tspan></text>
+        <text y="110" font-family="'JetBrains Mono', monospace" font-size="9" fill="#00F0FF">Cobalt Collar Barrel</text>
+      </g>
+    </g>
+
+    <!-- Card 3: Sovereign AWP -->
+    <g transform="translate(412, 0)">
+      <rect width="192" height="190" rx="8" fill="rgba(20, 28, 40, 0.85)" stroke="rgba(0, 255, 136, 0.5)" stroke-width="1.2"/>
+      <rect width="192" height="28" rx="8" fill="rgba(0, 255, 136, 0.15)"/>
+      <text x="12" y="19" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#00FF88">SOVEREIGN AWP</text>
+      <text x="180" y="19" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#00FF88">$4,750</text>
+      
+      <g transform="translate(12, 48)" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">
+        <text>Class: <tspan fill="#FFF" font-weight="700">Sniper Rifle</tspan></text>
+        <text y="20">Damage: <tspan fill="#FF2A55" font-weight="700">115 HP (Lethal Torso)</tspan></text>
+        <text y="38">Fire Rate: <tspan fill="#FFF" font-weight="700">41 RPM (Bolt)</tspan></text>
+        <text y="56">Capacity: <tspan fill="#FFF" font-weight="700">5 / 30 Rounds</tspan></text>
+        <text y="74">Dual Zoom: <tspan fill="#00FF88" font-weight="800">28° / 10° FOV</tspan></text>
+        <text y="92">Wall Pen: <tspan fill="#00F0FF" font-weight="800">High (Wood/Metal)</tspan></text>
+        <text y="110" font-family="'JetBrains Mono', monospace" font-size="9" fill="#00FF88">Emerald Optic Lens</text>
+      </g>
+    </g>
+
+    <!-- Card 4: Desert Eagle -->
+    <g transform="translate(618, 0)">
+      <rect width="192" height="190" rx="8" fill="rgba(20, 28, 40, 0.85)" stroke="rgba(255, 42, 85, 0.5)" stroke-width="1.2"/>
+      <rect width="192" height="28" rx="8" fill="rgba(255, 42, 85, 0.15)"/>
+      <text x="12" y="19" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#FF2A55">DESERT EAGLE</text>
+      <text x="180" y="19" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#00FF88">$700</text>
+      
+      <g transform="translate(12, 48)" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">
+        <text>Class: <tspan fill="#FFF" font-weight="700">Heavy Handgun</tspan></text>
+        <text y="20">Damage: <tspan fill="#FF2A55" font-weight="700">53 HP (159 Head)</tspan></text>
+        <text y="38">Fire Rate: <tspan fill="#FFF" font-weight="700">267 RPM</tspan></text>
+        <text y="56">Capacity: <tspan fill="#FFF" font-weight="700">7 / 35 Rounds</tspan></text>
+        <text y="74">Speed: <tspan fill="#FFF" font-weight="700">5.75 m/s</tspan></text>
+        <text y="92">1-Shot Headshot: <tspan fill="#00FF88" font-weight="800">Close/Mid</tspan></text>
+        <text y="110" font-family="'JetBrains Mono', monospace" font-size="9" fill="#FF2A55">Serrated Slide Grooves</text>
+      </g>
+    </g>
+
+    <!-- Card 5: Crimson Karambit -->
+    <g transform="translate(824, 0)">
+      <rect width="196" height="190" rx="8" fill="rgba(20, 28, 40, 0.85)" stroke="rgba(255, 42, 85, 0.7)" stroke-width="1.2"/>
+      <rect width="196" height="28" rx="8" fill="rgba(255, 42, 85, 0.2)"/>
+      <text x="12" y="19" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#FF6B8B">CRIMSON KARAMBIT</text>
+      <text x="184" y="19" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#D4AF37">DEFAULT</text>
+      
+      <g transform="translate(12, 48)" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">
+        <text>Class: <tspan fill="#FFF" font-weight="700">Tactical Melee</tspan></text>
+        <text y="20">Slash (M1): <tspan fill="#FFDF73" font-weight="700">40 HP (0.32s)</tspan></text>
+        <text y="38">Stab (M2): <tspan fill="#FF2A55" font-weight="700">90 HP (Backstab 180)</tspan></text>
+        <text y="56">Speed: <tspan fill="#00FF88" font-weight="700">6.00 m/s (Fastest)</tspan></text>
+        <text y="74">Draw Anim: <tspan fill="#D4AF37" font-weight="800">360° Ring Spin</tspan></text>
+        <text y="92">Inspect [F]: <tspan fill="#00F0FF" font-weight="800">Twirl Loop</tspan></text>
+        <text y="110" font-family="'JetBrains Mono', monospace" font-size="9" fill="#FF6B8B">Hawkbill Talon Profile</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- BALLISTIC RECOIL PATTERNS & HITBOX TELEMETRY (Bottom Row) -->
+  <g transform="translate(40, 305)">
+    <!-- Recoil Comparison Box -->
+    <rect width="500" height="110" rx="8" fill="rgba(16, 24, 34, 0.85)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1"/>
+    <text x="16" y="24" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#00F0FF">RECOIL SPRAY PATTERN (CS2 '7' INVERSION)</text>
+    
+    <!-- Garam-47 Spray Path -->
+    <g transform="translate(80, 95)">
+      <path d="M 0 0 L 0 -25 L -5 -40 L 15 -48 L 30 -50" fill="none" stroke="#FFDF73" stroke-width="2.5"/>
+      <circle cx="0" cy="0" r="3" fill="#00FF88"/>
+      <circle cx="30" cy="-50" r="3" fill="#FF2A55"/>
+      <text x="-40" y="-20" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#FFDF73">GARAM-47</text>
+    </g>
+
+    <!-- M4A1-S Spray Path -->
+    <g transform="translate(240, 95)">
+      <path d="M 0 0 L 0 -30 L -3 -42 L 5 -46 L 8 -47" fill="none" stroke="#00F0FF" stroke-width="2.5"/>
+      <circle cx="0" cy="0" r="3" fill="#00FF88"/>
+      <circle cx="8" cy="-47" r="3" fill="#00F0FF"/>
+      <text x="-40" y="-20" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#00F0FF">M4A1-S</text>
+    </g>
+
+    <text x="340" y="55" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">• Pull down &amp; right (shots 1-8)</text>
+    <text x="340" y="72" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">• Sweep horizontal left (shots 9-18)</text>
+    <text x="340" y="89" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.7)">• Return right &amp; center (shots 19-30)</text>
+
+    <!-- 5-Zone Damage Multipliers Box -->
+    <g transform="translate(520, 0)">
+      <rect width="500" height="110" rx="8" fill="rgba(16, 24, 34, 0.85)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="1"/>
+      <text x="16" y="24" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#00FF88">5-ZONE HITBOX DAMAGE MULTIPLIERS</text>
+
+      <g transform="translate(20, 50)" font-family="'JetBrains Mono', monospace" font-size="11">
+        <text fill="#FF2A55" font-weight="700">HEAD: <tspan fill="#FFF">4.00x</tspan> (Lethal Rifle/Deagle)</text>
+        <text y="22" fill="#FFDF73" font-weight="700">NECK: <tspan fill="#FFF">2.25x</tspan> (High Damage)</text>
+        <text y="44" fill="#00F0FF" font-weight="700">CHEST: <tspan fill="#FFF">1.00x</tspan> (Baseline)</text>
+      </g>
+      <g transform="translate(260, 50)" font-family="'JetBrains Mono', monospace" font-size="11">
+        <text fill="#A855F7" font-weight="700">STOMACH: <tspan fill="#FFF">1.25x</tspan> (Penetration)</text>
+        <text y="22" fill="#6B7280" font-weight="700">ARMS: <tspan fill="#FFF">1.00x</tspan> (Body Base)</text>
+        <text y="44" fill="#4B5563" font-weight="700">LEGS: <tspan fill="#FFF">0.75x</tspan> (Tagging Applied)</text>
+      </g>
+    </g>
+  </g>
+</svg>
