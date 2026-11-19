@@ -576,6 +576,7 @@ export class ProceduralAudio {
   }
 
   public playLowAmmoClick(): void {
+    if (this.playCachedBuffer('/audio/low_ammo_click.mp3', 0.5)) return;
     this.initContext();
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
