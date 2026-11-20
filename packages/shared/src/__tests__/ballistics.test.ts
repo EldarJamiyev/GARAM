@@ -846,32 +846,31 @@ describe('RaycastEngine & Ballistics', () => {
     };
 
     // Grenade thrown directly into wall at z=3.5 must bounce back (vz < 0, z < 3.5)
-    const state = {
-      position: { x: 0, y: 1.5, z: 2.0 },
-      velocity: { x: 0, y: 0, z: 18 },
-      bounces: 0,
-      isResting: false,
-    };
+    const pos = { x: 0, y: 1.5, z: 2.0 };
+    const vel = { x: 0, y: 0, z: 18 };
+    let bounces = 0;
     for (let i = 0; i < 20; i++) {
-      stepGrenadePhysics(state, 1 / 64, [wall]);
+      const res = stepGrenadePhysics(pos, vel, 1 / 64, [wall]);
+      if (res.bounced) bounces++;
     }
-    expect(state.bounces).toBeGreaterThan(0);
-    expect(state.position.z).toBeLessThan(3.5);
-    expect(state.velocity.z).toBeLessThan(0);
+    expect(bounces).toBeGreaterThan(0);
+    expect(pos.z).toBeLessThan(3.5);
+    expect(vel.z).toBeLessThan(0);
 
     // HE blast at z=2 occluded by concrete wall from victim at z=5 -> 0 damage
-    const occluded = computeHEDamage({ x: 0, y: 0.5, z: 2 }, { x: 0, y: 1.0, z: 5 }, 100, [wall]);
+    const occluded = computeHEDamage({ x: 0, y: 0.5, z: 2 }, { x: 0, y: 0, z: 5 }, 100, [wall]);
     expect(occluded.healthDamage).toBe(0);
 
     // Clear-LOS HE blast 1m away deals substantial quadratic-falloff damage
-    const clearBlast = computeHEDamage({ x: 0, y: 0.5, z: 2 }, { x: 0, y: 0.5, z: 3 }, 100, [wall]);
+    const clearBlast = computeHEDamage({ x: 0, y: 0.5, z: 2 }, { x: 0, y: 0, z: 3 }, 100, [wall]);
     expect(clearBlast.healthDamage).toBeGreaterThan(35);
 
-    // Molotov tick (0.25s) at 40 DPS -> ~9 HP armored / 10 HP unarmored
-    const mollyUnarmored = computeMolotovTickDamage(0.25, 0);
-    expect(mollyUnarmored.healthDamage).toBe(10);
-    const mollyArmored = computeMolotovTickDamage(0.25, 100);
-    expect(mollyArmored.healthDamage).toBe(9);
+    // Molotov tick (0.25s) at 40 DPS -> 10 HP unarmored / 9 HP armored
+    const fireCenter = { x: 0, y: 0, z: 0 };
+    const mollyUnarmored = computeMolotovTickDamage(fireCenter, 3.8, { x: 0.5, y: 0, z: 0 }, 0.25, 0);
+    expect(mollyUnarmored.healthDamage).toBeCloseTo(10, 4);
+    const mollyArmored = computeMolotovTickDamage(fireCenter, 3.8, { x: 0.5, y: 0, z: 0 }, 0.25, 100);
+    expect(mollyArmored.healthDamage).toBeCloseTo(9, 4);
     expect(mollyArmored.armorDamage).toBeGreaterThan(0);
   });
 });

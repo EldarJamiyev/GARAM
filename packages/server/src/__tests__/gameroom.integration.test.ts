@@ -370,12 +370,12 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
 
     const internal = room as unknown as {
       sessions: Map<string, { lastInputSeq: number; cash: number; ownedWeapons: Set<string>; controller: { state: { x: number; y: number; z: number } } }>;
-      serverBots: Array<{ team: 'Vanguard' | 'Syndicate'; active: boolean }>;
+      bots: Array<{ team: 'Vanguard' | 'Syndicate'; active: boolean }>;
     };
 
     // 5v5 takeover: 1 Vanguard human leaves exactly 4 active Vanguard bots & 5 active Syndicate bots
-    expect(internal.serverBots.filter(b => b.team === 'Vanguard' && b.active).length).toBe(4);
-    expect(internal.serverBots.filter(b => b.team === 'Syndicate' && b.active).length).toBe(5);
+    expect(internal.bots.filter(b => b.team === 'Vanguard' && b.active).length).toBe(4);
+    expect(internal.bots.filter(b => b.team === 'Syndicate' && b.active).length).toBe(5);
 
     const session = internal.sessions.values().next().value!;
     // Send batched 2x128Hz binary input frames (type 0x03)
@@ -411,7 +411,7 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
 
     // Disconnecting restores 5 active Vanguard bots
     ws.close(1000, 'Leave');
-    expect(internal.serverBots.filter(b => b.team === 'Vanguard' && b.active).length).toBe(5);
+    expect(internal.bots.filter(b => b.team === 'Vanguard' && b.active).length).toBe(5);
   });
 
   it('enforces bomb plant/defuse mutex so enemies cannot cancel an active planter', () => {
@@ -420,12 +420,12 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     const tWs = new MockWebSocket();
     room.handleConnection(ctWs as unknown as WebSocket);
     room.handleConnection(tWs as unknown as WebSocket);
-    ctWs.simulateClientMessage({ type: 'join', callsign: 'CT', faction: 'Vanguard' });
-    tWs.simulateClientMessage({ type: 'join', callsign: 'T', faction: 'Syndicate' });
+    ctWs.simulateClientMessage({ type: 'join', callsign: 'VanguardOp', faction: 'Vanguard' });
+    tWs.simulateClientMessage({ type: 'join', callsign: 'SyndicateOp', faction: 'Syndicate' });
 
     room.phase = 'ROUND_LIVE';
     const internal = room as unknown as {
-      sessions: Map<string, { id: string; isPlanting: boolean; controller: { state: { x: number; y: number; z: number } } }>;
+      sessions: Map<string, { id: string; plantDefuseAction: 'none' | 'plant' | 'defuse'; controller: { state: { x: number; y: number; z: number } } }>;
       activePlanterId: string | null;
     };
     const [, tSession] = Array.from(internal.sessions.values());
@@ -434,12 +434,12 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     tSession.controller.state.z = -30;
 
     tWs.simulateClientMessage({ type: 'plant_defuse', action: 'plant' });
-    expect(tSession.isPlanting).toBe(true);
+    expect(tSession.plantDefuseAction).toBe('plant');
     expect(internal.activePlanterId).toBe(tSession.id);
 
     // CT sends cancel -> MUST NOT cancel Syndicate's active plant!
     ctWs.simulateClientMessage({ type: 'plant_defuse', action: 'cancel' });
-    expect(tSession.isPlanting).toBe(true);
+    expect(tSession.plantDefuseAction).toBe('plant');
     expect(internal.activePlanterId).toBe(tSession.id);
   });
 });

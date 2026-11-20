@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-117%20Passing-00FF88?style=for-the-badge" alt="117 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-133%20Passing-00FF88?style=for-the-badge" alt="133 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -21,13 +21,13 @@
 - **Lead Operator:** Eldar Garamov (Callsign: Sovereign-1), Supreme Commander of the GARAM Vanguard.
 - **The Conflict:** **GARAM Vanguard** (Defenders / CT) vs. **The Obsidian Syndicate** (Attackers / T).
 - **Core Directives:**
-  1. **Strict 128Hz Kinematic Determinism & Parity:** Pure mathematical kinematics with `STOP_SPEED` Source friction, Circle-AABB Separating Axis Theorem (SAT) wall deflection, overhead ceiling clearance verification, and smooth stair stepping (`stepOffsetY`). Discrete 1/128s server sub-stepping guarantees zero Euler drift between client prediction reconciliation and authoritative server.
-  2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin and spread direction are strictly computed server-side from authenticated yaw/pitch, weapon ownership, melee range (`<= 2.4m`), and freeze-time locks. Includes atomic IP connection caps, token-bucket rate limiting (150 msg/s), 2KB payload cap, server-measured `ping_challenge`/`pong_challenge` RTT, and prototype pollution defenses.
-  3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All firearms (`garam-47`, `vanguard-m4`, `desert-eagle`, `sovereign-awp`) enforce `sprayPattern[0] = [0.0, 0.0]`. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy directly to the crosshair / optic center, and scoped Sovereign AWP shots evaluate spread with `wasScoped = true` prior to bolt unscope for pinpoint 1-shot lethal torso kills at 30m–60m+.
-  4. **A\* Tactical Bot Brain & Persistent Anti-Stuck Evasion:** 100% verified collision-free 32-waypoint tactical navigation graph (>= 0.55m node clearance, >= 0.40m corridor clearance, grounded elevated A Heaven nodes). Incorporates persistent 0.85s wall-tangent sliding evasion, live sound-event awareness, flashbang anti-turn reactions, and smoke-occluded `hasLineOfSight`.
-  5. **Dual-Pass PBR Rendering & Zero-Stall WebGL Pipeline:** Depth-isolated viewmodel rendering (65° FOV) with Poly Haven CC0 HDR skybox and procedural PMREM Image-Based Lighting (IBL) reflections, zero world-geometry clipping, instanced horizon skyline & 3D brass shell casings, dirty-flagged HUD/billboard updates, and zero `backdrop-filter` compositing stalls.
-  6. **Adaptive Clock-Skew Immune Lag Compensation:** Authoritative 64-tick server simulation with server-measured half-RTT hitbox rewind (preserving crouched posture and shortest-arc yaw interpolation) and Binary Protocol v2 (`36 + 29*N` bytes with collision-free `entitySlot`, live ammo, and bomb plant/defuse progress).
-  7. **Clean-Room Tactical Bot Archetypes & Radio Comms:** 10 distinct personality archetypes (Maverick, Steel, Hawk, Aegis, Sentinel, Viper, Ghost, Razor, Titan, Nomad) with dynamic reaction times, slew rates, skill-based spray control, ElevenLabs weapon audio samples, and procedural dual-tone radio squelch DSP.
+  1. **Strict 128Hz Kinematic Determinism & Parity:** Pure mathematical kinematics with `STOP_SPEED` Source friction, `SpatialGrid` broadphase acceleration, Circle-AABB Separating Axis Theorem (SAT) wall deflection, overhead ceiling clearance verification, air-strafe speed capping, and clamped smooth stair stepping (`stepOffsetY`). Discrete 1/128s server sub-stepping and full `KinematicSnapshot` reconciliation guarantee zero Euler drift between client prediction and authoritative server.
+  2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin, deterministic PRNG spread (`BallisticsSpread`), per-weapon fire cooldowns, 180ms weapon-deploy lockouts, and bomb plant/defuse ownership mutexes are strictly enforced server-side. Includes atomic IP connection caps, smooth token-bucket rate limiting, trusted proxy hop parsing, strict production `Origin` validation, 2KB payload caps, full-RTT `ping_challenge`/`pong_challenge` verification, and recursive prototype-pollution defenses.
+  3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All firearms (`garam-47`, `vanguard-m4`, `desert-eagle`, `sovereign-awp`) enforce `sprayPattern[0] = [0.0, 0.0]` with full magazine-length recoil arrays. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy, and scoped Sovereign AWP shots support high-penetration collateral hits (`penetrationPower >= 250`).
+  4. **A\* Tactical Bot Brain & 5v5 Server Bot Takeover:** 100% verified collision-free 32-waypoint tactical navigation graph (>= 0.55m node clearance, >= 0.40m corridor clearance, grounded elevated A Heaven nodes) with dynamic 5v5 human slot takeover, persistent 0.85s wall-tangent sliding evasion, live sound-event awareness, flashbang anti-turn reactions, and smoke-occluded `hasLineOfSight`.
+  5. **Dual-Pass PBR Rendering & Zero-Stall WebGL Pipeline:** Depth-isolated viewmodel rendering (65° FOV) with Poly Haven CC0 HDR skybox, leak-free PMREM render-target disposal, zero world-geometry clipping, instanced horizon skyline & 3D brass shell casings, pooled DOM damage popups, PVS-aware remote `OperatorRig` pooling, lazy-loaded `CustomizerUI`, and Vite `manualChunks` bundle splitting.
+  6. **Adaptive Clock-Skew Immune Lag Compensation & Batched Binary Netcode:** Authoritative 64-tick server simulation with 64-slot ring-buffer `O(1)` half-RTT hitbox rewind (preserving crouched posture and shortest-arc yaw interpolation), Int16-clamped Binary Protocol v2 (`36 + 29*N` bytes), and 2×128Hz batched binary inputs (`0x03`, 41 bytes) cutting upstream packet rate by 50%.
+  7. **Authoritative Utility Physics & MR12 Halftime Rules:** Shared `UtilitySimulation` steps server-side bouncing grenade arcs, LOS-occluded HE blast waves, and smoke-extinguishable 40 DPS Molotov zones alongside automatic MR12 Round 13 halftime side-swap and `$800` pistol-round resets.
 
 ---
 
@@ -39,9 +39,9 @@
 
 The project is structured as an npm workspaces monorepo enforcing strict boundaries:
 
-- **`@garam/shared`**: Pure, deterministic TypeScript kernel with **zero DOM or Three.js dependencies**. Implements 128Hz kinematics, `SpatialGrid` broad-phase acceleration, Circle-AABB SAT collision resolution, 5-zone raycast ballistics with opaque cover & inside-smoke LOS occlusion, the 32-node `TacticalNavGraph` with A\* pathfinding, MR12 CS2 economy rules, Binary Protocol v2 codecs, and `MatchSimulation`.
-- **`@garam/client`**: Client application running Three.js (WebGL2), dual-pass viewmodels, procedural PMREM IBL materials, Web Audio DSP convolver reverb + sampled weapon acoustics, LOS-spotted 2D radar, dropped weapon physics, spectator system, instanced volumetric smoke VFX, deterministic client prediction reconciliation, and lean orchestrator (`main.ts <= 320 lines`).
-- **`@garam/server`**: Authoritative 64-tick Node.js server running shared physics verification, crouch/yaw-aware historical hitbox rewind, authoritative buy/reload/utility/plant-defuse simulation, live smoke-occluded PVS, dynamic RoomRegistry, and backpressure-guarded snapshot streaming.
+- **`@garam/shared`**: Pure, deterministic TypeScript kernel with **zero DOM or Three.js dependencies**. Implements 128Hz kinematics with `KinematicSnapshot`, `SpatialGrid` zero-alloc broad-phase acceleration, Circle-AABB SAT collision resolution, 5-zone raycast ballistics with AWP collaterals & `BallisticsSpread`, `UtilitySimulation` grenade/HE/Molotov physics, the 32-node `TacticalNavGraph`, MR12 CS2 economy & halftime rules, Binary Protocol v2 + batched input (`0x03`) codecs, recursive `Validator`, and `MatchSimulation`.
+- **`@garam/client`**: Client application running Three.js (WebGL2), dual-pass viewmodels, procedural PMREM IBL materials, Web Audio DSP convolver reverb + sampled weapon acoustics, LOS-spotted 2D radar, wall-deflecting dropped weapon physics, XSS-safe spectator system, pooled DOM/GPU combat VFX, lazy-loaded `CustomizerUI`, batched binary prediction reconciliation, and lean orchestrator (`main.ts < 320 lines`).
+- **`@garam/server`**: Authoritative 64-tick Node.js server running shared physics verification, ring-buffer crouch/yaw-aware historical hitbox rewind, authoritative buy/reload/utility/plant-defuse simulation with mutexes, 5v5 bot takeover & patrolling, live smoke-occluded PVS, cryptographic `RoomRegistry`, token-bucket rate limiting, and backpressure-guarded snapshot streaming.
 
 ---
 
@@ -116,31 +116,31 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (117 Passing Tests Across 16 Suites)
+### Test Suite Coverage (133 Passing Tests Across 16 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
 ```
 ```text
- ✓ packages/client/src/__tests__/client-systems.test.ts       (6 tests)
- ✓ packages/server/src/__tests__/gameroom.integration.test.ts (6 tests)
+ ✓ packages/client/src/__tests__/client-systems.test.ts       (9 tests)
+ ✓ packages/server/src/__tests__/gameroom.integration.test.ts (8 tests)
  ✓ packages/server/src/__tests__/pvs.test.ts                  (1 test)
  ✓ packages/server/src/__tests__/registry.test.ts             (6 tests)
  ✓ packages/shared/src/__tests__/botprofiles.test.ts          (3 tests)
- ✓ packages/shared/src/__tests__/kinematics.test.ts          (13 tests)
- ✓ packages/shared/src/__tests__/ballistics.test.ts          (23 tests)
- ✓ packages/shared/src/__tests__/simulation.test.ts           (8 tests)
+ ✓ packages/shared/src/__tests__/kinematics.test.ts          (16 tests)
+ ✓ packages/shared/src/__tests__/ballistics.test.ts          (26 tests)
+ ✓ packages/shared/src/__tests__/simulation.test.ts           (9 tests)
  ✓ packages/shared/src/__tests__/spatial.test.ts              (3 tests)
- ✓ packages/shared/src/__tests__/binarycodec.test.ts          (4 tests)
- ✓ packages/shared/src/__tests__/security.test.ts             (6 tests)
- ✓ packages/shared/src/__tests__/lagcomp.test.ts              (7 tests)
+ ✓ packages/shared/src/__tests__/binarycodec.test.ts          (6 tests)
+ ✓ packages/shared/src/__tests__/security.test.ts             (7 tests)
+ ✓ packages/shared/src/__tests__/lagcomp.test.ts              (8 tests)
  ✓ packages/shared/src/__tests__/navgraph.test.ts            (14 tests)
  ✓ packages/shared/src/__tests__/callout.test.ts              (9 tests)
  ✓ packages/shared/src/__tests__/economy.test.ts              (5 tests)
  ✓ packages/shared/src/__tests__/docs-sync.test.ts            (3 tests)
 
  Test Files  16 passed (16)
-      Tests  117 passed (117)
+      Tests  133 passed (133)
 ```
 
 ---
