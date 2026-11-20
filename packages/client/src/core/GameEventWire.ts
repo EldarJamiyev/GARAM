@@ -15,7 +15,7 @@ import { BotEntity } from '../maps/DeCitadelMap.js';
 import { BotAISystem, BotAISystemCallbacks } from '../match/BotAISystem.js';
 import { WeaponController, WeaponCombatCallbacks } from '../combat/WeaponController.js';
 import { RoundManager, RoundCallbacks, RoundPhase } from '../match/RoundManager.js';
-import { CustomizerUI, CustomizerCallbacks } from '../ui/CustomizerUI.js';
+import type { CustomizerUI, CustomizerCallbacks } from '../ui/CustomizerUI.js';
 import { InputManager, InputCallbacks } from './InputManager.js';
 import { LobbyUICallbacks } from '../ui/LobbyUI.js';
 import { BuyMenuUI, BuyMenuUICallbacks } from '../ui/BuyMenuUI.js';
@@ -29,7 +29,7 @@ import { EconomyManager } from '../match/EconomyManager.js';
 import { PlayerManager } from '../combat/PlayerManager.js';
 import { CombatReportManager } from '../ui/CombatReportManager.js';
 import { SpectatorManager } from '../match/SpectatorManager.js';
-import { NetworkClient } from '../net/NetworkClient.js';
+import { NetworkClient, NetworkClientCallbacks } from '../net/NetworkClient.js';
 import { WeaponViewmodel } from '../viewmodel/WeaponViewmodel.js';
 import { RadarRenderer } from '../ui/RadarRenderer.js';
 
@@ -76,6 +76,77 @@ const _utilThrowOrigin = new THREE.Vector3();
 const _utilThrowDir = new THREE.Vector3();
 const _utilThrowVel = new THREE.Vector3();
 const _playerFeetScratch = new THREE.Vector3();
+
+const customizerPromises = new WeakMap<GameContext, Promise<CustomizerUI>>();
+
+export function ensureCustomizer(ctx: GameContext): Promise<CustomizerUI> {
+  if (ctx.customizer) return Promise.resolve(ctx.customizer);
+  const inflight = customizerPromises.get(ctx);
+  if (inflight) return inflight;
+
+  const loader = import('../ui/CustomizerUI.js').then(({ CustomizerUI: CustomizerCtor }) => {
+    const instance = new CustomizerCtor(buildCustomizerCallbacks(ctx));
+    ctx.customizer = instance;
+    return instance;
+  });
+  customizerPromises.set(ctx, loader);
+  return loader;
+}
+
+export function buildNetworkCallbacks(ctx: GameContext): NetworkClientCallbacks {
+  return {
+    onKillfeed: (text: string) => ctx.hud.addKillfeed(text),
+    onScoresUpdated: (ct: number, t: number) => ctx.hud.updateScores(ct, t),
+    onEconomySync: (payload) => {
+      ctx.economy.cash = payload.cash;
+      ctx.economy.armor = payload.armor;
+      ctx.economy.hasHelmet = payload.hasHelmet;
+      ctx.economy.hasDefuseKit = payload.hasDefuseKit;
+
+      for (const weaponId of payload.ownedWeapons) {
+        const def = WEAPONS[weaponId];
+        if (!def) continue;
+        const slot = def.slot as SlotNumber;
+        if (slot === 1 || slot === 2) {
+          const existing = ctx.inventory.slots[slot];
+          if (!existing || existing.weaponId !== def.id) {
+            ctx.inventory.slots[slot] = {
+              weaponId: def.id,
+              currentAmmo: def.magCapacity,
+              reserveAmmo: def.reserveAmmo,
+            };
+          }
+        }
+      }
+      ctx.syncActiveWeapon();
+    },
+    onUtilityEvent: (evt) => {
+      const validTypes: UtilityType[] = ['smoke-grenade', 'flashbang', 'he-grenade', 'molotov'];
+      if (!validTypes.includes(evt.utilityType as UtilityType)) return;
+      _utilThrowOrigin.set(evt.origin.x, evt.origin.y, evt.origin.z);
+      _utilThrowDir.set(evt.direction.x, evt.direction.y, evt.direction.z);
+      _utilThrowVel.set(evt.velocity.x, evt.velocity.y, evt.velocity.z);
+      ctx.utilityManager.throwGrenade(
+        evt.utilityType as UtilityType,
+        _utilThrowOrigin,
+        _utilThrowDir,
+        _utilThrowVel,
+        'long'
+      );
+    },
+    onLocalStateSync: (state) => {
+      ctx.playerManager.playerHealth = state.health;
+      ctx.economy.armor = state.armor;
+      if (state.hasHelmet !== undefined) ctx.economy.hasHelmet = state.hasHelmet;
+      if (state.hasDefuseKit !== undefined) ctx.economy.hasDefuseKit = state.hasDefuseKit;
+      const activeSlot = ctx.inventory.getActiveSlotState();
+      if (activeSlot && activeSlot.weaponId === state.activeWeapon) {
+        activeSlot.currentAmmo = state.currentAmmo;
+        activeSlot.reserveAmmo = state.reserveAmmo;
+      }
+    },
+  };
+}
 
 export function buildUtilityCallbacks(ctx: GameContext): UtilityCallbacks {
   return {
@@ -422,7 +493,7 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
         document.body.dataset.state = 'customizer';
         ctx.inputManager.exitPointerLock();
       }
-      ctx.customizer?.toggle(willOpen);
+      void ensureCustomizer(ctx).then((cust) => cust.toggle(willOpen));
     },
     onInteractDown: () => {
       ctx.isInteracting.value = true;
@@ -511,7 +582,9 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
 
   return {
     onDeploy: deployToArena,
-    onCustomizer: () => ctx.customizer?.toggle(true),
+    onCustomizer: () => {
+      void ensureCustomizer(ctx).then((cust) => cust.toggle(true));
+    },
     onSensitivityChanged: (val: number) => ctx.inputManager?.setSensitivity(val),
     onFovChanged: (val: number) => {
       ctx.worldCamera.fov = val;
@@ -565,7 +638,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   const botAI = ctx.botAI;
   const cust = ctx.customizer;
   const net = ctx.networkClient;
-  if (!inputMgr || !wc || !rm || !botAI || !cust || !net) return;
+  if (!inputMgr || !wc || !rm || !botAI || !net) return;
 
   ctx.audio.updateListener(worldCamera);
   ctx.audio.setIndoorZone(
@@ -605,7 +678,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   ctx.utilityManager.update(frameDelta, ctx.colliders, ctx.blocks, playerFeet, worldCamera, ctx.bots, ctx.spatialGrid);
   const smokeOccluders = ctx.utilityManager.getActiveSmokeOccluders();
 
-  if (!cust.freezeBots) {
+  if (!cust?.freezeBots) {
     botAI.update(
       ctx.bots,
       frameDelta,
@@ -655,7 +728,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
     !isFreezeTime;
   if (shouldFire) {
     ctx.pendingFireTrigger.value = false;
-    if (cust.infiniteAmmo) activeSlotState.currentAmmo = activeWp.magCapacity;
+    if (cust?.infiniteAmmo) activeSlotState.currentAmmo = activeWp.magCapacity;
     wc.handlePrimaryFire(
       worldCamera,
       hozSpeed,

@@ -26,7 +26,6 @@ import { UtilityManager } from './utility/UtilityManager.js';
 import { RadarRenderer } from './ui/RadarRenderer.js';
 import { BotAISystem } from './match/BotAISystem.js';
 import { settingsStore } from './core/SettingsStore.js';
-import { CustomizerUI } from './ui/CustomizerUI.js';
 import { NetworkClient } from './net/NetworkClient.js';
 import { PerfMonitor } from './core/PerfMonitor.js';
 import {
@@ -35,10 +34,10 @@ import {
   buildBotAICallbacks,
   buildWeaponControllerCallbacks,
   buildRoundCallbacks,
-  buildCustomizerCallbacks,
   buildInputManagerCallbacks,
   buildBuyMenuCallbacks,
   buildLobbyCallbacks,
+  buildNetworkCallbacks,
   stepMatchFrame,
 } from './core/GameEventWire.js';
 
@@ -117,7 +116,11 @@ export class GaramGame {
       hud,
       combatReport,
       spectator,
-      { onSyncActiveWeapon: () => this.syncActiveWeapon() }
+      {
+        onSyncActiveWeapon: () => this.syncActiveWeapon(),
+        onUtilityThrow: (type, mode, origin, dir, vel) =>
+          ctxRef.networkClient?.sendUtilityThrow(type, mode, origin, dir, vel),
+      }
     );
 
     ctxRef = {
@@ -160,7 +163,6 @@ export class GaramGame {
       audio,
       buildWeaponControllerCallbacks(ctxRef)
     );
-    ctxRef.customizer = new CustomizerUI(buildCustomizerCallbacks(ctxRef));
     ctxRef.roundManager = new RoundManager(this.sceneManager.worldScene, audio, buildRoundCallbacks(ctxRef));
 
     const blocker = document.getElementById('blocker') as HTMLElement;
@@ -170,10 +172,13 @@ export class GaramGame {
     const lobbyCallbacks = buildLobbyCallbacks(ctxRef);
     new LobbyUI(lobbyCallbacks);
 
-    const networkClient = new NetworkClient(this.sceneManager.worldScene, hud, mapData.colliders, {
-      onKillfeed: (text) => hud.addKillfeed(text),
-      onScoresUpdated: (ct, t) => hud.updateScores(ct, t),
-    });
+    const networkClient = new NetworkClient(
+      this.sceneManager.worldScene,
+      hud,
+      mapData.colliders,
+      buildNetworkCallbacks(ctxRef),
+      spatialGrid
+    );
     networkClient.bindLocalPlayer(player);
     ctxRef.networkClient = networkClient;
 
@@ -247,7 +252,7 @@ export class GaramGame {
       if (!ctx.spectator.isSpectating) {
         inputMgr.update(this.FIXED_DT, ctx.player.state.isGrounded);
         if (!isFreezeTime) {
-          ctx.player.update(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.colliders);
+          ctx.player.update(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.colliders, undefined, ctx.spatialGrid);
         }
         if (net.isConnected) {
           net.sendInput(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.player, activeWp.id);
@@ -311,5 +316,3 @@ export class GaramGame {
 window.addEventListener('DOMContentLoaded', () => {
   new GaramGame();
 });
-
-

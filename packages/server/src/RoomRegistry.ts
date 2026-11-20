@@ -1,4 +1,16 @@
+import { randomBytes } from 'crypto';
 import { GameRoom } from './GameRoom.js';
+
+const ROOM_CODE_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+function generateRoomSuffix(length = 3): string {
+  const bytes = randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += ROOM_CODE_ALPHABET[bytes[i] % ROOM_CODE_ALPHABET.length];
+  }
+  return out;
+}
 
 export class RoomRegistry {
   private rooms = new Map<string, GameRoom>();
@@ -49,8 +61,7 @@ export class RoomRegistry {
 
     let code = '';
     do {
-      const rand = Math.random().toString(36).substring(2, 5).toUpperCase();
-      code = `GRM-${rand}`;
+      code = `GRM-${generateRoomSuffix(3)}`;
     } while (this.rooms.has(code));
 
     const room = new GameRoom();

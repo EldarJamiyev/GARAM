@@ -164,4 +164,44 @@ describe('Authoritative Server Security & Input Sanitization', () => {
       (WEAPONS['garam-47'] as { damage: number }).damage = 999;
     }).toThrow();
   });
+
+  it('recursively rejects nested __proto__ pollution and out-of-bounds angles/seq/vectors', () => {
+    const nestedProto = JSON.parse(
+      '{"type":"fire","seq":1,"targetServerTime":1000,"weaponId":"garam-47","yaw":0,"pitch":0,"direction":{"x":0,"y":0,"z":-1,"__proto__":{"polluted":true}}}'
+    );
+    expect(validateClientPacket(nestedProto)).toBeNull();
+
+    // Pitch beyond +-PI/2 + 0.1
+    expect(validateClientPacket({
+      type: 'fire',
+      seq: 1,
+      targetServerTime: 1000,
+      weaponId: 'garam-47',
+      direction: { x: 0, y: 0, z: -1 },
+      yaw: 0,
+      pitch: 4.5,
+    })).toBeNull();
+
+    // Huge yaw overflow
+    expect(validateClientPacket({
+      type: 'fire',
+      seq: 1,
+      targetServerTime: 1000,
+      weaponId: 'garam-47',
+      direction: { x: 0, y: 0, z: -1 },
+      yaw: 1e8,
+      pitch: 0,
+    })).toBeNull();
+
+    // Out-of-bounds utility throw origin (> 500m)
+    expect(validateClientPacket({
+      type: 'utility_throw',
+      utilityType: 'smoke-grenade',
+      mode: 'long',
+      origin: { x: 9999, y: 1, z: 0 },
+      direction: { x: 0, y: 0, z: -1 },
+      velocity: { x: 0, y: 0, z: 0 },
+    })).toBeNull();
+  });
 });
+

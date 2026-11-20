@@ -4,11 +4,14 @@ import {
   SPAWN_ZONES,
   ECONOMY,
   KINEMATICS,
+  SpatialGrid,
+  DE_CITADEL_BLOCKS,
 } from '@garam/shared';
 import { computeRadarRotationRad } from '../ui/RadarRenderer.js';
 import { stepMolotovBurnAccumulator } from '../utility/UtilityManager.js';
 import { EconomyManager } from '../match/EconomyManager.js';
 import { reconcilePredictedState, UnackInput } from '../net/NetworkClient.js';
+import { resolveDroppedWeaponCollision } from '../combat/DroppedWeaponManager.js';
 
 describe('@garam/client Pure Gameplay & Prediction Systems', () => {
   describe('RadarRenderer Rotation Orientation', () => {
@@ -226,5 +229,67 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       expect(result.remainingInputs.length).toBe(2);
       expect(result.errorMagnitude).toBeLessThan(0.001);
     });
+
+    it('restores authoritative crouch state and supports SpatialGrid broadphase during reconciliation', () => {
+      const dt = KINEMATICS.FIXED_DT;
+      const grid = new SpatialGrid(DE_CITADEL_BLOCKS, 10);
+      const clientPlayer = new KinematicPlayerController(0, 0, 35);
+      clientPlayer.state.isCrouching = false;
+      clientPlayer.actualCrouching = false;
+
+      const result = reconcilePredictedState(
+        clientPlayer,
+        { x: 0.4, y: 0, z: 35, vx: 0, vy: 0, vz: 0, isCrouching: true },
+        0,
+        [],
+        DE_CITADEL_BLOCKS,
+        grid
+      );
+
+      expect(result.corrected).toBe(true);
+      expect(clientPlayer.state.isCrouching).toBe(true);
+      expect(clientPlayer.actualCrouching).toBe(true);
+      expect(dt).toBeCloseTo(1 / 128, 6);
+    });
+  });
+
+  describe('DroppedWeaponManager Side-Wall Deflection', () => {
+    it('deflects horizontally off tall side walls instead of teleporting weapons onto the roof', () => {
+      const tallWall = {
+        minX: 2.0,
+        maxX: 3.0,
+        minY: 0,
+        maxY: 4.0,
+        minZ: -5,
+        maxZ: 5,
+      };
+      const pos = { x: 1.95, y: 1.0, z: 0 };
+      const vel = { x: 4.0, y: 0.5, z: 0 };
+
+      const grounded = resolveDroppedWeaponCollision(pos, vel, [tallWall]);
+      expect(grounded).toBe(false);
+      expect(pos.y).toBeCloseTo(1.0, 3); // Did NOT teleport to y = 4.12!
+      expect(pos.x).toBeLessThanOrEqual(2.0 - 0.12 + 1e-4);
+      expect(vel.x).toBeLessThan(0); // Reflected backward
+    });
+
+    it('lands cleanly on top of a crate when descending near the top plane', () => {
+      const crate = {
+        minX: -1,
+        maxX: 1,
+        minY: 0,
+        maxY: 1.0,
+        minZ: -1,
+        maxZ: 1,
+      };
+      const pos = { x: 0, y: 0.98, z: 0 };
+      const vel = { x: 1.0, y: -2.0, z: 0 };
+
+      const grounded = resolveDroppedWeaponCollision(pos, vel, [crate]);
+      expect(grounded).toBe(true);
+      expect(pos.y).toBeCloseTo(1.12, 3);
+      expect(vel.y).toBe(0);
+    });
   });
 });
+

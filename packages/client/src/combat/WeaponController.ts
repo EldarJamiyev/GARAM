@@ -7,6 +7,7 @@ import {
   hasLineOfSight,
   TargetCollider,
   Ray,
+  computeWeaponSpread,
 } from '@garam/shared';
 import { InventoryManager } from './InventoryManager.js';
 import { WeaponViewmodel } from '../viewmodel/WeaponViewmodel.js';
@@ -61,6 +62,7 @@ export class WeaponController {
   }
 
   private nextMeleeTime = 0;
+  private targetsScratch: TargetCollider[] = [];
 
   constructor(
     inventory: InventoryManager,
@@ -149,32 +151,13 @@ export class WeaponController {
     const wasScoped = this.zoomStage > 0;
 
     camera.getWorldDirection(_forward);
-    _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    this.effects.spawnShellCasing(camera.position, _forward, _right);
-
-    let dynamicSpread = 0;
-    const excessSpeed = Math.max(0, currentSpeed - 0.38);
-    if (excessSpeed > 0) {
-      const ratio = Math.min(1.0, excessSpeed / weapon.movementSpeed);
-      let moveInacc = ratio * ratio * (weapon.inaccuracyMove || 0.045);
-      if (isCrouching) {
-        moveInacc *= weapon.crouchSpreadMultiplier || 0.65;
-      }
-      dynamicSpread += moveInacc;
-    }
-    if (!isGrounded) {
-      dynamicSpread += weapon.inaccuracyJump || 0.16;
-    }
-    if (weapon.id === 'sovereign-awp' && !wasScoped) {
-      dynamicSpread += 0.085;
-    }
-
-    const spreadX = (Math.random() - 0.5) * dynamicSpread;
-    const spreadY = (Math.random() - 0.5) * dynamicSpread;
-
-    camera.getWorldDirection(_forward);
     _right.setFromMatrixColumn(camera.matrixWorld, 0);
     _up.setFromMatrixColumn(camera.matrixWorld, 1);
+    this.effects.spawnShellCasing(camera.position, _forward, _right);
+
+    const dynamicSpread = computeWeaponSpread(weapon, currentSpeed, isGrounded, isCrouching, wasScoped, this.consecutiveShots);
+    const spreadX = (Math.random() - 0.5) * dynamicSpread;
+    const spreadY = (Math.random() - 0.5) * dynamicSpread;
 
     _rayDir
       .copy(_forward)
@@ -188,18 +171,40 @@ export class WeaponController {
 
     this.callbacks.onFire?.(weapon, wasScoped, _rayDir, false);
 
-    const targets: TargetCollider[] = bots.map((b) => ({
-      id: b.id,
-      name: b.name,
-      team: b.team,
-      center: { x: b.mesh.position.x, y: b.mesh.position.y, z: b.mesh.position.z },
-      hasHelmet: b.hasHelmet,
-      armor: b.armor,
-      isDead: b.isDead,
-      isCrouched: !!(b as unknown as { isCrouching?: boolean }).isCrouching,
-      yaw: b.mesh.rotation.y,
-      hitboxes: b.rig?.getWorldHitboxes(),
-    }));
+    // Reuse TargetCollider scratch array to avoid per-shot GC allocations
+    this.targetsScratch.length = bots.length;
+    for (let i = 0; i < bots.length; i++) {
+      const b = bots[i];
+      let t = this.targetsScratch[i];
+      if (!t) {
+        t = {
+          id: b.id,
+          name: b.name,
+          team: b.team,
+          center: { x: b.mesh.position.x, y: b.mesh.position.y, z: b.mesh.position.z },
+          hasHelmet: b.hasHelmet,
+          armor: b.armor,
+          isDead: b.isDead,
+          isCrouched: false,
+          yaw: b.mesh.rotation.y,
+          hitboxes: undefined,
+        };
+        this.targetsScratch[i] = t;
+      } else {
+        t.id = b.id;
+        t.name = b.name;
+        t.team = b.team;
+        t.center.x = b.mesh.position.x;
+        t.center.y = b.mesh.position.y;
+        t.center.z = b.mesh.position.z;
+        t.hasHelmet = b.hasHelmet;
+        t.armor = b.armor;
+        t.isDead = b.isDead;
+        t.yaw = b.mesh.rotation.y;
+      }
+      t.isCrouched = !!(b as unknown as { isCrouching?: boolean }).isCrouching;
+      t.hitboxes = b.rig?.getWorldHitboxes();
+    }
 
     const sharedRay: Ray = {
       origin: { x: eyePos.x, y: eyePos.y, z: eyePos.z },
@@ -213,7 +218,7 @@ export class WeaponController {
       weapon.penetrationPower,
       250,
       blocks,
-      targets,
+      this.targetsScratch,
       weapon.damageDropoffPer10m || 0.98,
       spatialGrid,
       weapon.headDamageMultiplier

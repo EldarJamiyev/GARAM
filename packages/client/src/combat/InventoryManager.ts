@@ -37,6 +37,11 @@ export class InventoryManager {
 
   public onReloadCancelled?: () => void;
 
+  // Cached sandbox override merge (0 allocations per 128Hz tick)
+  private cachedOverrideId = '';
+  private cachedOverrideRef: Partial<WeaponDef> | undefined = undefined;
+  private cachedWeaponDef: WeaponDef | null = null;
+
   constructor() {
     // Default loadout
   }
@@ -48,8 +53,16 @@ export class InventoryManager {
       : WEAPONS['garam-karambit'];
 
     // In offline mode, overlay user sandbox overrides without mutating immutable WEAPONS singleton
-    if (settingsStore.settings.gameMode === 'offline' && settingsStore.sandboxWeaponOverrides[baseDef.id]) {
-      return { ...baseDef, ...settingsStore.sandboxWeaponOverrides[baseDef.id] };
+    if (settingsStore.settings.gameMode === 'offline') {
+      const override = settingsStore.sandboxWeaponOverrides[baseDef.id];
+      if (override) {
+        if (this.cachedOverrideId !== baseDef.id || this.cachedOverrideRef !== override || !this.cachedWeaponDef) {
+          this.cachedOverrideId = baseDef.id;
+          this.cachedOverrideRef = override;
+          this.cachedWeaponDef = { ...baseDef, ...override };
+        }
+        return this.cachedWeaponDef;
+      }
     }
     return baseDef;
   }

@@ -158,4 +158,17 @@ describe('LagCompensation Hitbox Rewind Engine', () => {
     const mid = lagComp.getRewoundTargets(t1, 2020);
     expect(Math.abs(Math.abs(mid[0].yaw!) - Math.PI)).toBeLessThan(0.05);
   });
+
+  it('retains exact latest 64 snapshots across ring-buffer wrap-around (120 ticks) with O(1) lookup', () => {
+    const lagComp = new LagCompensation();
+    for (let tick = 1; tick <= 120; tick++) {
+      lagComp.recordSnapshot(tick, 1000 + tick * 16, makeTargets(tick * 0.5, 0, 0));
+    }
+
+    // Latest tick 120 is at t = 2920 (x = 60.0), tick 118 is at t = 2888 (x = 59.0)
+    const rewound = lagComp.getRewoundTargets(2920, 2904);
+    expect(rewound.length).toBe(1);
+    expect(rewound[0].center.x).toBeCloseTo(59.5, 2);
+  });
 });
+

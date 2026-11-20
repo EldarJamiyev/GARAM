@@ -208,4 +208,113 @@ describe('Zero-Copy Binary Codec v2 (326B 10-Player Snapshot & 22B Input)', () =
       expect(BinaryCodec.decodeInput(fuzzed)).toBeNull();
     }
   });
+
+  it('clamps extreme out-of-range Int16 coordinates/velocities without silent integer wrap-around', () => {
+    const encoded = BinaryCodec.encodeSnapshot({
+      tick: 1,
+      serverTimestamp: 1000,
+      lastAckSeq: 1,
+      roundPhase: 'ROUND_LIVE',
+      roundTime: 100,
+      ctScore: 0,
+      tScore: 0,
+      bomb: { isPlanted: false, site: null, x: 99999, y: -99999, z: 99999, plantProgress: 0, defuseProgress: 0, timeRemaining: 40 },
+      players: [
+        {
+          id: 'overflow_op',
+          entitySlot: 0,
+          name: 'Overflow',
+          team: 'Vanguard',
+          x: 50000,
+          y: -50000,
+          z: 50000,
+          vx: 10000,
+          vy: -10000,
+          vz: 10000,
+          yaw: 0,
+          pitch: 0,
+          health: 100,
+          armor: 100,
+          activeWeapon: 'garam-47',
+          currentAmmo: 30,
+          reserveAmmo: 90,
+          isScoped: false,
+          isReloading: false,
+          isCrouching: false,
+          isDead: false,
+          ping: 10,
+          kills: 0,
+          deaths: 0,
+        },
+      ],
+    });
+
+    const decoded = BinaryCodec.decodeSnapshot(encoded);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.players[0].x).toBeGreaterThan(300);
+    expect(decoded!.players[0].y).toBeLessThan(-300);
+    expect(decoded!.players[0].vx).toBeGreaterThan(300);
+    expect(decoded!.players[0].vy).toBeLessThan(-300);
+  });
+
+  it('encodes and decodes batched 2x128Hz binary inputs (0x03) into exact 41 bytes and rejects invalid batches', () => {
+    const frames: BinaryInputData[] = [
+      {
+        seq: 101,
+        timestamp: 5000,
+        weaponId: 'garam-47',
+        input: {
+          forward: true,
+          backward: false,
+          left: false,
+          right: false,
+          jump: false,
+          crouch: false,
+          walk: false,
+          yaw: 0.5,
+          pitch: -0.1,
+        },
+      },
+      {
+        seq: 102,
+        timestamp: 5008,
+        weaponId: 'sovereign-awp',
+        input: {
+          forward: false,
+          backward: false,
+          left: true,
+          right: false,
+          jump: true,
+          crouch: true,
+          walk: false,
+          yaw: -1.25,
+          pitch: 0.2,
+        },
+      },
+    ];
+
+    const encoded = BinaryCodec.encodeInputBatch(frames);
+    expect(encoded.byteLength).toBe(3 + 2 * 19); // 41 bytes
+
+    const decoded = BinaryCodec.decodeInputBatch(encoded);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.length).toBe(2);
+    expect(decoded![0].seq).toBe(101);
+    expect(decoded![0].weaponId).toBe('garam-47');
+    expect(decoded![0].input.forward).toBe(true);
+    expect(decoded![1].seq).toBe(102);
+    expect(decoded![1].weaponId).toBe('sovereign-awp');
+    expect(decoded![1].input.crouch).toBe(true);
+    expect(decoded![1].input.yaw).toBeCloseTo(-1.25, 4);
+
+    // Reject truncated or count=0 batch
+    const zeroBatch = new ArrayBuffer(3);
+    const view = new DataView(zeroBatch);
+    view.setUint8(0, BINARY_MAGIC);
+    view.setUint8(1, 0x03);
+    view.setUint8(2, 0);
+    expect(BinaryCodec.decodeInputBatch(zeroBatch)).toBeNull();
+    expect(BinaryCodec.decodeInputBatch(encoded.slice(0, 20))).toBeNull();
+  });
 });
+

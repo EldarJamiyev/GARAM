@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import { GameRoom } from '../GameRoom.js';
-import { ServerPacket, ClientPacket } from '@garam/shared';
+import { ServerPacket, ClientPacket, BinaryCodec } from '@garam/shared';
 import type { WebSocket } from 'ws';
 
 class MockWebSocket extends EventEmitter {
@@ -30,6 +30,10 @@ class MockWebSocket extends EventEmitter {
 
   public simulateClientMessage(packet: ClientPacket): void {
     this.emit('message', Buffer.from(JSON.stringify(packet)));
+  }
+
+  public simulateBinaryMessage(buf: ArrayBuffer): void {
+    this.emit('message', Buffer.from(buf), true);
   }
 }
 
@@ -357,4 +361,86 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     expect(attacker.cash).toBe(250);
     expect(attackerWs.sentMessages.some(m => m.type === 'economy_sync')).toBe(true);
   });
+
+  it('decodes batched binary input (0x03), enforces duplicate-buy & slot replacement, and performs 5v5 bot takeover', async () => {
+    room = new GameRoom();
+    const ws = new MockWebSocket();
+    room.handleConnection(ws as unknown as WebSocket);
+    ws.simulateClientMessage({ type: 'join', callsign: 'Alpha', faction: 'Vanguard' });
+
+    const internal = room as unknown as {
+      sessions: Map<string, { lastInputSeq: number; cash: number; ownedWeapons: Set<string>; controller: { state: { x: number; y: number; z: number } } }>;
+      serverBots: Array<{ team: 'Vanguard' | 'Syndicate'; active: boolean }>;
+    };
+
+    // 5v5 takeover: 1 Vanguard human leaves exactly 4 active Vanguard bots & 5 active Syndicate bots
+    expect(internal.serverBots.filter(b => b.team === 'Vanguard' && b.active).length).toBe(4);
+    expect(internal.serverBots.filter(b => b.team === 'Syndicate' && b.active).length).toBe(5);
+
+    const session = internal.sessions.values().next().value!;
+    // Send batched 2x128Hz binary input frames (type 0x03)
+    const batch = BinaryCodec.encodeInputBatch([
+      {
+        seq: 1,
+        timestamp: 1000,
+        weaponId: 'garam-47',
+        input: { forward: true, backward: false, left: false, right: false, jump: false, crouch: false, walk: false, yaw: 0, pitch: 0 },
+      },
+      {
+        seq: 2,
+        timestamp: 1008,
+        weaponId: 'garam-47',
+        input: { forward: true, backward: false, left: false, right: false, jump: false, crouch: false, walk: false, yaw: 0, pitch: 0 },
+      },
+    ]);
+    ws.simulateBinaryMessage(batch);
+    await new Promise(r => setTimeout(r, 40));
+    expect(session.lastInputSeq).toBe(2);
+
+    // Duplicate weapon buy does not charge twice; buying a new primary replaces previous primary
+    room.phase = 'FREEZE_TIME';
+    session.controller.state.x = 0;
+    session.controller.state.z = 42;
+    session.cash = 10000;
+    ws.simulateClientMessage({ type: 'buy', item: 'garam-47' }); // Already owned -> no charge
+    expect(session.cash).toBe(10000);
+    ws.simulateClientMessage({ type: 'buy', item: 'sovereign-awp' }); // Replaces garam-47
+    expect(session.ownedWeapons.has('sovereign-awp')).toBe(true);
+    expect(session.ownedWeapons.has('garam-47')).toBe(false);
+    expect(session.cash).toBe(10000 - 4750);
+
+    // Disconnecting restores 5 active Vanguard bots
+    ws.close(1000, 'Leave');
+    expect(internal.serverBots.filter(b => b.team === 'Vanguard' && b.active).length).toBe(5);
+  });
+
+  it('enforces bomb plant/defuse mutex so enemies cannot cancel an active planter', () => {
+    room = new GameRoom();
+    const ctWs = new MockWebSocket();
+    const tWs = new MockWebSocket();
+    room.handleConnection(ctWs as unknown as WebSocket);
+    room.handleConnection(tWs as unknown as WebSocket);
+    ctWs.simulateClientMessage({ type: 'join', callsign: 'CT', faction: 'Vanguard' });
+    tWs.simulateClientMessage({ type: 'join', callsign: 'T', faction: 'Syndicate' });
+
+    room.phase = 'ROUND_LIVE';
+    const internal = room as unknown as {
+      sessions: Map<string, { id: string; isPlanting: boolean; controller: { state: { x: number; y: number; z: number } } }>;
+      activePlanterId: string | null;
+    };
+    const [, tSession] = Array.from(internal.sessions.values());
+    // Place T inside Site A
+    tSession.controller.state.x = -30;
+    tSession.controller.state.z = -30;
+
+    tWs.simulateClientMessage({ type: 'plant_defuse', action: 'plant' });
+    expect(tSession.isPlanting).toBe(true);
+    expect(internal.activePlanterId).toBe(tSession.id);
+
+    // CT sends cancel -> MUST NOT cancel Syndicate's active plant!
+    ctWs.simulateClientMessage({ type: 'plant_defuse', action: 'cancel' });
+    expect(tSession.isPlanting).toBe(true);
+    expect(internal.activePlanterId).toBe(tSession.id);
+  });
 });
+

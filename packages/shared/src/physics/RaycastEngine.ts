@@ -15,6 +15,22 @@ export interface RayIntersectionResult {
   normal: Vec3;
 }
 
+export interface MutableRayAABBHit {
+  tNear: number;
+  tFar: number;
+  nx: number;
+  ny: number;
+  nz: number;
+}
+
+const _aabbScratch: MutableRayAABBHit = {
+  tNear: 0,
+  tFar: 0,
+  nx: 0,
+  ny: 0,
+  nz: 0,
+};
+
 export type HitZone = 'HEAD' | 'CHEST' | 'STOMACH' | 'ARMS' | 'LEGS';
 
 export interface RaycastHit {
@@ -109,6 +125,92 @@ export function computeSpreadRayDirection(
 }
 
 /**
+ * Zero-allocation slab method ray-AABB test writing into a caller-owned MutableRayAABBHit.
+ */
+export function intersectRayAABBInto(
+  ray: Ray,
+  minX: number, maxX: number,
+  minY: number, maxY: number,
+  minZ: number, maxZ: number,
+  out: MutableRayAABBHit
+): boolean {
+  let tmin = -Infinity;
+  let tmax = Infinity;
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+
+  // X axis
+  if (Math.abs(ray.direction.x) < 1e-8) {
+    if (ray.origin.x < minX || ray.origin.x > maxX) return false;
+  } else {
+    const invD = 1.0 / ray.direction.x;
+    let t1 = (minX - ray.origin.x) * invD;
+    let t2 = (maxX - ray.origin.x) * invD;
+    let n1x = -1;
+    if (t1 > t2) {
+      const temp = t1; t1 = t2; t2 = temp;
+      n1x = 1;
+    }
+    if (t1 > tmin) {
+      tmin = t1;
+      nx = n1x; ny = 0; nz = 0;
+    }
+    if (t2 < tmax) tmax = t2;
+    if (tmin > tmax) return false;
+  }
+
+  // Y axis
+  if (Math.abs(ray.direction.y) < 1e-8) {
+    if (ray.origin.y < minY || ray.origin.y > maxY) return false;
+  } else {
+    const invD = 1.0 / ray.direction.y;
+    let t1 = (minY - ray.origin.y) * invD;
+    let t2 = (maxY - ray.origin.y) * invD;
+    let n1y = -1;
+    if (t1 > t2) {
+      const temp = t1; t1 = t2; t2 = temp;
+      n1y = 1;
+    }
+    if (t1 > tmin) {
+      tmin = t1;
+      nx = 0; ny = n1y; nz = 0;
+    }
+    if (t2 < tmax) tmax = t2;
+    if (tmin > tmax) return false;
+  }
+
+  // Z axis
+  if (Math.abs(ray.direction.z) < 1e-8) {
+    if (ray.origin.z < minZ || ray.origin.z > maxZ) return false;
+  } else {
+    const invD = 1.0 / ray.direction.z;
+    let t1 = (minZ - ray.origin.z) * invD;
+    let t2 = (maxZ - ray.origin.z) * invD;
+    let n1z = -1;
+    if (t1 > t2) {
+      const temp = t1; t1 = t2; t2 = temp;
+      n1z = 1;
+    }
+    if (t1 > tmin) {
+      tmin = t1;
+      nx = 0; ny = 0; nz = n1z;
+    }
+    if (t2 < tmax) tmax = t2;
+    if (tmin > tmax) return false;
+  }
+
+  if (tmax < 0) return false;
+
+  out.tNear = tmin > 0 ? tmin : 0;
+  out.tFar = tmax;
+  out.nx = nx;
+  out.ny = ny;
+  out.nz = nz;
+  return true;
+}
+
+/**
  * Standard slab method ray-AABB test
  */
 export function intersectRayAABB(
@@ -117,78 +219,15 @@ export function intersectRayAABB(
   minY: number, maxY: number,
   minZ: number, maxZ: number
 ): RayIntersectionResult {
-  let tmin = -Infinity;
-  let tmax = Infinity;
-  let normal: Vec3 = { x: 0, y: 0, z: 0 };
-
-  // X axis
-  if (Math.abs(ray.direction.x) < 1e-8) {
-    if (ray.origin.x < minX || ray.origin.x > maxX) return { hit: false, tNear: 0, tFar: 0, normal };
-  } else {
-    const invD = 1.0 / ray.direction.x;
-    let t1 = (minX - ray.origin.x) * invD;
-    let t2 = (maxX - ray.origin.x) * invD;
-    let n1: Vec3 = { x: -1, y: 0, z: 0 };
-    let n2: Vec3 = { x: 1, y: 0, z: 0 };
-    if (t1 > t2) {
-      const temp = t1; t1 = t2; t2 = temp;
-      n1 = { x: 1, y: 0, z: 0 };
-    }
-    if (t1 > tmin) {
-      tmin = t1;
-      normal = n1;
-    }
-    tmax = Math.min(tmax, t2);
-    if (tmin > tmax) return { hit: false, tNear: 0, tFar: 0, normal };
+  const hit = intersectRayAABBInto(ray, minX, maxX, minY, maxY, minZ, maxZ, _aabbScratch);
+  if (!hit) {
+    return { hit: false, tNear: 0, tFar: 0, normal: { x: 0, y: 0, z: 0 } };
   }
-
-  // Y axis
-  if (Math.abs(ray.direction.y) < 1e-8) {
-    if (ray.origin.y < minY || ray.origin.y > maxY) return { hit: false, tNear: 0, tFar: 0, normal };
-  } else {
-    const invD = 1.0 / ray.direction.y;
-    let t1 = (minY - ray.origin.y) * invD;
-    let t2 = (maxY - ray.origin.y) * invD;
-    let n1: Vec3 = { x: 0, y: -1, z: 0 };
-    if (t1 > t2) {
-      const temp = t1; t1 = t2; t2 = temp;
-      n1 = { x: 0, y: 1, z: 0 };
-    }
-    if (t1 > tmin) {
-      tmin = t1;
-      normal = n1;
-    }
-    tmax = Math.min(tmax, t2);
-    if (tmin > tmax) return { hit: false, tNear: 0, tFar: 0, normal };
-  }
-
-  // Z axis
-  if (Math.abs(ray.direction.z) < 1e-8) {
-    if (ray.origin.z < minZ || ray.origin.z > maxZ) return { hit: false, tNear: 0, tFar: 0, normal };
-  } else {
-    const invD = 1.0 / ray.direction.z;
-    let t1 = (minZ - ray.origin.z) * invD;
-    let t2 = (maxZ - ray.origin.z) * invD;
-    let n1: Vec3 = { x: 0, y: 0, z: -1 };
-    if (t1 > t2) {
-      const temp = t1; t1 = t2; t2 = temp;
-      n1 = { x: 0, y: 0, z: 1 };
-    }
-    if (t1 > tmin) {
-      tmin = t1;
-      normal = n1;
-    }
-    tmax = Math.min(tmax, t2);
-    if (tmin > tmax) return { hit: false, tNear: 0, tFar: 0, normal };
-  }
-
-  if (tmax < 0) return { hit: false, tNear: 0, tFar: 0, normal };
-
   return {
     hit: true,
-    tNear: Math.max(0, tmin),
-    tFar: tmax,
-    normal,
+    tNear: _aabbScratch.tNear,
+    tFar: _aabbScratch.tFar,
+    normal: { x: _aabbScratch.nx, y: _aabbScratch.ny, z: _aabbScratch.nz },
   };
 }
 
@@ -318,43 +357,50 @@ export function executeTacticalRaycast(
 
   const candidates: HitCandidate[] = [];
 
-  // 1. Gather block intersections (accelerated via SpatialGrid if provided)
+  // 1. Gather block intersections (accelerated via SpatialGrid if provided, zero-allocation AABB slab)
   if (spatialGrid) {
     spatialGrid.queryRay(ray, maxRange, (idx) => {
       const block = blocks[idx];
-      const res = intersectRayAABB(
-        ray,
-        block.minX, block.maxX,
-        block.minY, block.maxY,
-        block.minZ, block.maxZ
-      );
-      if (res.hit && res.tNear <= maxRange) {
+      if (
+        intersectRayAABBInto(
+          ray,
+          block.minX, block.maxX,
+          block.minY, block.maxY,
+          block.minZ, block.maxZ,
+          _aabbScratch
+        ) &&
+        _aabbScratch.tNear <= maxRange
+      ) {
         candidates.push({
           type: 'block',
-          distance: res.tNear,
-          normal: res.normal,
+          distance: _aabbScratch.tNear,
+          normal: { x: _aabbScratch.nx, y: _aabbScratch.ny, z: _aabbScratch.nz },
           block,
-          tNear: res.tNear,
-          tFar: res.tFar,
+          tNear: _aabbScratch.tNear,
+          tFar: _aabbScratch.tFar,
         });
       }
     });
   } else {
-    for (const block of blocks) {
-      const res = intersectRayAABB(
-        ray,
-        block.minX, block.maxX,
-        block.minY, block.maxY,
-        block.minZ, block.maxZ
-      );
-      if (res.hit && res.tNear <= maxRange) {
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      if (
+        intersectRayAABBInto(
+          ray,
+          block.minX, block.maxX,
+          block.minY, block.maxY,
+          block.minZ, block.maxZ,
+          _aabbScratch
+        ) &&
+        _aabbScratch.tNear <= maxRange
+      ) {
         candidates.push({
           type: 'block',
-          distance: res.tNear,
-          normal: res.normal,
+          distance: _aabbScratch.tNear,
+          normal: { x: _aabbScratch.nx, y: _aabbScratch.ny, z: _aabbScratch.nz },
           block,
-          tNear: res.tNear,
-          tFar: res.tFar,
+          tNear: _aabbScratch.tNear,
+          tFar: _aabbScratch.tFar,
         });
       }
     }
@@ -643,9 +689,18 @@ export function executeTacticalRaycast(
         penetratedWalls: wallsPenetrated,
       });
 
-      // Target absorbs bullet
-      currentDamage = 0;
-      break;
+      // High-penetration sniper rounds (e.g. Sovereign AWP, penPower >= 250) can deliver attenuated collateral hits
+      if (penetrationPower >= 250) {
+        currentDamage *= 0.65;
+        if (currentDamage <= 2) {
+          currentDamage = 0;
+          break;
+        }
+      } else {
+        // Standard rifle/pistol target absorbs bullet
+        currentDamage = 0;
+        break;
+      }
     }
   }
 
@@ -674,22 +729,29 @@ export function hasLineOfSight(
     direction: { x: dx / dist, y: dy / dist, z: dz / dist },
   };
 
-  // Check all opaque world geometry (concrete, crates, containers — any block intersected by the sightline)
+  // Check all opaque world geometry (concrete, crates, containers — zero heap allocations per block)
   if (spatialGrid) {
     let obstructed = false;
     spatialGrid.queryRay(ray, dist, (idx) => {
       const b = blocks[idx];
-      const res = intersectRayAABB(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ);
-      if (res.hit && res.tNear < dist && res.tNear > 0.05) {
+      if (
+        intersectRayAABBInto(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ, _aabbScratch) &&
+        _aabbScratch.tNear < dist &&
+        _aabbScratch.tNear > 0.05
+      ) {
         obstructed = true;
         return true; // early exit traversal
       }
     });
     if (obstructed) return false;
   } else {
-    for (const b of blocks) {
-      const res = intersectRayAABB(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ);
-      if (res.hit && res.tNear < dist && res.tNear > 0.05) {
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (
+        intersectRayAABBInto(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ, _aabbScratch) &&
+        _aabbScratch.tNear < dist &&
+        _aabbScratch.tNear > 0.05
+      ) {
         return false;
       }
     }

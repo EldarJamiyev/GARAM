@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { WebSocket } from 'ws';
 import {
   DE_CITADEL_BLOCKS,
@@ -11,11 +12,17 @@ import {
   AABBCollider,
   executeTacticalRaycast,
   hasLineOfSight,
-  computeSpreadRayDirection,
+  computeDeterministicShotDirection,
+  stepGrenadePhysics,
+  computeHEDamage,
+  computeMolotovTickDamage,
   Ray,
   SmokeOccluder,
   SpatialGrid,
   BinaryCodec,
+  BINARY_MAGIC,
+  BINARY_TYPE_INPUT,
+  BINARY_TYPE_INPUT_BATCH,
   ClientPacket,
   ServerPacket,
   NetOperatorState,
@@ -25,6 +32,7 @@ import {
   BotBrain,
   MatchSimulation,
   RoundEndResult,
+  Vec3,
 } from '@garam/shared';
 import { LagCompensation, SnapshotTarget } from './LagCompensation.js';
 
@@ -44,6 +52,28 @@ interface ServerSmokeVolume extends SmokeOccluder {
   expiresAt: number;
 }
 
+interface ServerMolotovZone {
+  id: string;
+  center: Vec3;
+  radius: number;
+  expiresAt: number;
+  ownerId: string;
+  ownerName: string;
+  ownerTeam: 'Vanguard' | 'Syndicate';
+}
+
+interface ServerProjectile {
+  id: string;
+  utilityType: string;
+  ownerId: string;
+  ownerName: string;
+  ownerTeam: 'Vanguard' | 'Syndicate';
+  pos: Vec3;
+  vel: Vec3;
+  fuseRemaining: number;
+  detonateOnGround: boolean;
+}
+
 interface HumanSession {
   id: string;
   entitySlot: number;
@@ -53,6 +83,9 @@ interface HumanSession {
   controller: KinematicPlayerController;
   lastInputSeq: number;
   lastShotTime: number;
+  lastShotTimeByWeapon: Map<string, number>;
+  deployCompleteAt: number;
+  consecutiveShots: number;
   health: number;
   armor: number;
   hasHelmet: boolean;
@@ -70,7 +103,7 @@ interface HumanSession {
   isDead: boolean;
   kills: number;
   deaths: number;
-  ping: number;
+  ping: number; // Full server-measured RTT in ms (used directly by LagCompensation)
   pendingPingNonce: number;
   pendingPingSentAt: number;
   lastPingSentAt: number;
@@ -80,6 +113,8 @@ interface HumanSession {
   currentSecondBucket: number;
   useBinary: boolean;
   recentlyVisibleEnemies: Map<string, number>;
+  stalledTicks: number;
+  burnDamageAccum: number;
 }
 
 interface ServerBot {
@@ -87,6 +122,7 @@ interface ServerBot {
   entitySlot: number;
   name: string;
   team: 'Vanguard' | 'Syndicate';
+  active: boolean; // Deactivated when a human player takes over a 5v5 team slot
   controller: KinematicPlayerController;
   health: number;
   armor: number;
@@ -96,6 +132,7 @@ interface ServerBot {
   deaths: number;
   waypointIndex: number;
   waypoints: Array<{ x: number; y: number; z: number }>;
+  burnDamageAccum: number;
 }
 
 // Pre-allocated, frozen static map AABBs (zero per-input / per-tick allocations)
@@ -115,6 +152,8 @@ const STATIC_COLLIDERS: readonly AABBCollider[] = Object.freeze(
 const MELEE_MAX_RANGE = 2.4;
 const MAX_BACKPRESSURE_BYTES = 65536;
 const SNAPSHOT_BACKPRESSURE_BYTES = 32768;
+const MAX_STALLED_TICKS = 128; // ~2s consecutive backpressure stall disconnects slow consumer
+const WEAPON_DEPLOY_MS = 180;
 
 const UTILITY_PRICES: Record<string, number> = {
   'smoke-grenade': ECONOMY.prices.smokeGrenade,
@@ -123,11 +162,21 @@ const UTILITY_PRICES: Record<string, number> = {
   'molotov': 400,
 };
 
+function generateSecureId(prefix: string): string {
+  return `${prefix}_${randomBytes(6).toString('hex')}`;
+}
+
 export class GameRoom {
   private sessions = new Map<string, HumanSession>();
   private bots: ServerBot[] = [];
   private lagComp = new LagCompensation();
   private activeSmokes: ServerSmokeVolume[] = [];
+  private activeProjectiles: ServerProjectile[] = [];
+  private activeMolotovs: ServerMolotovZone[] = [];
+
+  // Bomb Plant / Defuse Ownership Mutexes
+  private activePlanterId: string | null = null;
+  private activeDefuserId: string | null = null;
 
   // 64-Tick Authoritative Loop
   private tick = 0;
@@ -204,6 +253,7 @@ export class GameRoom {
         entitySlot: i,
         name: `Vanguard ${vanguardNames[i]}`,
         team: 'Vanguard',
+        active: true,
         controller: vCtrl,
         health: 100,
         armor: 100,
@@ -217,6 +267,7 @@ export class GameRoom {
           { x: 0, y: 0, z: 0 },
           { x: 35, y: 0, z: -32 },
         ],
+        burnDamageAccum: 0,
       });
 
       const sCtrl = new KinematicPlayerController(
@@ -229,6 +280,7 @@ export class GameRoom {
         entitySlot: 5 + i,
         name: `Syndicate ${syndicateNames[i]}`,
         team: 'Syndicate',
+        active: true,
         controller: sCtrl,
         health: 100,
         armor: 100,
@@ -242,7 +294,28 @@ export class GameRoom {
           { x: -32, y: 0, z: -30 },
           { x: 35, y: 0, z: -32 },
         ],
+        burnDamageAccum: 0,
       });
+    }
+  }
+
+  private rebalanceTeamBots(): void {
+    for (const team of ['Vanguard', 'Syndicate'] as const) {
+      let humanCount = 0;
+      this.sessions.forEach((s) => {
+        if (s.team === team) humanCount++;
+      });
+      const desiredBots = Math.max(0, 5 - humanCount);
+      let enabled = 0;
+      for (const b of this.bots) {
+        if (b.team !== team) continue;
+        if (enabled < desiredBots) {
+          b.active = true;
+          enabled++;
+        } else {
+          b.active = false;
+        }
+      }
     }
   }
 
@@ -259,6 +332,7 @@ export class GameRoom {
   private buildRosterEntries(): NetRosterEntry[] {
     const entries: NetRosterEntry[] = [];
     for (const b of this.bots) {
+      if (!b.active) continue;
       entries.push({ slot: b.entitySlot, id: b.id, name: b.name, team: b.team });
     }
     this.sessions.forEach((s) => {
@@ -281,32 +355,58 @@ export class GameRoom {
   public handleConnection(
     ws: WebSocket,
     rateLimitCheck?: () => boolean,
-    onJoined?: () => void
+    onJoined?: () => void,
+    initialJoinPacket?: Extract<ClientPacket, { type: 'join' }>
   ): void {
-    const sessionId = `player_${Math.random().toString(36).substring(2, 9)}`;
+    const sessionId = generateSecureId('player');
+
+    if (initialJoinPacket) {
+      this.processClientPacket(sessionId, initialJoinPacket, ws);
+    }
 
     ws.on('message', (data) => {
       if (rateLimitCheck && !rateLimitCheck()) {
         return;
       }
 
-      // Fast-path 22-byte zero-allocation binary user input decoding
-      if (Buffer.isBuffer(data) && data.length === 22 && data[0] === 0x47 && data[1] === 0x02) {
-        const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
-        const decodedInput = BinaryCodec.decodeInput(ab);
-        if (decodedInput) {
-          const session = this.sessions.get(sessionId);
-          if (session) {
-            session.useBinary = true;
-            if (session.inputQueue.length < 16) {
-              session.inputQueue.push({
-                seq: decodedInput.seq,
-                input: decodedInput.input,
-                weaponId: decodedInput.weaponId,
-              });
+      // Fast-path binary user input decoding (0x02 single frame OR 0x03 batched 64Hz frames)
+      if (Buffer.isBuffer(data) && data.length >= 3 && data[0] === BINARY_MAGIC) {
+        if (data[1] === BINARY_TYPE_INPUT && data.length === 22) {
+          const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+          const decodedInput = BinaryCodec.decodeInput(ab);
+          if (decodedInput) {
+            const session = this.sessions.get(sessionId);
+            if (session) {
+              session.useBinary = true;
+              if (session.inputQueue.length < 16) {
+                session.inputQueue.push({
+                  seq: decodedInput.seq,
+                  input: decodedInput.input,
+                  weaponId: decodedInput.weaponId,
+                });
+              }
             }
+            return;
           }
-          return;
+        } else if (data[1] === BINARY_TYPE_INPUT_BATCH) {
+          const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+          const decodedBatch = BinaryCodec.decodeInputBatch(ab);
+          if (decodedBatch) {
+            const session = this.sessions.get(sessionId);
+            if (session) {
+              session.useBinary = true;
+              for (let i = 0; i < decodedBatch.length; i++) {
+                if (session.inputQueue.length >= 16) break;
+                const frame = decodedBatch[i];
+                session.inputQueue.push({
+                  seq: frame.seq,
+                  input: frame.input,
+                  weaponId: frame.weaponId,
+                });
+              }
+            }
+            return;
+          }
         }
       }
 
@@ -333,7 +433,20 @@ export class GameRoom {
   private handleDisconnection(sessionId: string): void {
     const s = this.sessions.get(sessionId);
     if (s) {
+      if (this.activePlanterId === sessionId) {
+        this.activePlanterId = null;
+        this.matchSim.plantProgress = 0;
+      }
+      if (this.activeDefuserId === sessionId) {
+        this.activeDefuserId = null;
+        this.matchSim.defuseProgress = 0;
+      }
       this.sessions.delete(sessionId);
+      // Prune departed player ID from all remaining PVS hysteresis maps
+      this.sessions.forEach((other) => {
+        other.recentlyVisibleEnemies.delete(sessionId);
+      });
+      this.rebalanceTeamBots();
       this.broadcastRoster();
     }
   }
@@ -373,9 +486,14 @@ export class GameRoom {
       if (this.sessions.has(sessionId)) return;
       const team = packet.faction || 'Vanguard';
       const spawn = team === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
-      const controller = new KinematicPlayerController(spawn.x, spawn.y, spawn.z);
+      let teamIndex = 0;
+      this.sessions.forEach((existing) => {
+        if (existing.team === team) teamIndex++;
+      });
+      const spawnOffsetX = ((teamIndex % 5) - 2) * 2;
+      const controller = new KinematicPlayerController(spawn.x + spawnOffsetX, spawn.y, spawn.z);
       const entitySlot = this.allocateEntitySlot();
-      const startingWeapon = team === 'Vanguard' ? 'garam-47' : 'garam-47';
+      const startingWeapon = 'garam-47';
       const weaponAmmo = this.createDefaultAmmoMap();
       const startAmmo = weaponAmmo.get(startingWeapon)!;
 
@@ -388,6 +506,9 @@ export class GameRoom {
         controller,
         lastInputSeq: 0,
         lastShotTime: 0,
+        lastShotTimeByWeapon: new Map(),
+        deployCompleteAt: 0,
+        consecutiveShots: 0,
         health: 100,
         armor: 100,
         hasHelmet: true,
@@ -410,7 +531,7 @@ export class GameRoom {
         isDead: false,
         kills: 0,
         deaths: 0,
-        ping: 15,
+        ping: 30, // Initial RTT estimate (ms) until pong_challenge calibrates
         pendingPingNonce: 0,
         pendingPingSentAt: 0,
         lastPingSentAt: now,
@@ -420,9 +541,12 @@ export class GameRoom {
         currentSecondBucket: Math.floor(now / 1000),
         useBinary: false,
         recentlyVisibleEnemies: new Map(),
+        stalledTicks: 0,
+        burnDamageAccum: 0,
       };
 
       this.sessions.set(sessionId, session);
+      this.rebalanceTeamBots();
 
       this.sendToSession(sessionId, {
         type: 'welcome',
@@ -454,8 +578,9 @@ export class GameRoom {
 
     if (packet.type === 'pong_challenge') {
       if (session.pendingPingNonce > 0 && packet.nonce === session.pendingPingNonce) {
+        // Store full measured RTT (ms) so LagCompensation computes exact half-RTT (rtt * 0.5)
         const rtt = Math.max(2, now - session.pendingPingSentAt);
-        session.ping = Math.max(1, Math.min(250, Math.round(rtt / 2)));
+        session.ping = Math.max(2, Math.min(500, Math.round(rtt)));
         session.pendingPingNonce = 0;
       }
       return;
@@ -558,6 +683,19 @@ export class GameRoom {
 
     const weapon = WEAPONS[item];
     if (!weapon || weapon.price <= 0 || session.cash < weapon.price) return;
+    // Block duplicate purchase of already-owned weapon
+    if (session.ownedWeapons.has(weapon.id)) return;
+
+    // Enforce competitive 1-primary / 1-secondary slot replacement
+    if (weapon.slot === 1 || weapon.slot === 2) {
+      for (const existingId of Array.from(session.ownedWeapons)) {
+        const existingDef = WEAPONS[existingId];
+        if (existingDef && existingDef.slot === weapon.slot) {
+          session.ownedWeapons.delete(existingId);
+        }
+      }
+    }
+
     session.cash -= weapon.price;
     session.ownedWeapons.add(weapon.id);
     session.weaponAmmo.set(weapon.id, { current: weapon.magCapacity, reserve: weapon.reserveAmmo });
@@ -580,7 +718,7 @@ export class GameRoom {
   private handleUtilityThrow(
     session: HumanSession,
     packet: Extract<ClientPacket, { type: 'utility_throw' }>,
-    now: number
+    _now: number
   ): void {
     if (session.isDead || this.matchSim.phase !== 'ROUND_LIVE') return;
     const count = session.ownedUtilities.get(packet.utilityType) ?? 0;
@@ -591,7 +729,7 @@ export class GameRoom {
     const eyeHeight = session.controller.state.isCrouching
       ? KINEMATICS.EYE_HEIGHT_CROUCH
       : KINEMATICS.EYE_HEIGHT_STAND;
-    const origin = {
+    const origin: Vec3 = {
       x: session.controller.state.x,
       y: session.controller.state.y + eyeHeight,
       z: session.controller.state.z,
@@ -599,35 +737,42 @@ export class GameRoom {
 
     const dirLen = Math.hypot(packet.direction.x, packet.direction.y, packet.direction.z);
     if (dirLen < 1e-4) return;
-    const direction = {
+    const direction: Vec3 = {
       x: packet.direction.x / dirLen,
       y: packet.direction.y / dirLen,
       z: packet.direction.z / dirLen,
     };
 
     const speed = packet.mode === 'long' ? 18 : packet.mode === 'medium' ? 11 : 5;
-    const velocity = {
+    const velocity: Vec3 = {
       x: direction.x * speed,
       y: direction.y * speed + 2.5,
       z: direction.z * speed,
     };
 
-    const utilId = `util_${now}_${Math.random().toString(36).slice(2, 6)}`;
+    const utilId = generateSecureId('util');
 
-    // Track server-side smoke occluder volumes for PVS + LOS occlusion
-    if (packet.utilityType === 'smoke-grenade') {
-      const landDist = Math.min(24, speed * 0.9);
-      this.activeSmokes.push({
-        id: utilId,
-        center: {
-          x: origin.x + direction.x * landDist,
-          y: Math.max(0.5, session.controller.state.y + 1.4),
-          z: origin.z + direction.z * landDist,
-        },
-        radius: 4.2,
-        expiresAt: now + 18000,
-      });
-    }
+    // Queue authoritative physics-simulated grenade projectile (bounces off DE_CITADEL_BLOCKS, never clips walls!)
+    const fuseSec =
+      packet.utilityType === 'smoke-grenade'
+        ? 1.5
+        : packet.utilityType === 'he-grenade'
+          ? 1.6
+          : packet.utilityType === 'molotov'
+            ? 2.2
+            : 1.4;
+
+    this.activeProjectiles.push({
+      id: utilId,
+      utilityType: packet.utilityType,
+      ownerId: session.id,
+      ownerName: session.name,
+      ownerTeam: session.team,
+      pos: { ...origin },
+      vel: { ...velocity },
+      fuseRemaining: fuseSec,
+      detonateOnGround: packet.utilityType === 'molotov',
+    });
 
     this.broadcast({
       type: 'utility_event',
@@ -641,19 +786,36 @@ export class GameRoom {
 
   private handlePlantDefuse(session: HumanSession, action: 'plant' | 'defuse' | 'cancel'): void {
     if (session.isDead || this.matchSim.phase !== 'ROUND_LIVE') {
-      session.plantDefuseAction = 'none';
+      this.releasePlantDefuseLock(session);
       return;
     }
     if (action === 'cancel') {
-      session.plantDefuseAction = 'none';
-      this.matchSim.plantProgress = 0;
-      this.matchSim.defuseProgress = 0;
+      // Only the owning planter or defuser may cancel progress (blocks cross-team cancel griefing)
+      this.releasePlantDefuseLock(session);
       return;
     }
     if (action === 'plant' && session.team === 'Syndicate' && !this.matchSim.isBombPlanted) {
+      if (this.activePlanterId && this.activePlanterId !== session.id) return;
+      this.activePlanterId = session.id;
       session.plantDefuseAction = 'plant';
     } else if (action === 'defuse' && session.team === 'Vanguard' && this.matchSim.isBombPlanted) {
+      if (this.activeDefuserId && this.activeDefuserId !== session.id) return;
+      this.activeDefuserId = session.id;
       session.plantDefuseAction = 'defuse';
+    }
+  }
+
+  private releasePlantDefuseLock(session: HumanSession): void {
+    session.plantDefuseAction = 'none';
+    if (this.activePlanterId === session.id) {
+      this.activePlanterId = null;
+      if (!this.matchSim.isBombPlanted) {
+        this.matchSim.plantProgress = 0;
+      }
+    }
+    if (this.activeDefuserId === session.id) {
+      this.activeDefuserId = null;
+      this.matchSim.defuseProgress = 0;
     }
   }
 
@@ -679,7 +841,17 @@ export class GameRoom {
 
     const weapon = WEAPONS[packet.weaponId];
     if (!weapon) return;
-    session.activeWeaponId = weapon.id;
+
+    // Enforce weapon-switch deploy delay if player switched weapons via fire packet
+    if (session.activeWeaponId !== weapon.id) {
+      session.activeWeaponId = weapon.id;
+      session.isReloading = false;
+      session.consecutiveShots = 0;
+      session.deployCompleteAt = now + WEAPON_DEPLOY_MS;
+      this.syncSessionActiveAmmo(session);
+      return;
+    }
+    if (now < session.deployCompleteAt) return;
     this.syncSessionActiveAmmo(session);
 
     // Silent-Aim Angle Guard: reject FireAction if yaw OR pitch diverges by > 15° (0.26 rad)
@@ -698,7 +870,18 @@ export class GameRoom {
 
     session.isScoped = !!packet.isScoped;
     const fireIntervalMs = (60 / weapon.fireRateRpm) * 1000;
-    if (now - session.lastShotTime < fireIntervalMs * 0.9) return;
+    const lastWeaponShot = session.lastShotTimeByWeapon.get(weapon.id) ?? 0;
+    if (now - lastWeaponShot < fireIntervalMs * 0.9) return;
+
+    // Decay consecutive spray shot counter based on weapon recovery time
+    const recoveryMs = (session.controller.state.isCrouching ? weapon.recoveryTimeCrouch : weapon.recoveryTimeStand) * 1000;
+    const elapsedSinceLastShot = now - lastWeaponShot;
+    if (lastWeaponShot === 0 || elapsedSinceLastShot >= recoveryMs * 1.15) {
+      session.consecutiveShots = 0;
+    } else if (elapsedSinceLastShot > fireIntervalMs * 1.25) {
+      const decaySteps = Math.floor((elapsedSinceLastShot - fireIntervalMs) / Math.max(40, recoveryMs * 0.25));
+      session.consecutiveShots = Math.max(0, session.consecutiveShots - decaySteps);
+    }
 
     const ammo = session.weaponAmmo.get(weapon.id);
     if (weapon.category !== 'melee') {
@@ -708,8 +891,9 @@ export class GameRoom {
     }
 
     session.lastShotTime = now;
+    session.lastShotTimeByWeapon.set(weapon.id, now);
 
-    // Dynamically bounded lag-compensated hitbox rewind with server-measured ping
+    // Dynamically bounded lag-compensated hitbox rewind using server-measured full RTT
     const rewoundTargets = this.lagComp.getRewoundTargets(now, packet.targetServerTime, session.ping);
 
     const eyeHeight = session.controller.state.isCrouching
@@ -721,10 +905,23 @@ export class GameRoom {
       z: session.controller.state.z,
     };
 
-    // Direction computed strictly server-side from validated (yaw, pitch) — untrusted packet.direction ignored!
-    const direction = computeSpreadRayDirection(packet.yaw, packet.pitch, 0, 0);
-    const ray: Ray = { origin, direction };
+    // Deterministic server-authoritative spread + spray pattern calculation (untrusted packet.direction ignored!)
+    const speed = session.controller.getHorizontalSpeed();
+    const shotSeed = ((this.tick * 2654435761) ^ (packet.seq * 40503) ^ (session.entitySlot * 97)) >>> 0;
+    const { direction } = computeDeterministicShotDirection(
+      packet.yaw,
+      packet.pitch,
+      weapon,
+      speed,
+      session.controller.state.isGrounded,
+      session.controller.state.isCrouching,
+      session.isScoped,
+      session.consecutiveShots,
+      shotSeed
+    );
+    session.consecutiveShots++;
 
+    const ray: Ray = { origin, direction };
     const baseDmg = packet.isSecondaryMelee && weapon.id === 'garam-karambit' ? 90 : weapon.damage;
     const maxDistance = weapon.category === 'melee' ? MELEE_MAX_RANGE : 250;
 
@@ -741,78 +938,144 @@ export class GameRoom {
       weapon.headDamageMultiplier
     );
 
+    const allowCollateral = weapon.penetrationPower >= 250;
+
     for (const hit of hits) {
       if (!hit.targetId) continue;
 
       const victimHuman = this.sessions.get(hit.targetId);
-      const victimBot = this.bots.find((b) => b.id === hit.targetId);
+      const victimBot = this.bots.find((b) => b.active && b.id === hit.targetId);
 
       if (victimHuman && !victimHuman.isDead && victimHuman.team !== session.team) {
-        victimHuman.health = Math.max(0, victimHuman.health - hit.awardedDamage);
-        victimHuman.armor = Math.max(0, victimHuman.armor - hit.armorDamage);
-        victimHuman.controller.applyTagging(weapon.taggingPower);
-
-        this.sendToSession(session.id, {
-          type: 'hit_confirm',
-          targetId: victimHuman.id,
-          damage: hit.awardedDamage,
-          isHeadshot: !!hit.isHeadshot,
-          victimHealth: victimHuman.health,
-        });
-
-        if (victimHuman.health <= 0) {
-          victimHuman.isDead = true;
-          victimHuman.plantDefuseAction = 'none';
-          victimHuman.deaths++;
-          session.kills++;
-          session.cash = Math.min(ECONOMY.maxCash, session.cash + weapon.killReward);
-          this.sendEconomySync(session);
-          this.broadcast({
-            type: 'kill_event',
-            killerId: session.id,
-            killerName: session.name,
-            victimId: victimHuman.id,
-            victimName: victimHuman.name,
-            weaponName: weapon.name,
-            headshot: !!hit.isHeadshot,
-            reward: weapon.killReward,
-          });
-          this.checkTeamElimination();
-        }
-        break;
+        this.applyDamageToHuman(
+          victimHuman,
+          hit.awardedDamage,
+          hit.armorDamage,
+          weapon.taggingPower,
+          session.id,
+          session.name,
+          weapon.name,
+          weapon.killReward,
+          !!hit.isHeadshot
+        );
+        if (!allowCollateral) break;
       } else if (victimBot && !victimBot.isDead && victimBot.team !== session.team) {
-        victimBot.health = Math.max(0, victimBot.health - hit.awardedDamage);
-        victimBot.armor = Math.max(0, victimBot.armor - hit.armorDamage);
-        victimBot.controller.applyTagging(weapon.taggingPower);
-
-        this.sendToSession(session.id, {
-          type: 'hit_confirm',
-          targetId: victimBot.id,
-          damage: hit.awardedDamage,
-          isHeadshot: !!hit.isHeadshot,
-          victimHealth: victimBot.health,
-        });
-
-        if (victimBot.health <= 0) {
-          victimBot.isDead = true;
-          victimBot.deaths++;
-          session.kills++;
-          session.cash = Math.min(ECONOMY.maxCash, session.cash + weapon.killReward);
-          this.sendEconomySync(session);
-          this.broadcast({
-            type: 'kill_event',
-            killerId: session.id,
-            killerName: session.name,
-            victimId: victimBot.id,
-            victimName: victimBot.name,
-            weaponName: weapon.name,
-            headshot: !!hit.isHeadshot,
-            reward: weapon.killReward,
-          });
-          this.checkTeamElimination();
-        }
-        break;
+        this.applyDamageToBot(
+          victimBot,
+          hit.awardedDamage,
+          hit.armorDamage,
+          weapon.taggingPower,
+          session.id,
+          session.name,
+          weapon.name,
+          weapon.killReward,
+          !!hit.isHeadshot
+        );
+        if (!allowCollateral) break;
       }
+    }
+  }
+
+  private applyDamageToHuman(
+    victim: HumanSession,
+    healthDamage: number,
+    armorDamage: number,
+    taggingPower: number,
+    attackerId: string,
+    attackerName: string,
+    weaponName: string,
+    killReward: number,
+    isHeadshot: boolean
+  ): void {
+    if (victim.isDead || healthDamage <= 0) return;
+    victim.health = Math.max(0, victim.health - healthDamage);
+    victim.armor = Math.max(0, victim.armor - armorDamage);
+    if (taggingPower < 1.0) {
+      victim.controller.applyTagging(taggingPower);
+    }
+
+    const attacker = this.sessions.get(attackerId);
+    if (attacker) {
+      this.sendToSession(attacker.id, {
+        type: 'hit_confirm',
+        targetId: victim.id,
+        damage: healthDamage,
+        isHeadshot,
+        victimHealth: victim.health,
+      });
+    }
+
+    if (victim.health <= 0) {
+      victim.isDead = true;
+      this.releasePlantDefuseLock(victim);
+      victim.deaths++;
+      if (attacker) {
+        attacker.kills++;
+        attacker.cash = Math.min(ECONOMY.maxCash, attacker.cash + killReward);
+        this.sendEconomySync(attacker);
+      }
+      this.broadcast({
+        type: 'kill_event',
+        killerId: attackerId,
+        killerName: attackerName,
+        victimId: victim.id,
+        victimName: victim.name,
+        weaponName,
+        headshot: isHeadshot,
+        reward: killReward,
+      });
+      this.checkTeamElimination();
+    }
+  }
+
+  private applyDamageToBot(
+    victim: ServerBot,
+    healthDamage: number,
+    armorDamage: number,
+    taggingPower: number,
+    attackerId: string,
+    attackerName: string,
+    weaponName: string,
+    killReward: number,
+    isHeadshot: boolean
+  ): void {
+    if (!victim.active || victim.isDead || healthDamage <= 0) return;
+    victim.health = Math.max(0, victim.health - healthDamage);
+    victim.armor = Math.max(0, victim.armor - armorDamage);
+    if (taggingPower < 1.0) {
+      victim.controller.applyTagging(taggingPower);
+    }
+
+    const attacker = this.sessions.get(attackerId);
+    if (attacker) {
+      this.sendToSession(attacker.id, {
+        type: 'hit_confirm',
+        targetId: victim.id,
+        damage: healthDamage,
+        isHeadshot,
+        victimHealth: victim.health,
+      });
+    }
+
+    if (victim.health <= 0) {
+      victim.isDead = true;
+      victim.deaths++;
+      if (attacker) {
+        attacker.kills++;
+        attacker.cash = Math.min(ECONOMY.maxCash, attacker.cash + killReward);
+        this.sendEconomySync(attacker);
+      }
+      this.broadcast({
+        type: 'kill_event',
+        killerId: attackerId,
+        killerName: attackerName,
+        victimId: victim.id,
+        victimName: victim.name,
+        weaponName,
+        headshot: isHeadshot,
+        reward: killReward,
+      });
+      this.checkTeamElimination();
     }
   }
 
@@ -829,7 +1092,7 @@ export class GameRoom {
       }
     });
     for (const b of this.bots) {
-      if (!b.isDead) {
+      if (b.active && !b.isDead) {
         if (b.team === 'Vanguard') vanguardAlive++;
         else syndicateAlive++;
       }
@@ -878,6 +1141,193 @@ export class GameRoom {
     tickStep();
   }
 
+  private updateProjectilesAndZones(now: number): void {
+    // 1. Step flying grenade projectiles against static DE_CITADEL_BLOCKS
+    for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
+      const proj = this.activeProjectiles[i];
+      const stepRes = stepGrenadePhysics(
+        proj.pos,
+        proj.vel,
+        this.TICK_DT,
+        DE_CITADEL_BLOCKS,
+        0.08,
+        0.45,
+        15.5,
+        this.spatialGrid
+      );
+      proj.fuseRemaining -= this.TICK_DT;
+
+      const shouldDetonate = proj.fuseRemaining <= 0 || (proj.detonateOnGround && stepRes.hitGround);
+      if (!shouldDetonate) continue;
+
+      this.activeProjectiles.splice(i, 1);
+
+      if (proj.utilityType === 'smoke-grenade') {
+        this.activeSmokes.push({
+          id: proj.id,
+          center: { x: proj.pos.x, y: Math.max(0.5, proj.pos.y + 1.2), z: proj.pos.z },
+          radius: 4.2,
+          expiresAt: now + 18000,
+        });
+      } else if (proj.utilityType === 'molotov') {
+        this.activeMolotovs.push({
+          id: proj.id,
+          center: { x: proj.pos.x, y: proj.pos.y, z: proj.pos.z },
+          radius: 3.2,
+          expiresAt: now + 7000,
+          ownerId: proj.ownerId,
+          ownerName: proj.ownerName,
+          ownerTeam: proj.ownerTeam,
+        });
+      } else if (proj.utilityType === 'he-grenade') {
+        this.detonateHE(proj);
+      }
+    }
+
+    // 2. Step active Molotov burn zones (40 DPS)
+    for (let i = this.activeMolotovs.length - 1; i >= 0; i--) {
+      const zone = this.activeMolotovs[i];
+      if (zone.expiresAt <= now) {
+        this.activeMolotovs.splice(i, 1);
+        continue;
+      }
+
+      // Smoke extinguishes overlapping Molotov fire
+      const extinguished = this.activeSmokes.some((sm) => {
+        const d = Math.hypot(sm.center.x - zone.center.x, sm.center.z - zone.center.z);
+        return d < sm.radius + zone.radius * 0.5;
+      });
+      if (extinguished) {
+        this.activeMolotovs.splice(i, 1);
+        continue;
+      }
+
+      this.sessions.forEach((s) => {
+        if (s.isDead) return;
+        const dmg = computeMolotovTickDamage(zone.center, zone.radius, s.controller.state, this.TICK_DT, s.armor);
+        if (dmg.healthDamage > 0) {
+          s.burnDamageAccum += dmg.healthDamage;
+          if (s.burnDamageAccum >= 4) {
+            const apply = Math.floor(s.burnDamageAccum);
+            s.burnDamageAccum -= apply;
+            this.applyDamageToHuman(
+              s,
+              apply,
+              Math.round(dmg.armorDamage),
+              1.0,
+              zone.ownerId,
+              zone.ownerName,
+              'Incendiary Molotov',
+              300,
+              false
+            );
+          }
+        }
+      });
+
+      for (const b of this.bots) {
+        if (!b.active || b.isDead) continue;
+        const dmg = computeMolotovTickDamage(zone.center, zone.radius, b.controller.state, this.TICK_DT, b.armor);
+        if (dmg.healthDamage > 0) {
+          b.burnDamageAccum += dmg.healthDamage;
+          if (b.burnDamageAccum >= 4) {
+            const apply = Math.floor(b.burnDamageAccum);
+            b.burnDamageAccum -= apply;
+            this.applyDamageToBot(
+              b,
+              apply,
+              Math.round(dmg.armorDamage),
+              1.0,
+              zone.ownerId,
+              zone.ownerName,
+              'Incendiary Molotov',
+              300,
+              false
+            );
+          }
+        }
+      }
+    }
+  }
+
+  private detonateHE(proj: ServerProjectile): void {
+    this.sessions.forEach((s) => {
+      if (s.isDead) return;
+      const dmg = computeHEDamage(proj.pos, s.controller.state, s.armor, DE_CITADEL_BLOCKS, this.spatialGrid);
+      if (dmg.healthDamage > 0) {
+        this.applyDamageToHuman(
+          s,
+          dmg.healthDamage,
+          dmg.armorDamage,
+          0.75,
+          proj.ownerId,
+          proj.ownerName,
+          'High Explosive Grenade',
+          300,
+          false
+        );
+      }
+    });
+
+    for (const b of this.bots) {
+      if (!b.active || b.isDead) continue;
+      const dmg = computeHEDamage(proj.pos, b.controller.state, b.armor, DE_CITADEL_BLOCKS, this.spatialGrid);
+      if (dmg.healthDamage > 0) {
+        this.applyDamageToBot(
+          b,
+          dmg.healthDamage,
+          dmg.armorDamage,
+          0.75,
+          proj.ownerId,
+          proj.ownerName,
+          'High Explosive Grenade',
+          300,
+          false
+        );
+      }
+    }
+  }
+
+  private updateServerBots(): void {
+    if (this.matchSim.phase !== 'ROUND_LIVE') return;
+
+    for (const b of this.bots) {
+      if (!b.active || b.isDead || b.waypoints.length === 0) continue;
+
+      const wp = b.waypoints[b.waypointIndex % b.waypoints.length];
+      const dx = wp.x - b.controller.state.x;
+      const dz = wp.z - b.controller.state.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist < 1.8) {
+        b.waypointIndex = (b.waypointIndex + 1) % b.waypoints.length;
+        continue;
+      }
+
+      const yaw = Math.atan2(-dx, -dz);
+      const botInput: PlayerInput = {
+        forward: true,
+        backward: false,
+        left: false,
+        right: false,
+        jump: false,
+        crouch: false,
+        walk: false,
+        yaw,
+        pitch: 0,
+      };
+
+      b.controller.update(
+        botInput,
+        this.TICK_DT,
+        KINEMATICS.SPEED_RIFLE * 0.85,
+        STATIC_COLLIDERS as AABBCollider[],
+        undefined,
+        this.spatialGrid
+      );
+    }
+  }
+
   private tickAuthoritative(): void {
     this.tick++;
     const now = Date.now();
@@ -886,6 +1336,12 @@ export class GameRoom {
     if (this.activeSmokes.length > 0) {
       this.activeSmokes = this.activeSmokes.filter((sm) => sm.expiresAt > now);
     }
+
+    // Step authoritative grenade trajectories, HE blasts, and Molotov fire zones
+    this.updateProjectilesAndZones(now);
+
+    // Step active bots along tactical waypoints during ROUND_LIVE
+    this.updateServerBots();
 
     // 0. Drain queued inputs, handle reloads, ping challenges, and plant/defuse timers
     const secondBucket = Math.floor(now / 1000);
@@ -919,19 +1375,21 @@ export class GameRoom {
 
       let drained = 0;
       while (s.inputQueue.length > 0 && drained < 4) {
+        const frame = s.inputQueue.shift()!;
+        // Always advance lastInputSeq even if rate-clamped so client reconciliation never stalls
+        s.lastInputSeq = frame.seq;
+
         if (s.framesProcessedThisSecond >= 132) {
-          s.inputQueue.shift();
           drained++;
           continue;
         }
-
-        const frame = s.inputQueue.shift()!;
-        s.lastInputSeq = frame.seq;
 
         if (s.ownedWeapons.has(frame.weaponId)) {
           if (s.activeWeaponId !== frame.weaponId) {
             s.activeWeaponId = frame.weaponId;
             s.isReloading = false;
+            s.consecutiveShots = 0;
+            s.deployCompleteAt = now + WEAPON_DEPLOY_MS;
             this.syncSessionActiveAmmo(s);
           }
         }
@@ -955,16 +1413,18 @@ export class GameRoom {
           effectiveInput,
           KINEMATICS.FIXED_DT,
           weapon.movementSpeed,
-          STATIC_COLLIDERS as AABBCollider[]
+          STATIC_COLLIDERS as AABBCollider[],
+          undefined,
+          this.spatialGrid
         );
 
         s.framesProcessedThisSecond++;
         drained++;
       }
 
-      // Plant / Defuse progress
+      // Plant / Defuse progress (strictly guarded by ownership mutexes)
       if (!s.isDead && this.matchSim.phase === 'ROUND_LIVE') {
-        if (s.plantDefuseAction === 'plant' && !this.matchSim.isBombPlanted) {
+        if (s.plantDefuseAction === 'plant' && this.activePlanterId === s.id && !this.matchSim.isBombPlanted) {
           const site = this.getBombSiteAt(s.controller.state.x, s.controller.state.z);
           if (site) {
             this.matchSim.plantProgress = Math.min(
@@ -978,12 +1438,17 @@ export class GameRoom {
                 z: s.controller.state.z,
               });
               s.plantDefuseAction = 'none';
+              this.activePlanterId = null;
             }
           } else {
-            s.plantDefuseAction = 'none';
-            this.matchSim.plantProgress = 0;
+            this.releasePlantDefuseLock(s);
           }
-        } else if (s.plantDefuseAction === 'defuse' && this.matchSim.isBombPlanted && this.matchSim.bombPos) {
+        } else if (
+          s.plantDefuseAction === 'defuse' &&
+          this.activeDefuserId === s.id &&
+          this.matchSim.isBombPlanted &&
+          this.matchSim.bombPos
+        ) {
           const dist = Math.hypot(
             s.controller.state.x - this.matchSim.bombPos.x,
             s.controller.state.z - this.matchSim.bombPos.z
@@ -992,13 +1457,13 @@ export class GameRoom {
             const def = this.matchSim.stepDefuse(this.TICK_DT, s.hasDefuseKit);
             if (def.defused) {
               s.plantDefuseAction = 'none';
+              this.activeDefuserId = null;
               s.cash = Math.min(ECONOMY.maxCash, s.cash + ECONOMY.defuseBonus);
               const res = this.matchSim.endRound('Vanguard', 'Pulse Core Defused');
               this.applyRoundEnd(res);
             }
           } else {
-            s.plantDefuseAction = 'none';
-            this.matchSim.defuseProgress = 0;
+            this.releasePlantDefuseLock(s);
           }
         }
       }
@@ -1034,7 +1499,7 @@ export class GameRoom {
       }
     });
     for (const b of this.bots) {
-      if (!b.isDead) {
+      if (b.active && !b.isDead) {
         snapshotTargets.push({
           id: b.id,
           name: b.name,
@@ -1087,6 +1552,7 @@ export class GameRoom {
     });
 
     for (const b of this.bots) {
+      if (!b.active) continue;
       playerStates.push({
         id: b.id,
         entitySlot: b.entitySlot,
@@ -1119,10 +1585,17 @@ export class GameRoom {
 
     const currentBomb = this.bomb;
 
-    // Broadcast snapshots with PVS Fog-of-War + Smoke Occlusion filtering
+    // Broadcast snapshots with PVS Fog-of-War + Smoke Occlusion filtering + slow-consumer strike disconnect
     this.sessions.forEach((s) => {
       if (!s.ws || s.ws.readyState !== WebSocket.OPEN) return;
-      if ((s.ws.bufferedAmount ?? 0) > SNAPSHOT_BACKPRESSURE_BYTES) return;
+      if ((s.ws.bufferedAmount ?? 0) > SNAPSHOT_BACKPRESSURE_BYTES) {
+        s.stalledTicks++;
+        if (s.stalledTicks > MAX_STALLED_TICKS) {
+          s.ws.close(1008, 'Backpressure timeout');
+        }
+        return;
+      }
+      s.stalledTicks = 0;
 
       const visiblePlayers = this.filterPlayersForSession(s, playerStates);
 
@@ -1158,6 +1631,9 @@ export class GameRoom {
   }
 
   private applyRoundEnd(result: RoundEndResult): void {
+    this.activePlanterId = null;
+    this.activeDefuserId = null;
+
     this.sessions.forEach((s) => {
       const payout = s.team === 'Vanguard' ? result.ctPayout : result.tPayout;
       s.cash = Math.min(ECONOMY.maxCash, s.cash + payout);
@@ -1181,7 +1657,11 @@ export class GameRoom {
    */
   private filterPlayersForSession(session: HumanSession, allPlayers: NetOperatorState[]): NetOperatorState[] {
     const sPos = session.controller.state;
-    const eyeA = { x: sPos.x, y: sPos.y + (sPos.isCrouching ? 1.10 : 1.65), z: sPos.z };
+    const eyeA = {
+      x: sPos.x,
+      y: sPos.y + (sPos.isCrouching ? KINEMATICS.EYE_HEIGHT_CROUCH : KINEMATICS.EYE_HEIGHT_STAND),
+      z: sPos.z,
+    };
     const now = Date.now();
 
     return allPlayers.filter((p) => {
@@ -1230,19 +1710,46 @@ export class GameRoom {
 
   private resetRound(): void {
     this.activeSmokes = [];
+    this.activeProjectiles = [];
+    this.activeMolotovs = [];
+    this.activePlanterId = null;
+    this.activeDefuserId = null;
+
+    const isHalftimeReset = this.matchSim.round === ECONOMY.halfTimeRound + 1;
+
+    let vgHumanIdx = 0;
+    let synHumanIdx = 0;
 
     this.sessions.forEach((s) => {
+      if (isHalftimeReset) {
+        // MR12 Halftime Side-Swap & Pistol Round Economy Reset
+        s.team = s.team === 'Vanguard' ? 'Syndicate' : 'Vanguard';
+        s.cash = ECONOMY.startingCash;
+        s.armor = 0;
+        s.hasHelmet = false;
+        s.hasDefuseKit = false;
+        s.ownedWeapons = new Set(['desert-eagle', 'garam-karambit']);
+        s.activeWeaponId = 'desert-eagle';
+        s.ownedUtilities.clear();
+      }
+
       s.isDead = false;
       s.health = 100;
       s.isReloading = false;
+      s.consecutiveShots = 0;
       s.plantDefuseAction = 'none';
-      const spawn = s.team === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
-      s.controller.state.x = spawn.x;
+      s.burnDamageAccum = 0;
+
+      const isSyn = s.team === 'Syndicate';
+      const spawn = isSyn ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
+      const laneIdx = isSyn ? synHumanIdx++ : vgHumanIdx++;
+      s.controller.state.x = spawn.x + ((laneIdx % 5) - 2) * 2;
       s.controller.state.y = spawn.y;
       s.controller.state.z = spawn.z;
       s.controller.state.vx = 0;
       s.controller.state.vy = 0;
       s.controller.state.vz = 0;
+
       // Refill ammo for owned weapons
       s.ownedWeapons.forEach((wId) => {
         const def = WEAPONS[wId];
@@ -1251,18 +1758,26 @@ export class GameRoom {
         }
       });
       this.syncSessionActiveAmmo(s);
+      if (isHalftimeReset) {
+        this.sendEconomySync(s);
+      }
     });
+
+    if (isHalftimeReset) {
+      this.rebalanceTeamBots();
+      this.broadcastRoster();
+    }
 
     const synBots = this.bots.filter((b) => b.team === 'Syndicate');
     const vgBots = this.bots.filter((b) => b.team === 'Vanguard');
     const synBuys = BotBrain.evaluateTeamEconomy(
-      synBots.map(() => 4500),
+      synBots.map(() => (isHalftimeReset ? ECONOMY.startingCash : 4500)),
       this.matchSim.tLossStreak,
       this.matchSim.round,
       false
     );
     const vgBuys = BotBrain.evaluateTeamEconomy(
-      vgBots.map(() => 4500),
+      vgBots.map(() => (isHalftimeReset ? ECONOMY.startingCash : 4500)),
       this.matchSim.ctLossStreak,
       this.matchSim.round,
       true
@@ -1273,8 +1788,11 @@ export class GameRoom {
     for (const b of this.bots) {
       b.isDead = false;
       b.health = 100;
+      b.burnDamageAccum = 0;
+      b.waypointIndex = 0;
       const isVg = b.team === 'Vanguard';
-      const decision = isVg ? vgBuys[vgIdx++] : synBuys[synIdx++];
+      const idx = isVg ? vgIdx++ : synIdx++;
+      const decision = isVg ? vgBuys[idx] : synBuys[idx];
       if (decision) {
         b.armor = decision.buyArmor ? 100 : 0;
         b.hasHelmet = decision.buyHelmet;
@@ -1283,7 +1801,7 @@ export class GameRoom {
         b.hasHelmet = true;
       }
       const spawn = b.team === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
-      b.controller.state.x = spawn.x;
+      b.controller.state.x = spawn.x + ((idx % 5) - 2) * 2;
       b.controller.state.y = spawn.y;
       b.controller.state.z = spawn.z;
       b.controller.state.vx = 0;

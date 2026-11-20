@@ -3,11 +3,16 @@ import {
   executeTacticalRaycast,
   hasLineOfSight,
   computeSpreadRayDirection,
+  computeWeaponSpread,
+  computeDeterministicShotDirection,
+  stepGrenadePhysics,
+  computeHEDamage,
+  computeMolotovTickDamage,
   MapBlockCollider,
   TargetCollider,
   Ray,
   SmokeOccluder,
-  WEAPONS
+  WEAPONS,
 } from '../index.js';
 
 describe('RaycastEngine & Ballistics', () => {
@@ -757,4 +762,117 @@ describe('RaycastEngine & Ballistics', () => {
     expect(hit!.hitZone).toBe('HEAD');
     expect(hit!.awardedDamage).toBe(knife.damage);
   });
+
+  it('computeDeterministicShotDirection guarantees 0 spread for stationary first shot and identical PRNG parity while moving', () => {
+    const ak = WEAPONS['garam-47'];
+    const awp = WEAPONS['sovereign-awp'];
+
+    // Stationary grounded first shot -> exact zero spread
+    expect(computeWeaponSpread(ak, 0.2, true, false, false, 0)).toBe(0);
+    expect(computeWeaponSpread(awp, 0.1, true, false, true, 0)).toBe(0);
+
+    const stationary = computeDeterministicShotDirection(0, 0, ak, 0.2, true, false, false, 0, 42);
+    expect(stationary.spread).toBe(0);
+    expect(stationary.direction.x).toBeCloseTo(0, 6);
+    expect(stationary.direction.y).toBeCloseTo(0, 6);
+    expect(stationary.direction.z).toBeCloseTo(-1, 6);
+
+    // Moving shots with the same seed are bit-identical, different seeds diverge
+    const moveA = computeDeterministicShotDirection(0.3, -0.1, ak, 5.4, true, false, false, 3, 1337);
+    const moveB = computeDeterministicShotDirection(0.3, -0.1, ak, 5.4, true, false, false, 3, 1337);
+    const moveC = computeDeterministicShotDirection(0.3, -0.1, ak, 5.4, true, false, false, 3, 1338);
+    expect(moveA).toEqual(moveB);
+    expect(moveA.direction.x).not.toBeCloseTo(moveC.direction.x, 5);
+  });
+
+  it('Sovereign AWP collateral penetrates first operator and hits lined-up second operator at 65% attenuation', () => {
+    const front: TargetCollider = {
+      id: 'collat_front',
+      name: 'Front Enemy',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 12 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+    };
+    const rear: TargetCollider = {
+      id: 'collat_rear',
+      name: 'Rear Enemy',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 16 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+    };
+
+    const awp = WEAPONS['sovereign-awp'];
+    const hits = executeTacticalRaycast(
+      { origin: { x: 0, y: 1.34, z: 0 }, direction: { x: 0, y: 0, z: 1 } },
+      awp.damage,
+      awp.armorPenetration,
+      awp.penetrationPower,
+      100,
+      [],
+      [front, rear],
+      awp.damageDropoffPer10m
+    );
+
+    const frontHit = hits.find(h => h.targetId === 'collat_front');
+    const rearHit = hits.find(h => h.targetId === 'collat_rear');
+    expect(frontHit).toBeDefined();
+    expect(rearHit).toBeDefined();
+    expect(frontHit!.awardedDamage).toBeGreaterThanOrEqual(100);
+    expect(rearHit!.awardedDamage).toBeGreaterThan(50);
+    expect(rearHit!.awardedDamage).toBeLessThan(frontHit!.awardedDamage);
+  });
+
+  it('UtilitySimulation bounces grenades off walls, blocks HE damage behind concrete, and applies 40 DPS Molotov ticks', () => {
+    const wall: MapBlockCollider = {
+      id: 'util_wall',
+      name: 'Concrete Wall',
+      x: 0,
+      y: 0,
+      z: 4,
+      w: 6,
+      h: 4,
+      d: 1,
+      minX: -3,
+      maxX: 3,
+      minY: 0,
+      maxY: 4,
+      minZ: 3.5,
+      maxZ: 4.5,
+      material: 'CONCRETE',
+    };
+
+    // Grenade thrown directly into wall at z=3.5 must bounce back (vz < 0, z < 3.5)
+    const state = {
+      position: { x: 0, y: 1.5, z: 2.0 },
+      velocity: { x: 0, y: 0, z: 18 },
+      bounces: 0,
+      isResting: false,
+    };
+    for (let i = 0; i < 20; i++) {
+      stepGrenadePhysics(state, 1 / 64, [wall]);
+    }
+    expect(state.bounces).toBeGreaterThan(0);
+    expect(state.position.z).toBeLessThan(3.5);
+    expect(state.velocity.z).toBeLessThan(0);
+
+    // HE blast at z=2 occluded by concrete wall from victim at z=5 -> 0 damage
+    const occluded = computeHEDamage({ x: 0, y: 0.5, z: 2 }, { x: 0, y: 1.0, z: 5 }, 100, [wall]);
+    expect(occluded.healthDamage).toBe(0);
+
+    // Clear-LOS HE blast 1m away deals substantial quadratic-falloff damage
+    const clearBlast = computeHEDamage({ x: 0, y: 0.5, z: 2 }, { x: 0, y: 0.5, z: 3 }, 100, [wall]);
+    expect(clearBlast.healthDamage).toBeGreaterThan(35);
+
+    // Molotov tick (0.25s) at 40 DPS -> ~9 HP armored / 10 HP unarmored
+    const mollyUnarmored = computeMolotovTickDamage(0.25, 0);
+    expect(mollyUnarmored.healthDamage).toBe(10);
+    const mollyArmored = computeMolotovTickDamage(0.25, 100);
+    expect(mollyArmored.healthDamage).toBe(9);
+    expect(mollyArmored.armorDamage).toBeGreaterThan(0);
+  });
 });
+

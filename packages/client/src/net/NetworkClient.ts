@@ -7,7 +7,9 @@ import {
   PlayerInput,
   KinematicPlayerController,
   AABBCollider,
+  SpatialGrid,
   BinaryCodec,
+  BinaryInputData,
 } from '@garam/shared';
 import { OperatorRig } from '../render/OperatorRig.js';
 import { HUDManager } from '../ui/HUDManager.js';
@@ -31,17 +33,54 @@ export interface ReconciliationResult {
   remainingInputs: UnackInput[];
 }
 
+export interface EconomySyncPayload {
+  cash: number;
+  ownedWeapons: string[];
+  armor: number;
+  hasHelmet: boolean;
+  hasDefuseKit: boolean;
+}
+
+export interface UtilityEventPayload {
+  id: string;
+  utilityType: string;
+  origin: { x: number; y: number; z: number };
+  direction: { x: number; y: number; z: number };
+  velocity: { x: number; y: number; z: number };
+}
+
+export interface LocalStateSyncPayload {
+  health: number;
+  armor: number;
+  hasHelmet?: boolean;
+  hasDefuseKit?: boolean;
+  activeWeapon: string;
+  currentAmmo: number;
+  reserveAmmo: number;
+  isDead: boolean;
+}
+
+export interface NetworkClientCallbacks {
+  onKillfeed?: (text: string) => void;
+  onScoresUpdated?: (ct: number, t: number) => void;
+  onEconomySync?: (payload: EconomySyncPayload) => void;
+  onUtilityEvent?: (payload: UtilityEventPayload) => void;
+  onLocalStateSync?: (payload: LocalStateSyncPayload) => void;
+}
+
 /**
  * Pure deterministic client-side prediction reconciliation.
  * Discards server-acknowledged inputs, replays unacknowledged frames from the authoritative
- * server state, and computes the smooth visual offset if divergence exceeds 0.04m.
+ * server state (preserving crouch/grounded/step kinematic invariants), and computes the
+ * smooth visual offset if divergence exceeds 0.04m.
  */
 export function reconcilePredictedState(
   localPlayer: KinematicPlayerController,
   serverState: Pick<NetOperatorState, 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz' | 'isCrouching'>,
   lastAckSeq: number,
   unackInputs: UnackInput[],
-  colliders: AABBCollider[]
+  colliders: AABBCollider[],
+  spatialGrid?: SpatialGrid
 ): ReconciliationResult {
   const remaining = unackInputs.filter((u) => u.seq > lastAckSeq);
 
@@ -51,15 +90,25 @@ export function reconcilePredictedState(
 
   // Replay from authoritative server state through remaining unacknowledged inputs
   const replay = new KinematicPlayerController(serverState.x, serverState.y, serverState.z);
-  replay.state.vx = serverState.vx;
-  replay.state.vy = serverState.vy;
-  replay.state.vz = serverState.vz;
-  replay.state.isCrouching = serverState.isCrouching;
-  replay.state.yaw = localPlayer.state.yaw;
-  replay.state.pitch = localPlayer.state.pitch;
+  const currentSnap = localPlayer.exportSnapshot();
+  replay.importSnapshot({
+    ...currentSnap,
+    state: {
+      ...currentSnap.state,
+      x: serverState.x,
+      y: serverState.y,
+      z: serverState.z,
+      vx: serverState.vx,
+      vy: serverState.vy,
+      vz: serverState.vz,
+      isCrouching: serverState.isCrouching,
+      isGrounded: serverState.y <= 0.02 && Math.abs(serverState.vy) < 0.05 ? true : currentSnap.state.isGrounded,
+    },
+    actualCrouching: serverState.isCrouching,
+  });
 
   for (const frame of remaining) {
-    replay.update(frame.input, frame.dt, frame.weaponSpeed, colliders);
+    replay.update(frame.input, frame.dt, frame.weaponSpeed, colliders, undefined, spatialGrid);
   }
 
   const dx = replay.state.x - prevX;
@@ -68,12 +117,12 @@ export function reconcilePredictedState(
   const errorMagnitude = Math.hypot(dx, dy, dz);
 
   if (errorMagnitude > 0.04) {
-    localPlayer.state.x = replay.state.x;
-    localPlayer.state.y = replay.state.y;
-    localPlayer.state.z = replay.state.z;
-    localPlayer.state.vx = replay.state.vx;
-    localPlayer.state.vy = replay.state.vy;
-    localPlayer.state.vz = replay.state.vz;
+    const yaw = localPlayer.state.yaw;
+    const pitch = localPlayer.state.pitch;
+    const reconciled = replay.exportSnapshot();
+    reconciled.state.yaw = yaw;
+    reconciled.state.pitch = pitch;
+    localPlayer.importSnapshot(reconciled);
     return {
       corrected: true,
       errorMagnitude,
@@ -105,6 +154,7 @@ interface RemotePlayer {
   currentYaw: number;
   isDead: boolean;
   health: number;
+  visibleInSnapshot: boolean;
 }
 
 export class NetworkClient {
@@ -122,6 +172,8 @@ export class NetworkClient {
   private lastBandwidthCalc = Date.now();
 
   private seq = 0;
+  private fireSeq = 0;
+  private pendingInputBatch: BinaryInputData[] = [];
   private unackInputs: UnackInput[] = [];
   private remotePlayers = new Map<string, RemotePlayer>();
   private rosterBySlot = new Map<number, NetRosterEntry>();
@@ -134,23 +186,21 @@ export class NetworkClient {
   private scene: THREE.Scene;
   private hud: HUDManager;
   private colliders: AABBCollider[];
-  private onKillfeedCallback?: (text: string) => void;
-  private onScoresUpdated?: (ct: number, t: number) => void;
+  private spatialGrid?: SpatialGrid;
+  private callbacks: NetworkClientCallbacks;
 
   constructor(
     scene: THREE.Scene,
     hud: HUDManager,
     colliders: AABBCollider[],
-    callbacks?: {
-      onKillfeed?: (text: string) => void;
-      onScoresUpdated?: (ct: number, t: number) => void;
-    }
+    callbacks?: NetworkClientCallbacks,
+    spatialGrid?: SpatialGrid
   ) {
     this.scene = scene;
     this.hud = hud;
     this.colliders = colliders;
-    this.onKillfeedCallback = callbacks?.onKillfeed;
-    this.onScoresUpdated = callbacks?.onScoresUpdated;
+    this.spatialGrid = spatialGrid;
+    this.callbacks = callbacks ?? {};
   }
 
   public bindLocalPlayer(controller: KinematicPlayerController): void {
@@ -176,6 +226,7 @@ export class NetworkClient {
 
       this.ws.onopen = () => {
         this.isConnected = true;
+        this.pendingInputBatch.length = 0;
         this.ws!.binaryType = 'arraybuffer';
         const statusBadge = document.getElementById('server-status-badge');
         if (statusBadge) {
@@ -227,6 +278,7 @@ export class NetworkClient {
       this.ws.onclose = () => {
         this.isConnected = false;
         this.localEntitySlot = -1;
+        this.pendingInputBatch.length = 0;
         this.rosterBySlot.clear();
         if (this.pingTimerHandle !== null) {
           window.clearTimeout(this.pingTimerHandle);
@@ -254,6 +306,7 @@ export class NetworkClient {
   }
 
   public disconnect(): void {
+    this.flushInputBatch();
     if (this.pingTimerHandle !== null) {
       window.clearTimeout(this.pingTimerHandle);
       this.pingTimerHandle = null;
@@ -264,8 +317,25 @@ export class NetworkClient {
     }
     this.isConnected = false;
     this.localEntitySlot = -1;
+    this.pendingInputBatch.length = 0;
     this.rosterBySlot.clear();
     this.clearRemoteRigs();
+  }
+
+  private flushInputBatch(): void {
+    if (this.pendingInputBatch.length === 0) return;
+    if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.pendingInputBatch.length = 0;
+      return;
+    }
+
+    const encoded =
+      this.pendingInputBatch.length === 1
+        ? BinaryCodec.encodeInput(this.pendingInputBatch[0])
+        : BinaryCodec.encodeInputBatch(this.pendingInputBatch);
+    this.ws.send(encoded);
+    this.txBytesAccum += encoded.byteLength;
+    this.pendingInputBatch.length = 0;
   }
 
   public sendInput(
@@ -280,9 +350,10 @@ export class NetworkClient {
     this.localPlayerRef = localPlayer;
     this.seq++;
 
+    const inputCopy: PlayerInput = { ...input };
     this.unackInputs.push({
       seq: this.seq,
-      input: { ...input },
+      input: inputCopy,
       dt,
       weaponSpeed,
       x: localPlayer.state.x,
@@ -294,14 +365,17 @@ export class NetworkClient {
       this.unackInputs.shift();
     }
 
-    const binInput = BinaryCodec.encodeInput({
+    // Batch 2x128Hz frames into 1x64Hz binary WebSocket frame (cuts packet rate by 50%)
+    this.pendingInputBatch.push({
       seq: this.seq,
       timestamp: Math.floor(performance.now()),
-      input,
+      input: inputCopy,
       weaponId: activeWeaponId,
     });
-    this.ws.send(binInput);
-    this.txBytesAccum += 22;
+
+    if (this.pendingInputBatch.length >= 2) {
+      this.flushInputBatch();
+    }
   }
 
   public sendBuy(item: string): void {
@@ -317,6 +391,25 @@ export class NetworkClient {
   public sendPlantDefuse(action: 'plant' | 'defuse' | 'cancel'): void {
     if (!this.isConnected) return;
     this.send({ type: 'plant_defuse', action });
+  }
+
+  public sendUtilityThrow(
+    utilityType: string,
+    mode: 'long' | 'medium' | 'short',
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    velocity: THREE.Vector3
+  ): void {
+    if (!this.isConnected) return;
+    this.flushInputBatch();
+    this.send({
+      type: 'utility_throw',
+      utilityType,
+      mode,
+      origin: { x: origin.x, y: origin.y, z: origin.z },
+      direction: { x: direction.x, y: direction.y, z: direction.z },
+      velocity: { x: velocity.x, y: velocity.y, z: velocity.z },
+    });
   }
 
   public updateBandwidthTelemetry(): void {
@@ -344,11 +437,13 @@ export class NetworkClient {
     isScoped = false
   ): void {
     if (!this.isConnected) return;
-    this.seq++;
+    // Flush any queued movement input before firing so server position is current
+    this.flushInputBatch();
+    this.fireSeq++;
     const targetServerTime = this.getEstimatedServerTime() - this.INTERPOLATION_DELAY_MS;
     this.send({
       type: 'fire',
-      seq: this.seq,
+      seq: this.fireSeq,
       targetServerTime,
       weaponId,
       direction: { x: direction.x, y: direction.y, z: direction.z },
@@ -368,9 +463,20 @@ export class NetworkClient {
 
     if (packet.type === 'roster_sync') {
       this.rosterBySlot.clear();
+      const activeRosterIds = new Set<string>();
       for (const entry of packet.entries) {
         this.rosterBySlot.set(entry.slot, entry);
+        activeRosterIds.add(entry.id);
       }
+
+      // Only GPU-dispose rigs when a player actually leaves the roster (not on PVS occlusion!)
+      this.remotePlayers.forEach((rem, id) => {
+        if (!activeRosterIds.has(id)) {
+          this.scene.remove(rem.rig.root);
+          rem.rig.dispose();
+          this.remotePlayers.delete(id);
+        }
+      });
       return;
     }
 
@@ -397,7 +503,29 @@ export class NetworkClient {
     if (packet.type === 'kill_event') {
       const icon = packet.headshot ? '🎯 [HEADSHOT] ' : '💀 ';
       const text = `${icon}${packet.killerName} [${packet.weaponName}] ${packet.victimName} (+$${packet.reward})`;
-      this.onKillfeedCallback?.(text);
+      this.callbacks.onKillfeed?.(text);
+      return;
+    }
+
+    if (packet.type === 'economy_sync') {
+      this.callbacks.onEconomySync?.({
+        cash: packet.cash,
+        ownedWeapons: packet.ownedWeapons,
+        armor: packet.armor,
+        hasHelmet: packet.hasHelmet,
+        hasDefuseKit: packet.hasDefuseKit,
+      });
+      return;
+    }
+
+    if (packet.type === 'utility_event') {
+      this.callbacks.onUtilityEvent?.({
+        id: packet.id,
+        utilityType: packet.utilityType,
+        origin: packet.origin,
+        direction: packet.direction,
+        velocity: packet.velocity,
+      });
       return;
     }
 
@@ -405,12 +533,12 @@ export class NetworkClient {
       if (packet.winner) {
         this.hud.showCenterBanner(`${packet.winner.toUpperCase()} WINS`, packet.reason || '', 4000);
       }
-      this.onScoresUpdated?.(packet.ctScore, packet.tScore);
+      this.callbacks.onScoresUpdated?.(packet.ctScore, packet.tScore);
       return;
     }
 
     if (packet.type === 'snapshot') {
-      this.onScoresUpdated?.(packet.ctScore, packet.tScore);
+      this.callbacks.onScoresUpdated?.(packet.ctScore, packet.tScore);
       this.hud.updateRoundTimer(packet.roundTime, packet.bomb.isPlanted);
 
       const presentIds = new Set<string>();
@@ -427,13 +555,25 @@ export class NetworkClient {
           (p.entitySlot !== undefined && this.localEntitySlot >= 0 && p.entitySlot === this.localEntitySlot);
 
         if (isLocalPlayer) {
+          this.callbacks.onLocalStateSync?.({
+            health: p.health,
+            armor: p.armor,
+            hasHelmet: p.hasHelmet,
+            hasDefuseKit: p.hasDefuseKit,
+            activeWeapon: p.activeWeapon,
+            currentAmmo: p.currentAmmo,
+            reserveAmmo: p.reserveAmmo,
+            isDead: p.isDead,
+          });
+
           if (this.localPlayerRef) {
             const result = reconcilePredictedState(
               this.localPlayerRef,
               p,
               packet.lastAckSeq,
               this.unackInputs,
-              this.colliders
+              this.colliders,
+              this.spatialGrid
             );
             this.unackInputs = result.remainingInputs;
             if (result.corrected) {
@@ -466,8 +606,17 @@ export class NetworkClient {
             currentYaw: p.yaw,
             isDead: p.isDead,
             health: p.health,
+            visibleInSnapshot: true,
           };
           this.remotePlayers.set(resolvedId, remote);
+        } else if (!remote.visibleInSnapshot) {
+          // Snap immediately when re-appearing from PVS occlusion to prevent ghost-lerping through walls
+          remote.currentPos.set(p.x, p.y, p.z);
+          remote.currentYaw = p.yaw;
+          remote.rig.root.position.set(p.x, p.y, p.z);
+          remote.rig.root.rotation.y = p.yaw;
+          remote.rig.root.visible = true;
+          remote.visibleInSnapshot = true;
         }
 
         remote.name = resolvedName;
@@ -478,12 +627,11 @@ export class NetworkClient {
         remote.health = p.health;
       }
 
-      // Remove & GPU-dispose stale remote players
+      // Pool PVS-occluded rigs by hiding instead of destroying GPU buffers on every peek
       this.remotePlayers.forEach((rem, id) => {
         if (!presentIds.has(id)) {
-          this.scene.remove(rem.rig.root);
-          rem.rig.dispose();
-          this.remotePlayers.delete(id);
+          rem.visibleInSnapshot = false;
+          rem.rig.root.visible = false;
         }
       });
     }
@@ -501,9 +649,16 @@ export class NetworkClient {
 
     if (!this.isConnected) return;
 
+    // Flush any single trailing input frame once per render tick so input latency stays minimal
+    if (this.pendingInputBatch.length > 0) {
+      this.flushInputBatch();
+    }
+
     const alpha = 1 - Math.exp(-22 * dt);
 
     this.remotePlayers.forEach((rem) => {
+      if (!rem.visibleInSnapshot) return;
+
       rem.currentPos.lerp(rem.targetPos, alpha);
 
       // Shortest-arc circular yaw interpolation (eliminates 360° spin across +/- PI)
@@ -553,3 +708,4 @@ export class NetworkClient {
     }
   }
 }
+

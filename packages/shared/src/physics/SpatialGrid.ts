@@ -135,6 +135,43 @@ export class SpatialGrid {
   }
 
   /**
+   * Queries all unique static blocks whose XZ footprint overlaps the given AABB bounds.
+   * Zero Set allocations via visitedStamp deduplication.
+   */
+  public queryAABB(
+    minX: number,
+    maxX: number,
+    minZ: number,
+    maxZ: number,
+    onBlock: (blockIndex: number) => boolean | void
+  ): void {
+    this.currentRayId++;
+    if (this.currentRayId >= 2147483640) {
+      this.visitedStamp.fill(0);
+      this.currentRayId = 1;
+    }
+    const stampId = this.currentRayId;
+
+    const startCol = Math.max(0, Math.floor((minX - this.minX) / this.cellSize));
+    const endCol = Math.min(this.cols - 1, Math.floor((maxX - this.minX) / this.cellSize));
+    const startRow = Math.max(0, Math.floor((minZ - this.minZ) / this.cellSize));
+    const endRow = Math.min(this.rows - 1, Math.floor((maxZ - this.minZ) / this.cellSize));
+
+    for (let c = startCol; c <= endCol; c++) {
+      for (let r = startRow; r <= endRow; r++) {
+        const cellBlocks = this.cells[r * this.cols + c];
+        for (let i = 0; i < cellBlocks.length; i++) {
+          const bIdx = cellBlocks[i];
+          if (this.visitedStamp[bIdx] !== stampId) {
+            this.visitedStamp[bIdx] = stampId;
+            if (onBlock(bIdx) === true) return;
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Retrieves candidate blocks along a ray, maintaining zero Set allocations.
    */
   public getCandidateBlocks(ray: Ray, maxDist: number, blocks: MapBlockCollider[]): MapBlockCollider[] {

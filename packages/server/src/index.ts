@@ -1,11 +1,14 @@
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import { validateClientPacket } from '@garam/shared';
 import { RoomRegistry } from './RoomRegistry.js';
 
 const PORT = Number(process.env.PORT) || 2567;
 const MAX_CONNECTIONS = 32;
 const MAX_CONNS_PER_IP = 3;
-const MAX_MESSAGES_PER_SEC = 150;
+const TOKEN_BUCKET_CAPACITY = 240;
+const TOKEN_BUCKET_REFILL_PER_SEC = 175;
+const TRUSTED_PROXY_HOPS = Math.max(1, Number(process.env.TRUSTED_PROXY_HOPS) || 1);
 
 const ipConnCounts = new Map<string, number>();
 
@@ -17,35 +20,52 @@ const ALLOWED_ORIGINS = new Set([
   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim()) : []),
 ]);
 
+const ALLOWED_DEV_PORTS = new Set(['', '80', '443', '3000', '4173', '5173', '2567']);
+
 export function isPrivateOrLocalHost(hostname: string): boolean {
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
-  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
-  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  const cleanHost = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (cleanHost === 'localhost' || cleanHost === '127.0.0.1' || cleanHost === '::1') return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(cleanHost)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(cleanHost)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(cleanHost)) return true;
+  // IPv6 ULA (fc00::/7) and Link-Local (fe80::/10)
+  if (/^f[cd][0-9a-f]{2}:/i.test(cleanHost) || /^fe[89ab][0-9a-f]:/i.test(cleanHost)) return true;
   return false;
 }
 
 export function isOriginAllowed(originHeader?: string): boolean {
-  if (!originHeader) return true;
+  if (!originHeader) {
+    return process.env.NODE_ENV !== 'production';
+  }
   try {
     const originUrl = new URL(originHeader);
     if (ALLOWED_ORIGINS.has(originUrl.origin)) return true;
-    if (isPrivateOrLocalHost(originUrl.hostname)) return true;
+    if (isPrivateOrLocalHost(originUrl.hostname) && ALLOWED_DEV_PORTS.has(originUrl.port)) {
+      return true;
+    }
     return false;
   } catch {
     return false;
   }
 }
 
-function getClientIp(req: http.IncomingMessage): string {
+export function getClientIp(req: http.IncomingMessage): string {
   if (process.env.TRUST_PROXY === 'true') {
     const flyClientIp = req.headers['fly-client-ip'];
-    if (typeof flyClientIp === 'string') return flyClientIp.trim();
+    if (typeof flyClientIp === 'string' && flyClientIp.trim().length > 0) return flyClientIp.trim();
     const cfConnectingIp = req.headers['cf-connecting-ip'];
-    if (typeof cfConnectingIp === 'string') return cfConnectingIp.trim();
+    if (typeof cfConnectingIp === 'string' && cfConnectingIp.trim().length > 0) return cfConnectingIp.trim();
     const forwarded = req.headers['x-forwarded-for'];
     if (typeof forwarded === 'string') {
-      return forwarded.split(',')[0].trim();
+      const parts = forwarded
+        .split(',')
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+      if (parts.length > 0) {
+        // Select rightmost untrusted hop (prevents client-side X-Forwarded-For left-spoofing)
+        const idx = Math.max(0, parts.length - TRUSTED_PROXY_HOPS);
+        return parts[idx];
+      }
     }
   }
   return req.socket.remoteAddress || '127.0.0.1';
@@ -87,7 +107,7 @@ const wss = new WebSocketServer({
 
 server.on('upgrade', (req, socket, head) => {
   const origin = req.headers.origin;
-  if (origin && !isOriginAllowed(origin)) {
+  if (!isOriginAllowed(origin)) {
     socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     socket.destroy();
     return;
@@ -135,25 +155,24 @@ wss.on('connection', (ws: MonitoredSocket, req: http.IncomingMessage) => {
     ws.isAlive = true;
   });
 
-  // Token-bucket rate limiter per socket
-  let messageCount = 0;
-  let windowStart = Date.now();
+  // Smooth token-bucket rate limiter per socket (handles 128Hz bursts without false-positive disconnects)
+  let tokens = TOKEN_BUCKET_CAPACITY;
+  let lastRefillMs = Date.now();
 
   const rateLimitCheck = (): boolean => {
     const now = Date.now();
-    if (now - windowStart >= 1000) {
-      messageCount = 0;
-      windowStart = now;
-    }
-    messageCount++;
-    if (messageCount > MAX_MESSAGES_PER_SEC) {
+    const elapsedSec = Math.max(0, (now - lastRefillMs) / 1000);
+    lastRefillMs = now;
+    tokens = Math.min(TOKEN_BUCKET_CAPACITY, tokens + elapsedSec * TOKEN_BUCKET_REFILL_PER_SEC);
+    if (tokens < 1) {
       ws.close(1008, 'Rate limit exceeded');
       return false;
     }
+    tokens -= 1;
     return true;
   };
 
-  // 5,000ms unauthenticated join timeout cleared directly by validated GameRoom join callback (no double JSON.parse)
+  // 5,000ms unauthenticated join timeout; room allocation is deferred until a validated `join` packet arrives
   let hasJoined = false;
   const joinTimer = setTimeout(() => {
     if (!hasJoined && ws.readyState === WebSocket.OPEN) {
@@ -172,8 +191,24 @@ wss.on('connection', (ws: MonitoredSocket, req: http.IncomingMessage) => {
 
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const roomCode = url.searchParams.get('room') || 'GRM-CITADEL';
-  const { room } = roomRegistry.getOrCreate(roomCode);
-  room.handleConnection(ws, rateLimitCheck, onJoined);
+
+  const onPendingMessage = (data: WebSocket.RawData) => {
+    if (!rateLimitCheck()) return;
+    try {
+      const raw = JSON.parse(data.toString());
+      const packet = validateClientPacket(raw);
+      if (!packet || packet.type !== 'join') return;
+
+      ws.off('message', onPendingMessage);
+      onJoined();
+      const { room } = roomRegistry.getOrCreate(roomCode);
+      room.handleConnection(ws, rateLimitCheck, onJoined, packet);
+    } catch {
+      // Discard non-JSON or invalid pre-join frames
+    }
+  };
+
+  ws.on('message', onPendingMessage);
 });
 
 // 15,000ms heartbeat reaper to terminate half-open sockets

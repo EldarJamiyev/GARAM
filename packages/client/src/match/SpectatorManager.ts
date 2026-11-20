@@ -107,11 +107,26 @@ export class SpectatorManager {
 
     const accent = bot.team === 'Syndicate' ? '#f59e0b' : '#3b9eff';
     this.bannerEl.style.display = 'block';
-    this.bannerEl.innerHTML = `
-      <span style="color: ${accent};">SPECTATING:</span> ${bot.name.toUpperCase()} •
-      <span style="color: #00ff88;">${Math.round(bot.health)} HP</span> • GARAM-47 &nbsp;|&nbsp;
-      <span style="color: #8e959e; font-size: 11px;">[M1 / M2] CYCLE TEAMMATE</span>
-    `;
+    this.bannerEl.textContent = '';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.style.color = accent;
+    labelSpan.textContent = 'SPECTATING: ';
+
+    const nameText = document.createTextNode(`${bot.name.toUpperCase()} • `);
+
+    const hpSpan = document.createElement('span');
+    hpSpan.style.color = '#00ff88';
+    hpSpan.textContent = `${Math.round(bot.health)} HP`;
+
+    const sepText = document.createTextNode(' • GARAM-47  |  ');
+
+    const hintSpan = document.createElement('span');
+    hintSpan.style.color = '#8e959e';
+    hintSpan.style.fontSize = '11px';
+    hintSpan.textContent = '[M1 / M2] CYCLE TEAMMATE';
+
+    this.bannerEl.append(labelSpan, nameText, hpSpan, sepText, hintSpan);
   }
 
   public stop(): void {

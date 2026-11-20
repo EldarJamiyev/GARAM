@@ -65,7 +65,6 @@ const GARAM_47_SPRAY: Array<[number, number]> = [
   [2.70, 0.70],
   [2.65, 0.10],
   [2.60, -0.50],
-  [2.55, -0.80],
 ];
 
 // Vanguard M4A1-S pattern (tighter, laser precision)
@@ -96,7 +95,6 @@ const VANGUARD_M4_SPRAY: Array<[number, number]> = [
   [2.10, 0.85],
   [2.05, 0.60],
   [2.00, 0.20],
-  [1.95, -0.25],
 ];
 
 export const WEAPONS: Record<string, WeaponDef> = {
@@ -211,6 +209,8 @@ export const WEAPONS: Record<string, WeaponDef> = {
       [2.2, 0.15],
       [3.0, -0.2],
       [3.6, 0.3],
+      [4.0, -0.25],
+      [4.3, 0.2],
     ],
     recoilViewPunchScale: 1.6,
     recoveryTimeStand: 0.58, // Rapid Deagle spam blooms unless paced

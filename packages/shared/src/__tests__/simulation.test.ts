@@ -133,4 +133,28 @@ describe('Shared MatchSimulation & Grandmaster BotBrain Suite', () => {
     const r5 = sim.endRound('Vanguard', 'Elimination');
     expect(r5.tPayout).toBe(2400);
   });
+
+  it('swaps CT/T scores and resets loss streaks automatically at MR12 halftime (Round 12 -> Round 13)', () => {
+    const sim = new MatchSimulation({ roundEndDuration: 1.0 });
+    sim.round = ECONOMY.halfTimeRound; // Round 12
+    sim.ctScore = 7;
+    sim.tScore = 4;
+    sim.ctLossStreak = 2;
+    sim.tLossStreak = 3;
+
+    const end12 = sim.endRound('Vanguard', 'Elimination');
+    expect(end12.isHalftime).toBe(true);
+    expect(sim.ctScore).toBe(8);
+    expect(sim.tScore).toBe(4);
+
+    // Advance past ROUND_END to enter Round 13
+    sim.update(1.2);
+    expect(sim.round).toBe(13);
+    expect(sim.halftimeSwapped).toBe(true);
+    expect(sim.ctScore).toBe(4);
+    expect(sim.tScore).toBe(8);
+    expect(sim.ctLossStreak).toBe(0);
+    expect(sim.tLossStreak).toBe(0);
+  });
 });
+

@@ -10,8 +10,16 @@ interface TracerLine {
 
 // Scratch objects for zero runtime GC allocations
 const _dummy = new THREE.Object3D();
-const _matrix = new THREE.Matrix4();
-const _zeroScale = new THREE.Vector3(0, 0, 0);
+const _lookTarget = new THREE.Vector3();
+const _projPos = new THREE.Vector3();
+
+interface PooledDamagePopup {
+  el: HTMLDivElement;
+  remaining: number;
+  baseX: number;
+  baseY: number;
+  active: boolean;
+}
 
 export class EffectsManager {
   private scene: THREE.Scene;
@@ -44,6 +52,13 @@ export class EffectsManager {
   private tracerPool: TracerLine[] = [];
   private tracerIndex = 0;
   private readonly MAX_TRACERS = 24;
+  private tracerMat: THREE.LineBasicMaterial;
+
+  // Pooled DOM Damage Popups (Max 8, Zero-DOM-create/remove during gunfights)
+  private readonly MAX_POPUPS = 8;
+  private popupPool: PooledDamagePopup[] = [];
+  private popupIndex = 0;
+  private impactTextures: THREE.CanvasTexture[] = [];
 
   constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.scene = scene;
@@ -53,6 +68,7 @@ export class EffectsManager {
     const concreteTex = this.createImpactTexture('#141618', '#383b40');
     const woodTex = this.createImpactTexture('#281c12', '#4e3422');
     const metalTex = this.createImpactTexture('#0a0c0e', '#5a626b');
+    this.impactTextures.push(concreteTex, woodTex, metalTex);
 
     const concreteMat = new THREE.MeshBasicMaterial({
       map: concreteTex,
@@ -136,8 +152,17 @@ export class EffectsManager {
       (gltf) => {
         let extractedGeo: THREE.BufferGeometry | null = null;
         gltf.scene.traverse((child) => {
-          if (!extractedGeo && child instanceof THREE.Mesh) {
-            extractedGeo = child.geometry.clone();
+          if (child instanceof THREE.Mesh) {
+            if (!extractedGeo) {
+              extractedGeo = child.geometry.clone();
+            }
+            // Dispose temporary parsed GLTF GPU buffers immediately after cloning
+            child.geometry.dispose();
+            if (Array.isArray(child.material)) {
+              child.material.forEach((m) => m.dispose());
+            } else {
+              child.material?.dispose();
+            }
           }
         });
         if (extractedGeo) {
@@ -168,7 +193,7 @@ export class EffectsManager {
     this.shellBounces = new Uint8Array(this.MAX_SHELLS);
 
     // 4. Initialize Tracer Pool (Zero Runtime Allocations)
-    const tracerMat = new THREE.LineBasicMaterial({
+    this.tracerMat = new THREE.LineBasicMaterial({
       color: 0xffea55,
       linewidth: 2,
     });
@@ -176,10 +201,24 @@ export class EffectsManager {
       const positions = new Float32Array(6);
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      const line = new THREE.Line(geo, tracerMat);
+      const line = new THREE.Line(geo, this.tracerMat);
       line.visible = false;
       this.scene.add(line);
       this.tracerPool.push({ line, positions, lifetime: 0, active: false });
+    }
+
+    // 5. Initialize Pooled DOM Damage Popups
+    if (typeof document !== 'undefined' && document.body) {
+      for (let i = 0; i < this.MAX_POPUPS; i++) {
+        const el = document.createElement('div');
+        el.className = 'damage-popup';
+        el.style.left = '0px';
+        el.style.top = '0px';
+        el.style.display = 'none';
+        el.style.willChange = 'transform, opacity';
+        document.body.appendChild(el);
+        this.popupPool.push({ el, remaining: 0, baseX: 0, baseY: 0, active: false });
+      }
     }
   }
 
@@ -218,7 +257,8 @@ export class EffectsManager {
   public spawnBulletDecal(point: THREE.Vector3, normal: THREE.Vector3, materialType: string): void {
     _dummy.position.copy(point).addScaledVector(normal, 0.008);
     _dummy.scale.set(1, 1, 1);
-    _dummy.lookAt(point.clone().add(normal));
+    _lookTarget.copy(point).add(normal);
+    _dummy.lookAt(_lookTarget);
     _dummy.rotateZ(Math.random() * Math.PI * 2);
     _dummy.updateMatrix();
 
@@ -296,17 +336,25 @@ export class EffectsManager {
   }
 
   public spawnDamagePopup(pos: THREE.Vector3, dmg: number, isHeadshot: boolean): void {
-    const screenPos = pos.clone().project(this.camera);
-    const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (-(screenPos.y * 0.5) + 0.5) * window.innerHeight;
+    if (this.popupPool.length === 0) return;
+    _projPos.copy(pos).project(this.camera);
+    // Skip popups behind the camera or outside NDC depth
+    if (_projPos.z > 1 || _projPos.z < -1) return;
 
-    const pop = document.createElement('div');
-    pop.className = `damage-popup ${isHeadshot ? 'headshot' : ''}`;
-    pop.style.left = `${x}px`;
-    pop.style.top = `${y}px`;
-    pop.innerText = `-${dmg}${isHeadshot ? ' (HEADSHOT)' : ''}`;
-    document.body.appendChild(pop);
-    setTimeout(() => pop.remove(), 800);
+    const x = (_projPos.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-(_projPos.y * 0.5) + 0.5) * window.innerHeight;
+
+    const slot = this.popupPool[this.popupIndex];
+    this.popupIndex = (this.popupIndex + 1) % this.popupPool.length;
+    slot.baseX = x;
+    slot.baseY = y;
+    slot.remaining = 0.75;
+    slot.active = true;
+    slot.el.className = `damage-popup ${isHeadshot ? 'headshot' : ''}`;
+    slot.el.textContent = `-${dmg}${isHeadshot ? ' (HEADSHOT)' : ''}`;
+    slot.el.style.display = 'block';
+    slot.el.style.opacity = '1';
+    slot.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
   }
 
   public update(dt: number): void {
@@ -373,5 +421,49 @@ export class EffectsManager {
     if (casingsUpdated) {
       this.shellInstancedMesh.instanceMatrix.needsUpdate = true;
     }
+
+    // 3. Tick pooled DOM damage popups (GPU-composited transform + opacity only)
+    for (let i = 0; i < this.popupPool.length; i++) {
+      const slot = this.popupPool[i];
+      if (!slot.active) continue;
+      slot.remaining -= dt;
+      if (slot.remaining <= 0) {
+        slot.active = false;
+        slot.el.style.display = 'none';
+      } else {
+        const progress = 1 - slot.remaining / 0.75;
+        const yOff = slot.baseY - progress * 28;
+        slot.el.style.transform = `translate3d(${slot.baseX.toFixed(1)}px, ${yOff.toFixed(1)}px, 0)`;
+        slot.el.style.opacity = `${Math.max(0, 1 - progress * 1.15).toFixed(2)}`;
+      }
+    }
+  }
+
+  public dispose(): void {
+    const decalGeo = this.concreteDecals.geometry;
+    this.scene.remove(this.concreteDecals, this.woodDecals, this.metalDecals, this.shellInstancedMesh);
+    decalGeo.dispose();
+    (this.concreteDecals.material as THREE.Material).dispose();
+    (this.woodDecals.material as THREE.Material).dispose();
+    (this.metalDecals.material as THREE.Material).dispose();
+    for (const tex of this.impactTextures) {
+      tex.dispose();
+    }
+    this.impactTextures.length = 0;
+
+    this.shellInstancedMesh.geometry.dispose();
+    (this.shellInstancedMesh.material as THREE.Material).dispose();
+
+    for (const tracer of this.tracerPool) {
+      this.scene.remove(tracer.line);
+      tracer.line.geometry.dispose();
+    }
+    this.tracerPool.length = 0;
+    this.tracerMat.dispose();
+
+    for (const slot of this.popupPool) {
+      slot.el.remove();
+    }
+    this.popupPool.length = 0;
   }
 }

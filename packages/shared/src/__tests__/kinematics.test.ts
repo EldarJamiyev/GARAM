@@ -3,7 +3,9 @@ import {
   KinematicPlayerController,
   KINEMATICS,
   resolveHorizontalAABB,
-  AABBCollider
+  AABBCollider,
+  SpatialGrid,
+  DE_CITADEL_BLOCKS,
 } from '../index.js';
 
 describe('Kinematics & SAT Collision Resolution', () => {
@@ -348,4 +350,83 @@ describe('Kinematics & SAT Collision Resolution', () => {
 
     expect(maxSoloLedgeReach).toBeGreaterThanOrEqual(crate.maxY);
   });
+
+  it('SpatialGrid broadphase produces bit-identical kinematics to brute-force DE_CITADEL collider sweep', () => {
+    const grid = new SpatialGrid(DE_CITADEL_BLOCKS, 10);
+    const pBrute = new KinematicPlayerController(0, 0, 35);
+    const pGrid = new KinematicPlayerController(0, 0, 35);
+
+    const input = {
+      forward: true,
+      backward: false,
+      left: true,
+      right: false,
+      jump: false,
+      crouch: false,
+      walk: false,
+      yaw: 0.35,
+      pitch: 0,
+    };
+
+    const dt = 1 / 128;
+    for (let i = 0; i < 128; i++) {
+      input.jump = i === 15;
+      pBrute.update(input, dt, KINEMATICS.SPEED_RIFLE, DE_CITADEL_BLOCKS);
+      pGrid.update(input, dt, KINEMATICS.SPEED_RIFLE, DE_CITADEL_BLOCKS, undefined, grid);
+    }
+
+    expect(pGrid.state.x).toBeCloseTo(pBrute.state.x, 6);
+    expect(pGrid.state.y).toBeCloseTo(pBrute.state.y, 6);
+    expect(pGrid.state.z).toBeCloseTo(pBrute.state.z, 6);
+    expect(pGrid.state.vx).toBeCloseTo(pBrute.state.vx, 6);
+    expect(pGrid.state.vz).toBeCloseTo(pBrute.state.vz, 6);
+  });
+
+  it('exportSnapshot / importSnapshot round-trips full crouch, tagging, stamina, and grounded state', () => {
+    const src = new KinematicPlayerController(4.2, 0.5, -9.1);
+    src.state.vx = 2.1;
+    src.state.vy = -1.4;
+    src.state.vz = -3.3;
+    src.state.isCrouching = true;
+    src.actualCrouching = true;
+    src.state.isGrounded = false;
+    src.applyTagging(0.62);
+    src.crouchStamina = 0.55;
+
+    const snap = src.exportSnapshot();
+    const dst = new KinematicPlayerController(0, 0, 0);
+    dst.importSnapshot(snap);
+
+    expect(dst.exportSnapshot()).toEqual(snap);
+    expect(dst.actualCrouching).toBe(true);
+    expect(dst.taggingFactor).toBeCloseTo(0.62, 5);
+  });
+
+  it('caps sustained bunnyhop air-strafing horizontal velocity at <= 1.25x weapon max speed', () => {
+    const player = new KinematicPlayerController(0, 0, 0);
+    const dt = 1 / 128;
+    let yaw = 0;
+
+    for (let i = 0; i < 640; i++) {
+      yaw += 0.018;
+      player.update(
+        {
+          forward: false,
+          backward: false,
+          left: false,
+          right: true,
+          jump: true,
+          crouch: false,
+          walk: false,
+          yaw,
+          pitch: 0,
+        },
+        dt,
+        KINEMATICS.SPEED_KNIFE,
+        []
+      );
+      expect(player.getHorizontalSpeed()).toBeLessThanOrEqual(KINEMATICS.SPEED_KNIFE * 1.25 + 0.05);
+    }
+  });
 });
+

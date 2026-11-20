@@ -11,6 +11,7 @@ export class SceneManager {
   public skyMesh: THREE.Mesh;
   public horizonMesh: THREE.InstancedMesh;
   public envMap: THREE.Texture;
+  private envRenderTarget: THREE.WebGLRenderTarget | null = null;
   public isSoftwareGl = false;
 
   constructor(renderer: THREE.WebGLRenderer) {
@@ -36,10 +37,13 @@ export class SceneManager {
     this.viewmodelCamera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.01, 10);
 
     // 3. PMREM Image-Based Lighting (IBL)
-    this.envMap = this.generateProceduralPMREM(renderer);
+    this.envRenderTarget = this.generateProceduralPMREM(renderer);
+    this.envMap = this.envRenderTarget.texture;
     this.worldScene.environment = this.envMap;
     this.viewmodelScene.environment = this.envMap;
-    this.loadHdrEnvironment(renderer);
+    if (!this.isSoftwareGl) {
+      this.loadHdrEnvironment(renderer);
+    }
 
     // 4. Calibrated Sun & Ambient Lighting
     this.hemiLight = new THREE.HemisphereLight(0xddeeff, 0x444b54, 0.85);
@@ -83,7 +87,7 @@ export class SceneManager {
     this.worldScene.add(this.horizonMesh);
   }
 
-  private generateProceduralPMREM(renderer: THREE.WebGLRenderer): THREE.Texture {
+  private generateProceduralPMREM(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarget {
     const pmremGen = new THREE.PMREMGenerator(renderer);
     pmremGen.compileEquirectangularShader();
 
@@ -125,7 +129,7 @@ export class SceneManager {
     tex.dispose();
     pmremGen.dispose();
 
-    return envTarget.texture;
+    return envTarget;
   }
 
   private loadHdrEnvironment(renderer: THREE.WebGLRenderer): void {
@@ -138,9 +142,12 @@ export class SceneManager {
         texture.dispose();
         pmremGen.dispose();
 
-        if (this.envMap) {
+        if (this.envRenderTarget) {
+          this.envRenderTarget.dispose();
+        } else if (this.envMap) {
           this.envMap.dispose();
         }
+        this.envRenderTarget = envTarget;
         this.envMap = envTarget.texture;
         this.worldScene.environment = this.envMap;
         this.viewmodelScene.environment = this.envMap;
@@ -265,5 +272,21 @@ export class SceneManager {
   public update(_dt: number, cameraPos: THREE.Vector3): void {
     this.skyMesh.position.copy(cameraPos);
     this.horizonMesh.position.set(cameraPos.x, 0, cameraPos.z);
+  }
+
+  public dispose(): void {
+    if (this.envRenderTarget) {
+      this.envRenderTarget.dispose();
+      this.envRenderTarget = null;
+    } else if (this.envMap) {
+      this.envMap.dispose();
+    }
+    this.worldScene.environment = null;
+    this.viewmodelScene.environment = null;
+
+    this.skyMesh.geometry.dispose();
+    (this.skyMesh.material as THREE.Material).dispose();
+    this.horizonMesh.geometry.dispose();
+    (this.horizonMesh.material as THREE.Material).dispose();
   }
 }

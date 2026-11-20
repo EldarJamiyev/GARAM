@@ -11,6 +11,7 @@ export interface RoundEndResult {
   ctPayout: number;
   tPayout: number;
   isMatchComplete: boolean;
+  isHalftime?: boolean;
 }
 
 export interface MatchSimulationConfig {
@@ -33,6 +34,7 @@ export class MatchSimulation {
   public tScore = 0;
   public ctLossStreak = 0;
   public tLossStreak = 0;
+  public halftimeSwapped = false;
 
   // Bomb State
   public isBombPlanted = false;
@@ -67,6 +69,7 @@ export class MatchSimulation {
     this.tScore = 0;
     this.ctLossStreak = 0;
     this.tLossStreak = 0;
+    this.halftimeSwapped = false;
     this.resetBomb();
   }
 
@@ -131,6 +134,15 @@ export class MatchSimulation {
         if (this.ctScore >= this.roundsToWin || this.tScore >= this.roundsToWin) {
           this.phase = 'MATCH_OVER';
         } else {
+          // MR12 Halftime Side-Swap on Round 13 transition: swap side scores and reset loss streaks
+          if (this.round === ECONOMY.halfTimeRound + 1 && !this.halftimeSwapped) {
+            const prevCt = this.ctScore;
+            this.ctScore = this.tScore;
+            this.tScore = prevCt;
+            this.ctLossStreak = 0;
+            this.tLossStreak = 0;
+            this.halftimeSwapped = true;
+          }
           this.phase = 'FREEZE_TIME';
           this.phaseTimer = this.freezeTimeDuration;
           this.resetBomb();
@@ -173,6 +185,7 @@ export class MatchSimulation {
     this.phaseTimer = this.roundEndDuration;
 
     const isMatchComplete = this.ctScore >= this.roundsToWin || this.tScore >= this.roundsToWin;
+    const isHalftime = !isMatchComplete && this.round === ECONOMY.halfTimeRound;
     if (isMatchComplete) {
       this.phase = 'MATCH_OVER';
     }
@@ -185,6 +198,7 @@ export class MatchSimulation {
       ctPayout,
       tPayout,
       isMatchComplete,
+      isHalftime,
     };
   }
 }

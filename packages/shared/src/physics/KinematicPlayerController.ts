@@ -1,4 +1,18 @@
 import { KINEMATICS } from '../constants/kinematics.js';
+import type { SpatialGrid } from './SpatialGrid.js';
+
+export interface KinematicSnapshot {
+  state: PlayerState;
+  prevState: { x: number; y: number; z: number; currentEyeHeight: number };
+  actualCrouching: boolean;
+  stepOffsetY: number;
+  taggingFactor: number;
+  landingSpeedFactor: number;
+  landingCameraDip: number;
+  crouchStamina: number;
+  prevCrouchInput: boolean;
+  airEntryMaxSpeed: number;
+}
 
 export interface PlayerInput {
   forward: boolean;
@@ -265,6 +279,8 @@ export class KinematicPlayerController {
   public landingCameraDip = 0;         // Camera dip on landing (m)
   public crouchStamina = 1.0;          // Crouch stamina (0.1 to 1.0) to prevent duck-spam
   private prevCrouchInput = false;
+  private airEntryMaxSpeed = KINEMATICS.SPEED_RIFLE * 1.25;
+  private readonly nearbyCollidersScratch: AABBCollider[] = [];
 
   constructor(startX = 0, startY = 0, startZ = 25) {
     this.state = {
@@ -287,6 +303,34 @@ export class KinematicPlayerController {
       z: startZ,
       currentEyeHeight: KINEMATICS.EYE_HEIGHT_STAND,
     };
+  }
+
+  public exportSnapshot(): KinematicSnapshot {
+    return {
+      state: { ...this.state },
+      prevState: { ...this.prevState },
+      actualCrouching: this.actualCrouching,
+      stepOffsetY: this.stepOffsetY,
+      taggingFactor: this.taggingFactor,
+      landingSpeedFactor: this.landingSpeedFactor,
+      landingCameraDip: this.landingCameraDip,
+      crouchStamina: this.crouchStamina,
+      prevCrouchInput: this.prevCrouchInput,
+      airEntryMaxSpeed: this.airEntryMaxSpeed,
+    };
+  }
+
+  public importSnapshot(snap: KinematicSnapshot): void {
+    this.state = { ...snap.state };
+    this.prevState = { ...snap.prevState };
+    this.actualCrouching = snap.actualCrouching;
+    this.stepOffsetY = snap.stepOffsetY;
+    this.taggingFactor = snap.taggingFactor;
+    this.landingSpeedFactor = snap.landingSpeedFactor;
+    this.landingCameraDip = snap.landingCameraDip;
+    this.crouchStamina = snap.crouchStamina;
+    this.prevCrouchInput = snap.prevCrouchInput;
+    this.airEntryMaxSpeed = snap.airEntryMaxSpeed;
   }
 
   /**
@@ -316,7 +360,8 @@ export class KinematicPlayerController {
     dt: number,
     weaponMaxSpeed = KINEMATICS.SPEED_RIFLE,
     colliders: AABBCollider[] = [],
-    bounds: MapBounds = DEFAULT_MAP_BOUNDS
+    bounds: MapBounds = DEFAULT_MAP_BOUNDS,
+    spatialGrid?: SpatialGrid
   ): void {
     // Store previous physics state before ticking for sub-tick render interpolation
     this.prevState.x = this.state.x;
@@ -327,6 +372,24 @@ export class KinematicPlayerController {
     this.state.yaw = input.yaw;
     this.state.pitch = input.pitch;
     this.state.isWalking = input.walk;
+
+    // SpatialGrid broadphase culling for static arena colliders (reduces O(N) checks to O(local))
+    let activeColliders = colliders;
+    if (spatialGrid && colliders.length > 0) {
+      const reach = this.radius + Math.max(1.5, Math.hypot(this.state.vx, this.state.vz) * dt + 1.0);
+      this.nearbyCollidersScratch.length = 0;
+      spatialGrid.queryAABB(
+        this.state.x - reach,
+        this.state.x + reach,
+        this.state.z - reach,
+        this.state.z + reach,
+        (idx) => {
+          const b = colliders[idx];
+          if (b) this.nearbyCollidersScratch.push(b);
+        }
+      );
+      activeColliders = this.nearbyCollidersScratch;
+    }
 
     // Crouch stamina decay on crouch transition
     if (input.crouch !== this.prevCrouchInput) {
@@ -341,7 +404,7 @@ export class KinematicPlayerController {
       this.actualCrouching = true;
     } else if (this.actualCrouching) {
       // Check ceiling clearance before expanding to standing height
-      if (hasHeadClearance(this.state.x, this.state.y, this.state.z, KINEMATICS.CAPSULE_HEIGHT_STAND, colliders)) {
+      if (hasHeadClearance(this.state.x, this.state.y, this.state.z, KINEMATICS.CAPSULE_HEIGHT_STAND, activeColliders)) {
         this.actualCrouching = false;
       }
     }
@@ -443,9 +506,10 @@ export class KinematicPlayerController {
       if (input.jump) {
         this.state.vy = KINEMATICS.JUMP_VELOCITY;
         this.state.isGrounded = false;
+        this.airEntryMaxSpeed = Math.max(weaponMaxSpeed * 1.25, Math.hypot(this.state.vx, this.state.vz));
       }
     } else {
-      // Air acceleration (Quake/Source style air strafing)
+      // Air acceleration (Quake/Source style air strafing, bounded to prevent infinite bhop speed exploits)
       if (length > 0.0001) {
         const currentSpeedInWishDir = this.state.vx * wishDirX + this.state.vz * wishDirZ;
         const addSpeed = KINEMATICS.MAX_AIR_WISH_SPEED - currentSpeedInWishDir;
@@ -453,6 +517,13 @@ export class KinematicPlayerController {
           const accelSpeed = Math.min(addSpeed, KINEMATICS.ACCEL_AIR * maxSpeed * dt);
           this.state.vx += accelSpeed * wishDirX;
           this.state.vz += accelSpeed * wishDirZ;
+          const airCap = Math.max(weaponMaxSpeed * 1.25, this.airEntryMaxSpeed);
+          const airSpeed = Math.hypot(this.state.vx, this.state.vz);
+          if (airSpeed > airCap) {
+            const scale = airCap / airSpeed;
+            this.state.vx *= scale;
+            this.state.vz *= scale;
+          }
         }
       }
 
@@ -474,7 +545,7 @@ export class KinematicPlayerController {
       dt,
       this.radius,
       currentHeight,
-      colliders,
+      activeColliders,
       this.state.isGrounded,
       KINEMATICS.STEP_HEIGHT,
       bounds,
@@ -484,7 +555,7 @@ export class KinematicPlayerController {
 
     // If auto-stepped up onto a riser, offset stepOffsetY so camera glides smoothly up instead of jumping
     if (horzRes.stepped && horzRes.y > prevY) {
-      this.stepOffsetY -= (horzRes.y - prevY);
+      this.stepOffsetY = Math.max(-0.5, Math.min(0.5, this.stepOffsetY - (horzRes.y - prevY)));
     }
 
     this.state.x = horzRes.x;
@@ -499,7 +570,8 @@ export class KinematicPlayerController {
 
     // Upward ceiling collision
     if (this.state.vy > 0) {
-      for (const b of colliders) {
+      for (let i = 0; i < activeColliders.length; i++) {
+        const b = activeColliders[i];
         if (
           this.state.x + this.radius > b.minX &&
           this.state.x - this.radius < b.maxX &&
@@ -522,7 +594,8 @@ export class KinematicPlayerController {
     }
 
     let bestLandingY = -Infinity;
-    for (const b of colliders) {
+    for (let i = 0; i < activeColliders.length; i++) {
+      const b = activeColliders[i];
       // Must be falling or in mid-air tuck
       const effectivePrevY = this.state.y + tuckOffset;
       const effectiveNewY = newY + tuckOffset;
@@ -542,10 +615,10 @@ export class KinematicPlayerController {
 
     if (bestLandingY > -Infinity) {
       // Guard upward crouch-tuck snap against overhead ceilings so head never clips through roofs
-      const canSnap = bestLandingY <= this.state.y || hasHeadClearance(this.state.x, bestLandingY, this.state.z, currentHeight, colliders);
+      const canSnap = bestLandingY <= this.state.y || hasHeadClearance(this.state.x, bestLandingY, this.state.z, currentHeight, activeColliders);
       if (canSnap) {
         if (bestLandingY > newY + 0.05) {
-          this.stepOffsetY -= (bestLandingY - newY);
+          this.stepOffsetY = Math.max(-0.5, Math.min(0.5, this.stepOffsetY - (bestLandingY - newY)));
         }
         newY = bestLandingY;
         this.state.vy = 0;

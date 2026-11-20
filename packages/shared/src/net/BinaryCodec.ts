@@ -4,6 +4,13 @@ import { NetOperatorState, NetBombState } from './Protocol.js';
 export const BINARY_MAGIC = 0x47; // 'G'
 export const BINARY_TYPE_SNAPSHOT = 0x01;
 export const BINARY_TYPE_INPUT = 0x02;
+export const BINARY_TYPE_INPUT_BATCH = 0x03;
+
+function clampInt16(val: number): number {
+  if (!Number.isFinite(val)) return 0;
+  const rounded = Math.round(val);
+  return rounded < -32768 ? -32768 : rounded > 32767 ? 32767 : rounded;
+}
 
 export const WEAPON_TO_INDEX: Record<string, number> = {
   'garam-47': 0,
@@ -51,6 +58,8 @@ export interface BinaryInputData {
 const SNAPSHOT_HEADER_BYTES = 36;
 const SNAPSHOT_PLAYER_STRIDE = 29;
 const MAX_SNAPSHOT_PLAYERS = 16;
+const INPUT_FRAME_BYTES = 19; // seq(4) + ts(4) + bits(2) + weapon(1) + yaw(4) + pitch(4)
+const MAX_INPUT_BATCH_FRAMES = 4;
 
 export class BinaryCodec {
   // Pre-allocated static scratch buffers to achieve 0 runtime GC allocations during network ticks
@@ -59,6 +68,9 @@ export class BinaryCodec {
 
   private static readonly INPUT_BUFFER = new ArrayBuffer(22);
   private static readonly INPUT_VIEW = new DataView(BinaryCodec.INPUT_BUFFER);
+
+  private static readonly INPUT_BATCH_BUFFER = new ArrayBuffer(3 + MAX_INPUT_BATCH_FRAMES * INPUT_FRAME_BYTES);
+  private static readonly INPUT_BATCH_VIEW = new DataView(BinaryCodec.INPUT_BATCH_BUFFER);
 
   /**
    * Encodes a 64Hz server state snapshot into a compact zero-copy binary buffer (36 + 29*N bytes).
@@ -81,10 +93,10 @@ export class BinaryCodec {
     // Bomb State (12 bytes: planted, site, xyz, timeRemaining, plantProgress, defuseProgress)
     view.setUint8(23, snap.bomb.isPlanted ? 1 : 0);
     view.setUint8(24, snap.bomb.site === 'A' ? 1 : snap.bomb.site === 'B' ? 2 : 0);
-    view.setInt16(25, Math.round(snap.bomb.x * 10), true);
-    view.setInt16(27, Math.round(snap.bomb.y * 10), true);
-    view.setInt16(29, Math.round(snap.bomb.z * 10), true);
-    view.setUint16(31, Math.round(Math.max(0, snap.bomb.timeRemaining) * 10), true);
+    view.setInt16(25, clampInt16(snap.bomb.x * 10), true);
+    view.setInt16(27, clampInt16(snap.bomb.y * 10), true);
+    view.setInt16(29, clampInt16(snap.bomb.z * 10), true);
+    view.setUint16(31, Math.min(65535, Math.round(Math.max(0, snap.bomb.timeRemaining) * 10)), true);
     view.setUint8(33, Math.max(0, Math.min(255, Math.round(snap.bomb.plantProgress * 255))));
     view.setUint8(34, Math.max(0, Math.min(255, Math.round(snap.bomb.defuseProgress * 255))));
 
@@ -118,15 +130,15 @@ export class BinaryCodec {
       const weaponName = p.activeWeapon || (p as unknown as { activeWeaponId?: string }).activeWeaponId || 'garam-47';
       view.setUint8(offset + 5, WEAPON_TO_INDEX[weaponName] ?? 0);
 
-      // Quantized Position (x, z: 2cm resolution, y: 1cm resolution)
-      view.setInt16(offset + 6, Math.round(p.x * 50), true);
-      view.setInt16(offset + 8, Math.round(p.y * 100), true);
-      view.setInt16(offset + 10, Math.round(p.z * 50), true);
+      // Quantized Position (x, z: 2cm resolution, y: 1cm resolution, overflow-clamped)
+      view.setInt16(offset + 6, clampInt16(p.x * 50), true);
+      view.setInt16(offset + 8, clampInt16(p.y * 100), true);
+      view.setInt16(offset + 10, clampInt16(p.z * 50), true);
 
-      // Quantized Velocity (1cm/s resolution)
-      view.setInt16(offset + 12, Math.round(p.vx * 100), true);
-      view.setInt16(offset + 14, Math.round(p.vy * 100), true);
-      view.setInt16(offset + 16, Math.round(p.vz * 100), true);
+      // Quantized Velocity (1cm/s resolution, overflow-clamped)
+      view.setInt16(offset + 12, clampInt16(p.vx * 100), true);
+      view.setInt16(offset + 14, clampInt16(p.vy * 100), true);
+      view.setInt16(offset + 16, clampInt16(p.vz * 100), true);
 
       // Quantized Angles: Yaw packed into overflow-proof Uint16 [0..65535], Pitch clamped to Int16 [-32767..32767]
       const safeYaw = Number.isFinite(p.yaw) ? p.yaw : 0;
@@ -364,5 +376,94 @@ export class BinaryCodec {
         pitch,
       },
     };
+  }
+
+  /**
+   * Encodes 1..4 128Hz client input frames into a single compact binary batch packet (3 + 19*N bytes).
+   * Sending 2 frames at 64Hz halves WebSocket framing overhead and rate-limit pressure.
+   */
+  public static encodeInputBatch(frames: BinaryInputData[]): ArrayBuffer {
+    const count = Math.max(0, Math.min(MAX_INPUT_BATCH_FRAMES, frames.length));
+    const view = BinaryCodec.INPUT_BATCH_VIEW;
+
+    view.setUint8(0, BINARY_MAGIC);
+    view.setUint8(1, BINARY_TYPE_INPUT_BATCH);
+    view.setUint8(2, count);
+
+    let offset = 3;
+    for (let i = 0; i < count; i++) {
+      const data = frames[i];
+      view.setUint32(offset, data.seq >>> 0, true);
+      view.setUint32(offset + 4, Math.max(0, Math.floor(data.timestamp)) >>> 0, true);
+
+      let bits = 0;
+      if (data.input.forward) bits |= 1 << 0;
+      if (data.input.backward) bits |= 1 << 1;
+      if (data.input.left) bits |= 1 << 2;
+      if (data.input.right) bits |= 1 << 3;
+      if (data.input.jump) bits |= 1 << 4;
+      if (data.input.crouch) bits |= 1 << 5;
+      if (data.input.walk) bits |= 1 << 6;
+
+      view.setUint16(offset + 8, bits, true);
+      view.setUint8(offset + 10, WEAPON_TO_INDEX[data.weaponId] ?? 0);
+      view.setFloat32(offset + 11, data.input.yaw, true);
+      view.setFloat32(offset + 15, data.input.pitch, true);
+      offset += INPUT_FRAME_BYTES;
+    }
+
+    return BinaryCodec.INPUT_BATCH_BUFFER.slice(0, offset);
+  }
+
+  /**
+   * Decodes a batched binary input packet (0x03) into an ordered array of BinaryInputData frames.
+   */
+  public static decodeInputBatch(buffer: ArrayBuffer | ArrayBufferLike): BinaryInputData[] | null {
+    if (!buffer || buffer.byteLength < 3) return null;
+    const view = new DataView(buffer as ArrayBuffer);
+
+    if (view.getUint8(0) !== BINARY_MAGIC || view.getUint8(1) !== BINARY_TYPE_INPUT_BATCH) {
+      return null;
+    }
+
+    const count = view.getUint8(2);
+    if (count === 0 || count > MAX_INPUT_BATCH_FRAMES) return null;
+    if (buffer.byteLength !== 3 + count * INPUT_FRAME_BYTES) return null;
+
+    const frames: BinaryInputData[] = new Array(count);
+    let offset = 3;
+
+    for (let i = 0; i < count; i++) {
+      const seq = view.getUint32(offset, true);
+      const timestamp = view.getUint32(offset + 4, true);
+      const bits = view.getUint16(offset + 8, true);
+      const weaponIdx = view.getUint8(offset + 10);
+      const weaponId = INDEX_TO_WEAPON[weaponIdx] || 'garam-47';
+
+      const rawYaw = view.getFloat32(offset + 11, true);
+      const rawPitch = view.getFloat32(offset + 15, true);
+      const yaw = Number.isFinite(rawYaw) ? rawYaw : 0;
+      const pitch = Number.isFinite(rawPitch) ? Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rawPitch)) : 0;
+
+      frames[i] = {
+        seq,
+        timestamp,
+        weaponId,
+        input: {
+          forward: (bits & (1 << 0)) !== 0,
+          backward: (bits & (1 << 1)) !== 0,
+          left: (bits & (1 << 2)) !== 0,
+          right: (bits & (1 << 3)) !== 0,
+          jump: (bits & (1 << 4)) !== 0,
+          crouch: (bits & (1 << 5)) !== 0,
+          walk: (bits & (1 << 6)) !== 0,
+          yaw,
+          pitch,
+        },
+      };
+      offset += INPUT_FRAME_BYTES;
+    }
+
+    return frames;
   }
 }

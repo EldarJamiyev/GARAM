@@ -13,6 +13,13 @@ import { BotEntity } from '../maps/DeCitadelMap.js';
 
 export interface PlayerManagerCallbacks {
   onSyncActiveWeapon: () => void;
+  onUtilityThrow?: (
+    type: UtilityType,
+    mode: ThrowMode,
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    velocity: THREE.Vector3
+  ) => void;
 }
 
 export class PlayerManager {
@@ -169,6 +176,7 @@ export class PlayerManager {
     this._playerVel.set(this.player.state.vx, this.player.state.vy, this.player.state.vz);
 
     this.utilityManager.throwGrenade(type, this._spawnPos, this._forward, this._playerVel, mode);
+    this.callbacks.onUtilityThrow?.(type, mode, this._spawnPos, this._forward, this._playerVel);
     if (!this.economy.practiceInfiniteUtility) {
       this.economy.consumeUtility(type);
     }
