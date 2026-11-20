@@ -300,9 +300,15 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
       }
       if (settingsStore.settings.gameMode === 'multiplayer') {
         if (!ctx.networkClient.isConnected) {
+          const host = window.location.hostname || 'localhost';
+          const defaultWs = `ws://${host}:2567`;
           const urlInput = document.getElementById('server-url-input') as HTMLInputElement;
           const nameInput = document.getElementById('player-callsign-input') as HTMLInputElement;
-          ctx.networkClient.connect(urlInput?.value || 'ws://localhost:2567', nameInput?.value || 'Eldar Garamov', settingsStore.settings.faction);
+          let wsUrl = urlInput?.value?.trim() || defaultWs;
+          if (wsUrl === 'ws://localhost:2567' && host !== 'localhost' && host !== '127.0.0.1') {
+            wsUrl = defaultWs;
+          }
+          ctx.networkClient.connect(wsUrl, nameInput?.value || 'Eldar Garamov', settingsStore.settings.faction);
         }
       } else {
         ctx.networkClient.disconnect();

@@ -21,6 +21,12 @@ export class LobbyUI {
   }
 
   private bindEvents(): void {
+    // Auto-detect LAN host IP for multiplayer connection
+    const urlInput = document.getElementById('server-url-input') as HTMLInputElement;
+    if (urlInput && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      urlInput.value = `ws://${window.location.hostname}:2567`;
+    }
+
     // 1. Faction Selector
     const factionBtns = document.querySelectorAll('#faction-selector .lobby-btn');
     factionBtns.forEach((btn) => {

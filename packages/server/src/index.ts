@@ -18,11 +18,24 @@ const ALLOWED_ORIGINS = new Set([
   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim()) : []),
 ]);
 
-function isOriginAllowed(originHeader?: string): boolean {
+export function isPrivateOrLocalHost(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+  // 10.0.0.0 - 10.255.255.255
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  // 172.16.0.0 - 172.31.255.255
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  // 192.168.0.0 - 192.168.255.255
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname)) return true;
+  return false;
+}
+
+export function isOriginAllowed(originHeader?: string): boolean {
   if (!originHeader) return true; // Allow non-browser clients, automated test suites, curl
   try {
-    const originUrl = new URL(originHeader).origin;
-    return ALLOWED_ORIGINS.has(originUrl);
+    const originUrl = new URL(originHeader);
+    if (ALLOWED_ORIGINS.has(originUrl.origin)) return true;
+    if (isPrivateOrLocalHost(originUrl.hostname)) return true;
+    return false;
   } catch {
     return false;
   }
