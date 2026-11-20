@@ -17,6 +17,7 @@ export class ProceduralAudio {
     gain: GainNode;
     filter: BiquadFilterNode;
     dist: number;
+    endTime: number;
   }> = [];
 
   constructor() {
@@ -149,6 +150,7 @@ export class ProceduralAudio {
 
   /**
    * Synchronizes Web Audio 3D AudioListener with the camera transform every frame
+   * and cleanly reaps expired spatial voice nodes without JS timer allocations.
    */
   public updateListener(camera: THREE.Camera): void {
     if (!this.ctx) return;
@@ -173,6 +175,20 @@ export class ProceduralAudio {
       // Legacy fallback
       listener.setPosition(p.x, p.y, p.z);
       listener.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+    }
+
+    // Zero-timer voice reaper
+    const now = this.ctx.currentTime;
+    for (let i = this.activeSpatialVoices.length - 1; i >= 0; i--) {
+      const v = this.activeSpatialVoices[i];
+      if (now >= v.endTime) {
+        this.activeSpatialVoices.splice(i, 1);
+        try {
+          v.filter.disconnect();
+          v.gain.disconnect();
+          v.panner.disconnect();
+        } catch {}
+      }
     }
   }
 
@@ -276,21 +292,8 @@ export class ProceduralAudio {
     gain.connect(panner);
     panner.connect(this.masterGain!);
 
-    const voiceEntry = { panner, gain, filter, dist };
+    const voiceEntry = { panner, gain, filter, dist, endTime: t + 3.5 };
     this.activeSpatialVoices.push(voiceEntry);
-
-    // Auto-reap voice after 3.5s to prevent dangling graph nodes
-    setTimeout(() => {
-      const idx = this.activeSpatialVoices.indexOf(voiceEntry);
-      if (idx !== -1) {
-        this.activeSpatialVoices.splice(idx, 1);
-      }
-      try {
-        filter.disconnect();
-        gain.disconnect();
-        panner.disconnect();
-      } catch {}
-    }, 3500);
 
     return { input: filter, output: panner };
   }
@@ -409,10 +412,12 @@ export class ProceduralAudio {
     osc.stop(t + 0.12);
   }
 
-  public playReload(): void {
+  public playReload(isEmpty = false): void {
     this.playMagOut();
-    setTimeout(() => this.playMagIn(), 450);
-    setTimeout(() => this.playBoltRack(), 950);
+    this.playMagIn(0.45);
+    if (isEmpty) {
+      this.playBoltRack(0.95);
+    }
   }
 
   public playMagOut(): void {
@@ -432,10 +437,10 @@ export class ProceduralAudio {
     osc.stop(t + 0.09);
   }
 
-  public playMagIn(): void {
+  public playMagIn(delaySeconds = 0): void {
     this.initContext();
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
+    const t = this.ctx.currentTime + delaySeconds;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';
@@ -449,10 +454,10 @@ export class ProceduralAudio {
     osc.stop(t + 0.14);
   }
 
-  public playBoltRack(): void {
+  public playBoltRack(delaySeconds = 0): void {
     this.initContext();
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
+    const t = this.ctx.currentTime + delaySeconds;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sawtooth';
@@ -464,6 +469,46 @@ export class ProceduralAudio {
     gain.connect(this.masterGain!);
     osc.start(t);
     osc.stop(t + 0.12);
+  }
+
+  public playBodyHitCrunch(worldPos?: THREE.Vector3, listenerPos?: THREE.Vector3, blocks: MapBlockCollider[] = []): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = worldPos
+      ? this.createSpatialRoute(worldPos, listenerPos, blocks).input
+      : this.masterGain!;
+
+    // Low fleshy impact thump
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(45, t + 0.08);
+    oscGain.gain.setValueAtTime(0.55, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    osc.connect(oscGain);
+    oscGain.connect(dest);
+    osc.start(t);
+    osc.stop(t + 0.09);
+
+    // Kevlar crunch grit
+    const noise = this.ctx.createBufferSource();
+    if (this.sharedNoiseBuffer) {
+      noise.buffer = this.sharedNoiseBuffer;
+    }
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(950, t);
+    filter.Q.setValueAtTime(3.0, t);
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.3, t);
+    nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    noise.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(dest);
+    noise.start(t, Math.random() * 1.5);
+    noise.stop(t + 0.07);
   }
 
   public playDryFire(): void {

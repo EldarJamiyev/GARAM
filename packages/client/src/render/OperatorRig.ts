@@ -7,6 +7,10 @@ export interface OperatorVisualState {
   healthRatio: number; // 0 to 1
   team: 'Vanguard' | 'Syndicate';
   name: string;
+  isCrouching?: boolean;
+  pitch?: number;
+  yawOffset?: number;
+  velocity?: { x: number; z: number };
 }
 
 // Shared Geometries across all 10 operators to eliminate duplicate GPU buffer allocations
@@ -284,6 +288,8 @@ export class OperatorRig {
   }
 
   public getWorldHitboxes() {
+    this.head.updateWorldMatrix(true, false);
+    this.torso.updateWorldMatrix(true, false);
     const headWorld = new THREE.Vector3();
     const chestWorld = new THREE.Vector3();
     const stomWorld = new THREE.Vector3();
@@ -367,30 +373,69 @@ export class OperatorRig {
     this.uiBillboard.visible = true;
     this.contactShadow.visible = true;
 
-    // 1. Walking Striding Animation
-    if (state.isMoving) {
-      this.walkCycle += dt * state.speed * 4.2;
-      const legSwing = Math.sin(this.walkCycle) * 0.45;
-      this.leftLeg.rotation.x = legSwing;
-      this.rightLeg.rotation.x = -legSwing;
+    const isCrouching = !!state.isCrouching;
+    const targetTorsoY = isCrouching ? 0.46 : 0.88;
+    const targetHeadY = isCrouching ? 1.08 : 1.50;
+    const targetArmY = isCrouching ? 0.92 : 1.34;
+    const targetWeaponY = isCrouching ? 0.76 : 1.18;
+    const targetBillboardY = isCrouching ? 1.68 : 2.15;
 
-      // Slight torso bounce
-      this.torso.position.y = 0.88 + Math.abs(Math.sin(this.walkCycle * 2)) * 0.04;
-    } else {
-      // Idle breathing
-      this.leftLeg.rotation.x = 0;
-      this.rightLeg.rotation.x = 0;
-      this.torso.position.y = 0.88 + Math.sin(performance.now() * 0.003) * 0.015;
+    this.head.position.y = targetHeadY;
+    this.rightArm.position.y = targetArmY;
+    this.leftArm.position.y = targetArmY;
+    this.weaponMesh.position.y = targetWeaponY;
+    this.uiBillboard.position.y = targetBillboardY;
+    this.headCollider.position.y = isCrouching ? 1.14 : 1.66;
+    this.bodyCollider.position.y = isCrouching ? 0.55 : 0.95;
+
+    // Directional velocity decomposition for natural stride & banking
+    let vForward = 0;
+    let vStrafe = 0;
+    if (state.velocity && (Math.abs(state.velocity.x) > 0.01 || Math.abs(state.velocity.z) > 0.01)) {
+      const yaw = this.root.rotation.y;
+      const cosY = Math.cos(-yaw);
+      const sinY = Math.sin(-yaw);
+      vForward = state.velocity.z * cosY + state.velocity.x * sinY;
+      vStrafe = state.velocity.x * cosY - state.velocity.z * sinY;
     }
 
-    // 2. Flinch Reaction
+    // 1. Walking & Directional Striding Animation
+    if (state.isMoving) {
+      this.walkCycle += dt * state.speed * 4.2;
+      const legSwing = Math.sin(this.walkCycle) * (isCrouching ? 0.28 : 0.45);
+      this.leftLeg.rotation.x = legSwing;
+      this.rightLeg.rotation.x = -legSwing;
+      this.leftLeg.rotation.z = Math.max(-0.15, Math.min(0.15, vStrafe * 0.04));
+      this.rightLeg.rotation.z = Math.max(-0.15, Math.min(0.15, -vStrafe * 0.04));
+
+      // Slight torso bounce & strafe banking
+      this.torso.position.y = targetTorsoY + Math.abs(Math.sin(this.walkCycle * 2)) * 0.03;
+      this.root.rotation.z = Math.max(-0.06, Math.min(0.06, -vStrafe * 0.015));
+    } else {
+      // Idle breathing & crouch stance
+      this.leftLeg.rotation.x = isCrouching ? -0.35 : 0;
+      this.rightLeg.rotation.x = isCrouching ? -0.35 : 0;
+      this.leftLeg.rotation.z = 0;
+      this.rightLeg.rotation.z = 0;
+      this.torso.position.y = targetTorsoY + Math.sin(performance.now() * 0.003) * 0.012;
+      this.root.rotation.z = 0;
+    }
+
+    // 2. Upper-Body Pitch & Head Aim Tracking
+    const aimPitch = state.pitch || 0;
+    const aimYaw = state.yawOffset || 0;
+    this.torso.rotation.x = (isCrouching ? 0.12 : 0) + aimPitch * 0.35;
+    this.head.rotation.x = aimPitch * 0.45;
+    this.head.rotation.y = aimYaw * 0.50;
+    this.rightArm.rotation.x = aimPitch * 0.45;
+    this.leftArm.rotation.x = aimPitch * 0.45;
+    this.weaponMesh.rotation.x = aimPitch * 0.45;
+
+    // 3. Flinch Reaction
     if (this.flinchTimer > 0) {
       this.flinchTimer -= dt;
-      this.torso.rotation.x = -0.18;
-      this.head.rotation.x = -0.25;
-    } else {
-      this.torso.rotation.x = 0;
-      this.head.rotation.x = 0;
+      this.torso.rotation.x += -0.18;
+      this.head.rotation.x += -0.22;
     }
 
     this.updateBillboard(state.healthRatio, state.team, state.name);

@@ -85,6 +85,7 @@ export class GaramGame {
   // Runtime State
   private hasMatchStarted = false;
   private isFiring = false;
+  private pendingFireTrigger = false;
   private isInteracting = false;
   private cameraPunchPitch = 0;
 
@@ -306,24 +307,17 @@ export class GaramGame {
           this.spectator.cycleTeammate(1, this.bots);
           return;
         }
-        this.isFiring = true;
         const active = this.inventory.getActiveWeapon();
         if (active.category === 'grenade') {
           this.playerManager.throwUtilityGrenade('long', this.worldCamera);
           return;
         }
-        this.weaponController.handlePrimaryFire(
-          this.worldCamera,
-          this.player.getHorizontalSpeed(),
-          this.player.state.isGrounded,
-          this.inputManager.input.yaw,
-          this.inputManager.input.pitch,
-          this.blocks,
-          this.bots
-        );
+        this.isFiring = true;
+        this.pendingFireTrigger = true;
       },
       onFireUp: () => {
         this.isFiring = false;
+        this.pendingFireTrigger = false;
         this.weaponController.onFireRelease();
       },
       onAltFire: () => {
@@ -339,8 +333,10 @@ export class GaramGame {
         this.weaponController.handleSecondaryFire(this.worldCamera, this.blocks, this.bots);
       },
       onReload: () => {
+        const slotState = this.inventory.getActiveSlotState();
+        this.viewmodel.isEmptyReload = slotState.currentAmmo === 0;
         if (this.inventory.startReload()) {
-          this.audio.playReload();
+          this.audio.playReload(this.viewmodel.isEmptyReload);
           this.viewmodel.isReloading = true;
         }
       },
@@ -519,22 +515,6 @@ export class GaramGame {
       this.hud.updateReloadProgress(true, progress);
     }
 
-    // Continuous fire for automatic weapons
-    if (this.isFiring && this.inputManager.isLocked && activeWp.fireMode === 'auto' && !this.spectator.isSpectating) {
-      if (this.customizer.infiniteAmmo) {
-        activeSlotState.currentAmmo = activeWp.magCapacity;
-      }
-      this.weaponController.handlePrimaryFire(
-        this.worldCamera,
-        hozSpeed,
-        this.player.state.isGrounded,
-        this.inputManager.input.yaw,
-        this.inputManager.input.pitch,
-        this.blocks,
-        this.bots
-      );
-    }
-
     this.weaponController.update(frameDelta, hozSpeed, this.inputManager.input.crouch);
     this.effects.update(frameDelta);
     this.sceneManager.update(frameDelta, this.worldCamera.position);
@@ -608,10 +588,31 @@ export class GaramGame {
       const interp = this.player.getInterpolatedPosition(alpha);
       this.worldCamera.position.set(interp.x, interp.eyeY, interp.z);
 
-      const effectivePitch = this.inputManager.input.pitch + this.cameraPunchPitch + this.weaponController.aimPunchPitch * 0.45;
-      const effectiveYaw = this.inputManager.input.yaw + this.weaponController.aimPunchYaw * 0.45;
+      const effectivePitch = this.inputManager.input.pitch + this.cameraPunchPitch + this.weaponController.aimPunchPitch;
+      const effectiveYaw = this.inputManager.input.yaw + this.weaponController.aimPunchYaw;
       _euler.set(effectivePitch, effectiveYaw, 0, 'YXZ');
       this.worldCamera.quaternion.setFromEuler(_euler);
+    }
+    this.worldCamera.updateMatrixWorld(true);
+
+    // Synchronized Weapon Firing with current-frame camera & bot transforms
+    const shouldFire = (this.pendingFireTrigger || (this.isFiring && activeWp.fireMode === 'auto')) &&
+      this.inputManager.isLocked && !this.spectator.isSpectating;
+    if (shouldFire) {
+      this.pendingFireTrigger = false;
+      if (this.customizer.infiniteAmmo) {
+        activeSlotState.currentAmmo = activeWp.magCapacity;
+      }
+      this.weaponController.handlePrimaryFire(
+        this.worldCamera,
+        hozSpeed,
+        this.player.state.isGrounded,
+        this.inputManager.input.crouch,
+        this.inputManager.input.yaw,
+        this.inputManager.input.pitch,
+        this.blocks,
+        this.bots
+      );
     }
 
     const walkBob = Math.sin(this.distanceTraveled * 4) * 0.008 * (hozSpeed / 5.45);

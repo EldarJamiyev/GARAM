@@ -112,6 +112,7 @@ export class WeaponController {
     camera: THREE.PerspectiveCamera,
     currentSpeed: number,
     isGrounded: boolean,
+    isCrouching: boolean,
     inputYaw: number,
     inputPitch: number,
     blocks: MapBlockCollider[],
@@ -125,6 +126,7 @@ export class WeaponController {
     if (!canFireCheck.canFire) {
       if (canFireCheck.reason === 'out_of_ammo') {
         this.audio.playDryFire();
+        this.viewmodel.isEmptyReload = true;
         this.inventory.startReload();
       }
       return;
@@ -153,10 +155,16 @@ export class WeaponController {
     _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
     this.effects.spawnShellCasing(camera.position, _forward, _right);
 
-    // Spread calculation: zero standing spread RNG when counter-strafed / scoped!
+    // Smooth quadratic movement spread: zero standing spread RNG when counter-strafed / scoped!
     let dynamicSpread = 0;
-    if (currentSpeed > 0.38) {
-      dynamicSpread = (currentSpeed / weapon.movementSpeed) * (weapon.inaccuracyMove || 0.045);
+    const excessSpeed = Math.max(0, currentSpeed - 0.38);
+    if (excessSpeed > 0) {
+      const ratio = Math.min(1.0, excessSpeed / weapon.movementSpeed);
+      let moveInacc = ratio * ratio * (weapon.inaccuracyMove || 0.045);
+      if (isCrouching) {
+        moveInacc *= (weapon.crouchSpreadMultiplier || 0.65);
+      }
+      dynamicSpread += moveInacc;
     }
     if (!isGrounded) {
       dynamicSpread += (weapon.inaccuracyJump || 0.16);
@@ -168,16 +176,17 @@ export class WeaponController {
     const spreadX = (Math.random() - 0.5) * dynamicSpread;
     const spreadY = (Math.random() - 0.5) * dynamicSpread;
 
-    // Exact rendered crosshair aim vector (aimPunchPitch is 0.0 on Shot #1 when recovered!)
-    const pitchRad = inputPitch + this.aimPunchPitch + spreadY;
-    const yawRad = inputYaw + this.aimPunchYaw + spreadX;
+    // Exact rendered crosshair aim vector derived directly from camera orientation
+    camera.getWorldDirection(_forward);
+    _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    const _up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+    _rayDir.copy(_forward)
+      .addScaledVector(_right, spreadX)
+      .addScaledVector(_up, spreadY)
+      .normalize();
 
     const eyePos = camera.position;
-    _rayDir.set(
-      -Math.sin(yawRad) * Math.cos(pitchRad),
-      Math.sin(pitchRad),
-      -Math.cos(yawRad) * Math.cos(pitchRad)
-    ).normalize();
 
     // Notify onFire callback with wasScoped BEFORE any zoom resets
     this.callbacks.onFire?.(weapon, wasScoped, _rayDir, false);
@@ -191,6 +200,7 @@ export class WeaponController {
       hasHelmet: true,
       armor: 100,
       isDead: b.isDead,
+      isCrouched: !!(b as unknown as { isCrouching?: boolean }).isCrouching,
       hitboxes: b.rig?.getWorldHitboxes(),
     }));
 
@@ -229,6 +239,8 @@ export class WeaponController {
 
             if (hit.isHeadshot) {
               this.audio.playHeadshotDink();
+            } else {
+              this.audio.playBodyHitCrunch(_hitVec, eyePos, blocks);
             }
 
             // Trigger operator flinch & hitmarker

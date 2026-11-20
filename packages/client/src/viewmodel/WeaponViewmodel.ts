@@ -36,6 +36,7 @@ export class WeaponViewmodel {
   // Reload state
   public isReloading = false;
   public reloadProgress = 0;
+  public isEmptyReload = false;
 
   // Spring physics states (centered tactical framing)
   private targetPos = new THREE.Vector3(0.13, -0.16, -0.32);
@@ -1026,10 +1027,13 @@ export class WeaponViewmodel {
           currentMag.position.y = baseY - (1.0 - rise) * 0.16;
           currentMag.rotation.z = (1.0 - rise) * 0.12;
         } else {
-          // Stage 3 (70–100%): Fresh mag firmly seated, rack charging handle
+          // Stage 3 (70–100%): Fresh mag firmly seated
           currentMag.position.y = baseY;
           currentMag.rotation.z = 0;
-          this.slideKick = Math.sin((this.reloadProgress - 0.70) / 0.30 * Math.PI) * 0.035;
+          // Rack charging handle / bolt only on empty reload
+          if (this.isEmptyReload) {
+            this.slideKick = Math.sin((this.reloadProgress - 0.70) / 0.30 * Math.PI) * 0.04;
+          }
         }
       }
     } else if (currentMag && typeof currentMag.userData.baseY === 'number') {

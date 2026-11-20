@@ -1,4 +1,5 @@
 import { MapBlockCollider, SurfaceMaterial, SURFACE_MATERIALS, Vec3 } from '../maps/DeCitadelData.js';
+export type { Vec3 } from '../maps/DeCitadelData.js';
 import { HITBOX } from '../constants/kinematics.js';
 import { SpatialGrid } from './SpatialGrid.js';
 
@@ -50,6 +51,7 @@ export interface TargetCollider {
   hasHelmet: boolean;
   armor: number;
   isDead: boolean;
+  isCrouched?: boolean;
   hitboxes?: TargetHitboxes;
 }
 
@@ -309,28 +311,30 @@ export function executeTacticalRaycast(
     }
   }
 
-  // 2. Gather 5-Zone Target Hitbox intersections
-  // Head: y in [1.50, 1.82], r=0.18
-  // Chest: y in [1.18, 1.50], r=0.34
-  // Stomach: y in [0.88, 1.18], r=0.34
-  // Arms: y in [0.95, 1.48], r=0.44 (shoulder/arm width)
-  // Legs: y in [0.0, 0.88], r=0.28
+  // 2. Gather 5-Zone Target Hitbox intersections with 100% silhouette coverage & crouch support
+  // Standing: Head [1.48..1.84] r=0.18, Chest [1.18..1.50] r=0.34, Stomach [0.88..1.18] r=0.34, Arms [0.95..1.48] r=0.45, Legs [0.00..0.88] r=0.30
+  // Crouching: Head [0.96..1.32] r=0.18, Chest [0.72..1.02] r=0.35, Stomach [0.44..0.72] r=0.35, Arms [0.48..1.00] r=0.45, Legs [0.00..0.44] r=0.32
   for (const t of targets) {
     if (t.isDead) continue;
     const bx = t.center.x;
     const by = t.center.y;
     const bz = t.center.z;
     const hb = t.hitboxes;
+    const isCrouched = !!t.isCrouched;
 
-    // Fast bounding-sphere early out: distance to operator center must be <= 1.30m
-    const opCenter: Vec3 = { x: bx, y: by + 0.92, z: bz };
-    const boundCheck = intersectRaySphere(ray, opCenter, 1.30);
+    // Fast bounding-sphere early out: distance to operator center
+    const opCenter: Vec3 = isCrouched
+      ? { x: bx, y: by + 0.65, z: bz }
+      : { x: bx, y: by + 0.92, z: bz };
+    const boundRadius = isCrouched ? 1.05 : 1.30;
+    const boundCheck = intersectRaySphere(ray, opCenter, boundRadius);
     if (!boundCheck.hit || boundCheck.t > maxRange) {
       continue;
     }
 
     // Head Sphere (uses articulated bone position if available)
-    const headPos = hb?.head ?? { x: bx, y: by + 1.66, z: bz };
+    const headDefaultY = isCrouched ? by + 1.14 : by + 1.66;
+    const headPos = hb?.head ?? { x: bx, y: headDefaultY, z: bz };
     const headHit = intersectRaySphere(ray, headPos, 0.18);
     if (headHit.hit && headHit.t <= maxRange) {
       candidates.push({
@@ -347,9 +351,9 @@ export function executeTacticalRaycast(
     // Chest Cylinder / Box
     const chestX = hb?.chest?.x ?? bx;
     const chestZ = hb?.chest?.z ?? bz;
-    const chestMinY = hb?.chest ? hb.chest.y - 0.16 : by + 1.18;
-    const chestMaxY = hb?.chest ? hb.chest.y + 0.16 : by + 1.50;
-    const chestHit = intersectRayVerticalCylinder(ray, chestX, chestZ, chestMinY, chestMaxY, 0.34);
+    const chestMinY = hb?.chest ? hb.chest.y - 0.16 : (isCrouched ? by + 0.72 : by + 1.18);
+    const chestMaxY = hb?.chest ? hb.chest.y + 0.16 : (isCrouched ? by + 1.02 : by + 1.50);
+    const chestHit = intersectRayVerticalCylinder(ray, chestX, chestZ, chestMinY, chestMaxY, 0.35);
     if (chestHit.hit && chestHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -358,16 +362,16 @@ export function executeTacticalRaycast(
         target: t,
         hitZone: 'CHEST',
         tNear: chestHit.t,
-        tFar: chestHit.t + 0.68,
+        tFar: chestHit.t + 0.70,
       });
     }
 
     // Stomach Cylinder
     const stomX = hb?.stomach?.x ?? bx;
     const stomZ = hb?.stomach?.z ?? bz;
-    const stomMinY = hb?.stomach ? hb.stomach.y - 0.15 : by + 0.88;
-    const stomMaxY = hb?.stomach ? hb.stomach.y + 0.15 : by + 1.18;
-    const stomHit = intersectRayVerticalCylinder(ray, stomX, stomZ, stomMinY, stomMaxY, 0.34);
+    const stomMinY = hb?.stomach ? hb.stomach.y - 0.15 : (isCrouched ? by + 0.44 : by + 0.88);
+    const stomMaxY = hb?.stomach ? hb.stomach.y + 0.15 : (isCrouched ? by + 0.72 : by + 1.18);
+    const stomHit = intersectRayVerticalCylinder(ray, stomX, stomZ, stomMinY, stomMaxY, 0.35);
     if (stomHit.hit && stomHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -376,12 +380,14 @@ export function executeTacticalRaycast(
         target: t,
         hitZone: 'STOMACH',
         tNear: stomHit.t,
-        tFar: stomHit.t + 0.68,
+        tFar: stomHit.t + 0.70,
       });
     }
 
-    // Arms (Outer shoulder cylinders)
-    const armsHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.95, by + 1.48, 0.45);
+    // Arms (Outer shoulder cylinders covering out to r=0.45)
+    const armsMinY = isCrouched ? by + 0.48 : by + 0.95;
+    const armsMaxY = isCrouched ? by + 1.00 : by + 1.48;
+    const armsHit = intersectRayVerticalCylinder(ray, bx, bz, armsMinY, armsMaxY, 0.45);
     if (armsHit.hit && armsHit.t <= maxRange && !chestHit.hit) {
       candidates.push({
         type: 'target',
@@ -390,12 +396,13 @@ export function executeTacticalRaycast(
         target: t,
         hitZone: 'ARMS',
         tNear: armsHit.t,
-        tFar: armsHit.t + 0.9,
+        tFar: armsHit.t + 0.90,
       });
     }
 
-    // Legs Cylinder
-    const legsHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.0, by + 0.88, 0.30);
+    // Legs Cylinder (extends from ground y=0.00 up to pelvis, 100% continuous coverage)
+    const legsMaxY = isCrouched ? by + 0.44 : by + 0.88;
+    const legsHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.00, legsMaxY, 0.32);
     if (legsHit.hit && legsHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -404,7 +411,7 @@ export function executeTacticalRaycast(
         target: t,
         hitZone: 'LEGS',
         tNear: legsHit.t,
-        tFar: legsHit.t + 0.6,
+        tFar: legsHit.t + 0.64,
       });
     }
   }

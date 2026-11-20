@@ -121,11 +121,16 @@ export class BinaryCodec {
       view.setInt16(offset + 14, Math.round(p.vy * 100), true);
       view.setInt16(offset + 16, Math.round(p.vz * 100), true);
 
-      // Quantized Angles (-pi..+pi to signed int16)
-      const normYaw = ((p.yaw % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
-      const normPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, p.pitch));
-      view.setInt16(offset + 18, Math.round((normYaw / Math.PI) * 32767), true);
-      view.setInt16(offset + 20, Math.round((normPitch / (Math.PI / 2)) * 32767), true);
+      // Quantized Angles: Yaw packed into overflow-proof Uint16 [0..65535], Pitch clamped to Int16 [-32767..32767]
+      const safeYaw = Number.isFinite(p.yaw) ? p.yaw : 0;
+      const safePitch = Number.isFinite(p.pitch) ? p.pitch : 0;
+      const wrappedYaw = ((safeYaw % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+      const quantizedYaw = Math.max(0, Math.min(65535, Math.round(((wrappedYaw + Math.PI) / (Math.PI * 2)) * 65535)));
+      const normPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, safePitch));
+      const quantizedPitch = Math.max(-32767, Math.min(32767, Math.round((normPitch / (Math.PI / 2)) * 32767)));
+
+      view.setUint16(offset + 18, quantizedYaw, true);
+      view.setInt16(offset + 20, quantizedPitch, true);
 
       view.setUint8(offset + 22, p.kills & 0xff);
       view.setUint8(offset + 23, p.deaths & 0xff);
@@ -198,11 +203,11 @@ export class BinaryCodec {
       const vy = view.getInt16(offset + 14, true) / 100;
       const vz = view.getInt16(offset + 16, true) / 100;
 
-      const rawYaw = view.getInt16(offset + 18, true);
-      const yaw = (rawYaw / 32767) * Math.PI;
+      const rawYaw = view.getUint16(offset + 18, true);
+      const yaw = (rawYaw / 65535) * (Math.PI * 2) - Math.PI;
 
       const rawPitch = view.getInt16(offset + 20, true);
-      const pitch = (rawPitch / 32767) * (Math.PI / 2);
+      const pitch = (Math.max(-32767, Math.min(32767, rawPitch)) / 32767) * (Math.PI / 2);
 
       const kills = view.getUint8(offset + 22);
       const deaths = view.getUint8(offset + 23);
@@ -316,8 +321,10 @@ export class BinaryCodec {
     const weaponIdx = view.getUint8(12);
     const weaponId = INDEX_TO_WEAPON[weaponIdx] || 'garam-47';
 
-    const yaw = view.getFloat32(13, true);
-    const pitch = view.getFloat32(17, true);
+    const rawYaw = view.getFloat32(13, true);
+    const rawPitch = view.getFloat32(17, true);
+    const yaw = Number.isFinite(rawYaw) ? rawYaw : 0;
+    const pitch = Number.isFinite(rawPitch) ? Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rawPitch)) : 0;
 
     return {
       seq,

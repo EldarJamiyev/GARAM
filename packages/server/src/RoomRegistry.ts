@@ -5,6 +5,8 @@ export class RoomRegistry {
   private emptyTimestamps = new Map<string, number>();
   private reapInterval: NodeJS.Timeout | null = null;
   public static readonly IDLE_REAP_MS = 60_000; // 60 seconds
+  public static readonly MAX_ROOMS = 12;
+  public static readonly ROOM_CODE_REGEX = /^GRM-[A-Z0-9]{3,10}$/;
 
   constructor() {
     // Default competitive room
@@ -18,11 +20,21 @@ export class RoomRegistry {
   }
 
   public getOrCreate(roomCode?: string): { room: GameRoom; code: string } {
-    const code = roomCode ? roomCode.toUpperCase().trim() : 'GRM-CITADEL';
+    let code = roomCode ? roomCode.toUpperCase().trim() : 'GRM-CITADEL';
+
+    // Validate room code format; fallback to GRM-CITADEL if invalid
+    if (!RoomRegistry.ROOM_CODE_REGEX.test(code)) {
+      code = 'GRM-CITADEL';
+    }
 
     if (this.rooms.has(code)) {
       this.emptyTimestamps.delete(code);
       return { room: this.rooms.get(code)!, code };
+    }
+
+    // Capacity limit: clamp to GRM-CITADEL if server reached MAX_ROOMS
+    if (this.rooms.size >= RoomRegistry.MAX_ROOMS) {
+      return { room: this.rooms.get('GRM-CITADEL')!, code: 'GRM-CITADEL' };
     }
 
     const newRoom = new GameRoom();
@@ -31,6 +43,10 @@ export class RoomRegistry {
   }
 
   public createUniqueRoom(): { room: GameRoom; code: string } {
+    if (this.rooms.size >= RoomRegistry.MAX_ROOMS) {
+      return { room: this.rooms.get('GRM-CITADEL')!, code: 'GRM-CITADEL' };
+    }
+
     let code = '';
     do {
       const rand = Math.random().toString(36).substring(2, 5).toUpperCase();

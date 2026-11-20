@@ -10,3 +10,5 @@ export * from './net/LagCompensation.js';
 export * from './net/Validator.js';
 export * from './physics/SpatialGrid.js';
 export * from './net/BinaryCodec.js';
+export * from './simulation/BotBrain.js';
+export * from './simulation/MatchSimulation.js';

@@ -54,6 +54,7 @@ interface HumanSession {
   framesProcessedThisSecond: number;
   currentSecondBucket: number;
   useBinary: boolean;
+  recentlyVisibleEnemies: Map<string, number>;
 }
 
 interface ServerBot {
@@ -250,6 +251,7 @@ export class GameRoom {
         framesProcessedThisSecond: 0,
         currentSecondBucket: Math.floor(Date.now() / 1000),
         useBinary: false,
+        recentlyVisibleEnemies: new Map(),
       };
 
       this.sessions.set(sessionId, session);
@@ -294,9 +296,11 @@ export class GameRoom {
     if (packet.type === 'fire') {
       if (session.isDead) return;
 
-      // Silent-Aim Angle Guard: reject FireAction if yaw diverges by > 15° (0.26 rad) from latest controller state
-      const yawDiff = Math.abs(packet.yaw - session.controller.state.yaw) % (Math.PI * 2);
-      const angleDelta = yawDiff > Math.PI ? (Math.PI * 2 - yawDiff) : yawDiff;
+      // Silent-Aim Angle Guard: reject FireAction if yaw diverges by > 15° (0.26 rad) using shortest circular arc
+      const angleDelta = Math.abs(Math.atan2(
+        Math.sin(packet.yaw - session.controller.state.yaw),
+        Math.cos(packet.yaw - session.controller.state.yaw)
+      ));
       if (angleDelta > 0.26) {
         return; // Silent-aim attempt dropped
       }
@@ -639,12 +643,14 @@ export class GameRoom {
   /**
    * PVS (Potentially Visible Set) Anti-Wallhack Filter:
    * Teammates are always transmitted for radar/tactical coordination.
-   * Enemies are transmitted if within 16m (audio footstep radius) or if direct line-of-sight exists.
-   * Completely obstructed enemies across the map are culled, preventing ESP/wallhack cheat exploits.
+   * Enemies are transmitted if within 26m (audio footstep/reload radius) or if direct line-of-sight exists.
+   * Uses 4-point silhouette probe + 350ms hysteresis buffer to prevent peek pop-in.
+   * Completely obstructed distant enemies across the map are culled, preventing ESP/wallhack cheat exploits.
    */
   private filterPlayersForSession(session: HumanSession, allPlayers: NetOperatorState[]): NetOperatorState[] {
     const sPos = session.controller.state;
-    const eyeA = { x: sPos.x, y: sPos.y + 1.65, z: sPos.z };
+    const eyeA = { x: sPos.x, y: sPos.y + (sPos.isCrouching ? 1.10 : 1.65), z: sPos.z };
+    const now = Date.now();
 
     return allPlayers.filter(p => {
       // Always include self and teammates
@@ -655,18 +661,44 @@ export class GameRoom {
       // Always include dead ragdolls/spectate targets
       if (p.isDead) return true;
 
-      // Close-proximity / audio radius (16 meters)
+      // Close-proximity / audio radius (26 meters for footsteps/reloads/utility)
       const dx = p.x - sPos.x;
       const dy = p.y - sPos.y;
       const dz = p.z - sPos.z;
       const distSq = dx * dx + dy * dy + dz * dz;
-      if (distSq <= 256) {
+      if (distSq <= 676) {
+        session.recentlyVisibleEnemies.set(p.id, now);
         return true;
       }
 
-      // Line-of-sight check via accelerated SpatialGrid broadphase
-      const eyeB = { x: p.x, y: p.y + 1.65, z: p.z };
-      return hasLineOfSight(eyeA, eyeB, DE_CITADEL_BLOCKS, [], this.spatialGrid);
+      // Check 350ms hysteresis buffer for smooth jiggle-peek tracking without pop-in
+      const lastSeen = session.recentlyVisibleEnemies.get(p.id) || 0;
+      if (now - lastSeen < 350) {
+        return true;
+      }
+
+      // 4-point silhouette probe (Head, Left Shoulder, Right Shoulder, Center Torso)
+      const cosYaw = Math.cos(p.yaw);
+      const sinYaw = Math.sin(p.yaw);
+      const headY = p.isCrouching ? 1.14 : 1.66;
+      const shoulderY = p.isCrouching ? 0.85 : 1.35;
+      const torsoY = p.isCrouching ? 0.60 : 1.10;
+
+      const probePoints = [
+        { x: p.x, y: p.y + headY, z: p.z },
+        { x: p.x - 0.40 * cosYaw, y: p.y + shoulderY, z: p.z + 0.40 * sinYaw },
+        { x: p.x + 0.40 * cosYaw, y: p.y + shoulderY, z: p.z - 0.40 * sinYaw },
+        { x: p.x, y: p.y + torsoY, z: p.z },
+      ];
+
+      for (const pt of probePoints) {
+        if (hasLineOfSight(eyeA, pt, DE_CITADEL_BLOCKS, [], this.spatialGrid)) {
+          session.recentlyVisibleEnemies.set(p.id, now);
+          return true;
+        }
+      }
+
+      return false;
     });
   }
 

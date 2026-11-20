@@ -294,6 +294,29 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     }
   }
 
+  // Catwalk Steel Support Trusses & Jersey Barrier Detailing (Merged into existing batches = 0 extra draw calls)
+  const catwalkTruss = new THREE.BoxGeometry(0.22, 0.22, 14.0);
+  catwalkTruss.translate(-26.5, 3.4, -26.0);
+  hazardGeos.push(catwalkTruss);
+
+  const catwalkCross1 = new THREE.BoxGeometry(0.16, 0.16, 4.2);
+  catwalkCross1.rotateY(Math.PI / 4);
+  catwalkCross1.translate(-26.5, 2.2, -22.0);
+  hazardGeos.push(catwalkCross1);
+
+  const catwalkCross2 = new THREE.BoxGeometry(0.16, 0.16, 4.2);
+  catwalkCross2.rotateY(-Math.PI / 4);
+  catwalkCross2.translate(-26.5, 2.2, -30.0);
+  hazardGeos.push(catwalkCross2);
+
+  const jerseyB1 = new THREE.BoxGeometry(3.6, 0.95, 0.48);
+  jerseyB1.translate(28.0, 0.475, -27.5);
+  wallGeos.push(jerseyB1);
+
+  const jerseyB2 = new THREE.BoxGeometry(3.6, 0.95, 0.48);
+  jerseyB2.translate(-22.0, 0.475, -12.0);
+  wallGeos.push(jerseyB2);
+
   const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, castShadow: boolean) => {
     if (geos.length === 0) return;
     const merged = mergeGeometries(geos, false);
@@ -318,6 +341,31 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     scene.add(aoMesh);
     aoGeos.forEach(g => g.dispose());
   }
+
+  // Volumetric Tunnel & Connector Dust Light Cones (Merged into 1 draw call)
+  const coneMat = new THREE.MeshBasicMaterial({
+    color: 0xffeedd,
+    transparent: true,
+    opacity: 0.08,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const coneGeos: THREE.BufferGeometry[] = [];
+  const cone1 = new THREE.ConeGeometry(2.4, 4.8, 16, 1, true);
+  cone1.rotateX(Math.PI);
+  cone1.translate(24, 2.8, 0);
+  coneGeos.push(cone1);
+
+  const cone2 = new THREE.ConeGeometry(2.6, 5.2, 16, 1, true);
+  cone2.rotateX(Math.PI);
+  cone2.translate(0, 3.2, -8);
+  coneGeos.push(cone2);
+
+  const mergedCones = mergeGeometries(coneGeos, false);
+  const lightConesMesh = new THREE.Mesh(mergedCones, coneMat);
+  scene.add(lightConesMesh);
+  coneGeos.forEach(g => g.dispose());
 
   // Bombsite A Ground Ring
   const siteAGround = new THREE.Mesh(

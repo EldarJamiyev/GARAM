@@ -54,4 +54,22 @@ describe('Authoritative RoomRegistry & Dynamic Lifecycle Suite', () => {
     expect(registry.getRoomCount()).toBe(1);
     expect(registry.get('GRM-CITADEL')).toBeDefined();
   });
+
+  it('rejects invalid room code patterns and falls back to GRM-CITADEL', () => {
+    registry = new RoomRegistry();
+    const { code: c1 } = registry.getOrCreate('INVALID_CODE!#$');
+    expect(c1).toBe('GRM-CITADEL');
+
+    const { code: c2 } = registry.getOrCreate('grm-valid123');
+    expect(c2).toBe('GRM-VALID123');
+  });
+
+  it('caps room creation at MAX_ROOMS (12) to prevent resource exhaustion', () => {
+    registry = new RoomRegistry();
+    for (let i = 1; i <= 15; i++) {
+      registry.getOrCreate(`GRM-ROOM${i}`);
+    }
+    expect(registry.getRoomCount()).toBeLessThanOrEqual(RoomRegistry.MAX_ROOMS);
+    expect(registry.getRoomCount()).toBe(12);
+  });
 });

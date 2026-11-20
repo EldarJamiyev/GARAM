@@ -436,4 +436,99 @@ describe('RaycastEngine & Ballistics', () => {
     const boltCycleDuration = 60 / awp.fireRateRpm;
     expect(boltCycleDuration).toBeCloseTo(1.3333, 3);
   });
+
+  it('100% silhouette coverage: registers low shin/boot hits down to y = 0.20m', () => {
+    const target: TargetCollider = {
+      id: 'standing_enemy',
+      name: 'Peeking Shin',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 15 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+    };
+
+    const ray: Ray = {
+      origin: { x: 0, y: 0.20, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      WEAPONS['garam-47'].damage,
+      WEAPONS['garam-47'].armorPenetration,
+      WEAPONS['garam-47'].penetrationPower,
+      50,
+      [],
+      [target]
+    );
+
+    const hit = hits.find(h => h.targetId === 'standing_enemy');
+    expect(hit).toBeDefined();
+    expect(hit?.hitZone).toBe('LEGS');
+  });
+
+  it('100% silhouette coverage: registers outer peeking shoulder hits out to x = 0.40m', () => {
+    const target: TargetCollider = {
+      id: 'shoulder_enemy',
+      name: 'Shoulder Peeker',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 20 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+    };
+
+    const ray: Ray = {
+      origin: { x: 0.40, y: 1.30, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      WEAPONS['vanguard-m4'].damage,
+      WEAPONS['vanguard-m4'].armorPenetration,
+      WEAPONS['vanguard-m4'].penetrationPower,
+      50,
+      [],
+      [target]
+    );
+
+    const hit = hits.find(h => h.targetId === 'shoulder_enemy');
+    expect(hit).toBeDefined();
+    expect(['ARMS', 'CHEST']).toContain(hit?.hitZone);
+  });
+
+  it('accurately hits crouched enemy headshot at y = 1.14m when isCrouched is true', () => {
+    const crouchedTarget: TargetCollider = {
+      id: 'crouched_enemy',
+      name: 'Crouched Defender',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 25 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+      isCrouched: true,
+    };
+
+    const ray: Ray = {
+      origin: { x: 0, y: 1.14, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      WEAPONS['garam-47'].damage,
+      WEAPONS['garam-47'].armorPenetration,
+      WEAPONS['garam-47'].penetrationPower,
+      50,
+      [],
+      [crouchedTarget]
+    );
+
+    const hit = hits.find(h => h.targetId === 'crouched_enemy');
+    expect(hit).toBeDefined();
+    expect(hit?.hitZone).toBe('HEAD');
+    expect(hit?.isHeadshot).toBe(true);
+  });
 });

@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-66%20Passing-D4AF37?style=for-the-badge" alt="66 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-94%20Passing-00FF88?style=for-the-badge" alt="94 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -115,24 +115,29 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (66 Passing Tests Across 9 Suites)
+### Test Suite Coverage (94 Passing Tests Across 14 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
 ```
 ```text
- ✓ packages/server/src/__tests__/gameroom.integration.test.ts (2 tests)
- ✓ packages/shared/src/__tests__/kinematics.test.ts          (12 tests)
- ✓ packages/shared/src/__tests__/ballistics.test.ts          (12 tests)
- ✓ packages/shared/src/__tests__/security.test.ts            (5 tests)
+ ✓ packages/server/src/__tests__/gameroom.integration.test.ts (5 tests)
+ ✓ packages/server/src/__tests__/pvs.test.ts                  (1 test)
+ ✓ packages/server/src/__tests__/registry.test.ts             (6 tests)
+ ✓ packages/shared/src/__tests__/kinematics.test.ts          (13 tests)
+ ✓ packages/shared/src/__tests__/ballistics.test.ts          (15 tests)
+ ✓ packages/shared/src/__tests__/simulation.test.ts           (7 tests)
+ ✓ packages/shared/src/__tests__/spatial.test.ts              (3 tests)
+ ✓ packages/shared/src/__tests__/binarycodec.test.ts          (3 tests)
+ ✓ packages/shared/src/__tests__/security.test.ts            (6 tests)
  ✓ packages/shared/src/__tests__/lagcomp.test.ts             (6 tests)
  ✓ packages/shared/src/__tests__/navgraph.test.ts            (12 tests)
  ✓ packages/shared/src/__tests__/callout.test.ts             (9 tests)
  ✓ packages/shared/src/__tests__/economy.test.ts             (5 tests)
  ✓ packages/shared/src/__tests__/docs-sync.test.ts           (3 tests)
 
- Test Files  9 passed (9)
-      Tests  66 passed (66)
+ Test Files  14 passed (14)
+      Tests  94 passed (94)
 ```
 
 ---

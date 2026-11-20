@@ -1,19 +1,5 @@
 import * as THREE from 'three';
 
-interface DecalMesh {
-  mesh: THREE.Mesh;
-  inUse: boolean;
-}
-
-interface ShellCasing {
-  mesh: THREE.Mesh;
-  velocity: THREE.Vector3;
-  angularVelocity: THREE.Vector3;
-  bounces: number;
-  lifetime: number;
-  active: boolean;
-}
-
 interface TracerLine {
   line: THREE.Line;
   positions: Float32Array;
@@ -21,42 +7,53 @@ interface TracerLine {
   active: boolean;
 }
 
+// Scratch objects for zero runtime GC allocations
+const _dummy = new THREE.Object3D();
+const _matrix = new THREE.Matrix4();
+const _zeroScale = new THREE.Vector3(0, 0, 0);
+
 export class EffectsManager {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
 
-  // Pooled Decals (Max 80)
-  private decalPool: DecalMesh[] = [];
-  private decalPoolIndex = 0;
-  private readonly MAX_DECALS = 80;
+  // Instanced Decals (48 concrete, 24 wood, 24 metal = exactly 3 draw calls total)
+  private readonly MAX_CONCRETE_DECALS = 48;
+  private readonly MAX_WOOD_DECALS = 24;
+  private readonly MAX_METAL_DECALS = 24;
+  private concreteDecals: THREE.InstancedMesh;
+  private woodDecals: THREE.InstancedMesh;
+  private metalDecals: THREE.InstancedMesh;
+  private concreteIndex = 0;
+  private woodIndex = 0;
+  private metalIndex = 0;
+
+  // Instanced Shell Casings (48 casings = exactly 1 draw call total)
+  private readonly MAX_SHELLS = 48;
+  private shellInstancedMesh: THREE.InstancedMesh;
+  private shellIndex = 0;
+  private shellActive: boolean[] = [];
+  private shellPos: Float32Array;
+  private shellVel: Float32Array;
+  private shellRot: Float32Array;
+  private shellAngVel: Float32Array;
+  private shellLife: Float32Array;
+  private shellBounces: Uint8Array;
 
   // Pooled Tracers (Max 24, Zero-GC)
   private tracerPool: TracerLine[] = [];
   private tracerIndex = 0;
   private readonly MAX_TRACERS = 24;
 
-  // Pooled Shell Casings (Max 32, Zero-GC)
-  private shellPool: ShellCasing[] = [];
-  private shellIndex = 0;
-  private readonly MAX_SHELLS = 32;
-  private shellGeometry: THREE.CylinderGeometry;
-  private shellMaterial: THREE.MeshStandardMaterial;
-
-  // Decal Materials
-  private concreteDecalMat: THREE.MeshBasicMaterial;
-  private woodDecalMat: THREE.MeshBasicMaterial;
-  private metalDecalMat: THREE.MeshBasicMaterial;
-
   constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.scene = scene;
     this.camera = camera;
 
-    // Procedural high-contrast bullet impact decal textures
+    // 1. Procedural High-Contrast Bullet Impact Textures
     const concreteTex = this.createImpactTexture('#141618', '#383b40');
     const woodTex = this.createImpactTexture('#281c12', '#4e3422');
     const metalTex = this.createImpactTexture('#0a0c0e', '#5a626b');
 
-    this.concreteDecalMat = new THREE.MeshBasicMaterial({
+    const concreteMat = new THREE.MeshBasicMaterial({
       map: concreteTex,
       transparent: true,
       depthWrite: false,
@@ -65,7 +62,7 @@ export class EffectsManager {
       polygonOffsetUnits: -1.5,
     });
 
-    this.woodDecalMat = new THREE.MeshBasicMaterial({
+    const woodMat = new THREE.MeshBasicMaterial({
       map: woodTex,
       transparent: true,
       depthWrite: false,
@@ -74,7 +71,7 @@ export class EffectsManager {
       polygonOffsetUnits: -1.5,
     });
 
-    this.metalDecalMat = new THREE.MeshBasicMaterial({
+    const metalMat = new THREE.MeshBasicMaterial({
       map: metalTex,
       transparent: true,
       depthWrite: false,
@@ -83,16 +80,63 @@ export class EffectsManager {
       polygonOffsetUnits: -1.5,
     });
 
-    // Initialize Decal Pool
+    // 2. Initialize Instanced Decal Meshes
     const decalGeo = new THREE.PlaneGeometry(0.14, 0.14);
-    for (let i = 0; i < this.MAX_DECALS; i++) {
-      const mesh = new THREE.Mesh(decalGeo, this.concreteDecalMat);
-      mesh.visible = false;
-      this.scene.add(mesh);
-      this.decalPool.push({ mesh, inUse: false });
-    }
+    _dummy.position.set(0, -500, 0);
+    _dummy.scale.set(0, 0, 0);
+    _dummy.updateMatrix();
 
-    // Initialize Tracer Pool (Zero Runtime Allocations)
+    this.concreteDecals = new THREE.InstancedMesh(decalGeo, concreteMat, this.MAX_CONCRETE_DECALS);
+    this.concreteDecals.frustumCulled = false;
+    for (let i = 0; i < this.MAX_CONCRETE_DECALS; i++) {
+      this.concreteDecals.setMatrixAt(i, _dummy.matrix);
+    }
+    this.concreteDecals.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.concreteDecals);
+
+    this.woodDecals = new THREE.InstancedMesh(decalGeo, woodMat, this.MAX_WOOD_DECALS);
+    this.woodDecals.frustumCulled = false;
+    for (let i = 0; i < this.MAX_WOOD_DECALS; i++) {
+      this.woodDecals.setMatrixAt(i, _dummy.matrix);
+    }
+    this.woodDecals.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.woodDecals);
+
+    this.metalDecals = new THREE.InstancedMesh(decalGeo, metalMat, this.MAX_METAL_DECALS);
+    this.metalDecals.frustumCulled = false;
+    for (let i = 0; i < this.MAX_METAL_DECALS; i++) {
+      this.metalDecals.setMatrixAt(i, _dummy.matrix);
+    }
+    this.metalDecals.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.metalDecals);
+
+    // 3. Initialize Instanced Shell Casing Mesh & Typed Arrays
+    const shellGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.024, 8);
+    shellGeo.rotateX(Math.PI / 2);
+    const shellMat = new THREE.MeshStandardMaterial({
+      color: 0xd4af37, // Polished Brass
+      metalness: 0.95,
+      roughness: 0.2,
+    });
+
+    this.shellInstancedMesh = new THREE.InstancedMesh(shellGeo, shellMat, this.MAX_SHELLS);
+    this.shellInstancedMesh.frustumCulled = false;
+    this.shellInstancedMesh.castShadow = false;
+    for (let i = 0; i < this.MAX_SHELLS; i++) {
+      this.shellInstancedMesh.setMatrixAt(i, _dummy.matrix);
+      this.shellActive.push(false);
+    }
+    this.shellInstancedMesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.shellInstancedMesh);
+
+    this.shellPos = new Float32Array(this.MAX_SHELLS * 3);
+    this.shellVel = new Float32Array(this.MAX_SHELLS * 3);
+    this.shellRot = new Float32Array(this.MAX_SHELLS * 3);
+    this.shellAngVel = new Float32Array(this.MAX_SHELLS * 3);
+    this.shellLife = new Float32Array(this.MAX_SHELLS);
+    this.shellBounces = new Uint8Array(this.MAX_SHELLS);
+
+    // 4. Initialize Tracer Pool (Zero Runtime Allocations)
     const tracerMat = new THREE.LineBasicMaterial({
       color: 0xffea55,
       linewidth: 2,
@@ -105,29 +149,6 @@ export class EffectsManager {
       line.visible = false;
       this.scene.add(line);
       this.tracerPool.push({ line, positions, lifetime: 0, active: false });
-    }
-
-    // Initialize Shell Casing Pool
-    this.shellGeometry = new THREE.CylinderGeometry(0.006, 0.006, 0.024, 8);
-    this.shellGeometry.rotateX(Math.PI / 2);
-    this.shellMaterial = new THREE.MeshStandardMaterial({
-      color: 0xd4af37, // Polished Brass
-      metalness: 0.95,
-      roughness: 0.2,
-    });
-
-    for (let i = 0; i < this.MAX_SHELLS; i++) {
-      const mesh = new THREE.Mesh(this.shellGeometry, this.shellMaterial);
-      mesh.visible = false;
-      this.scene.add(mesh);
-      this.shellPool.push({
-        mesh,
-        velocity: new THREE.Vector3(),
-        angularVelocity: new THREE.Vector3(),
-        bounces: 0,
-        lifetime: 0,
-        active: false,
-      });
     }
   }
 
@@ -164,28 +185,32 @@ export class EffectsManager {
   }
 
   public spawnBulletDecal(point: THREE.Vector3, normal: THREE.Vector3, materialType: string): void {
-    const decal = this.decalPool[this.decalPoolIndex];
-    this.decalPoolIndex = (this.decalPoolIndex + 1) % this.MAX_DECALS;
-
-    decal.mesh.position.copy(point).addScaledVector(normal, 0.008);
-    decal.mesh.lookAt(point.clone().add(normal));
-    decal.mesh.rotation.z = Math.random() * Math.PI * 2;
+    _dummy.position.copy(point).addScaledVector(normal, 0.008);
+    _dummy.scale.set(1, 1, 1);
+    _dummy.lookAt(point.clone().add(normal));
+    _dummy.rotateZ(Math.random() * Math.PI * 2);
+    _dummy.updateMatrix();
 
     if (materialType === 'WOOD_THIN') {
-      decal.mesh.material = this.woodDecalMat;
+      const idx = this.woodIndex;
+      this.woodIndex = (this.woodIndex + 1) % this.MAX_WOOD_DECALS;
+      this.woodDecals.setMatrixAt(idx, _dummy.matrix);
+      this.woodDecals.instanceMatrix.needsUpdate = true;
     } else if (materialType === 'METAL_SHEET') {
-      decal.mesh.material = this.metalDecalMat;
+      const idx = this.metalIndex;
+      this.metalIndex = (this.metalIndex + 1) % this.MAX_METAL_DECALS;
+      this.metalDecals.setMatrixAt(idx, _dummy.matrix);
+      this.metalDecals.instanceMatrix.needsUpdate = true;
     } else {
-      decal.mesh.material = this.concreteDecalMat;
+      const idx = this.concreteIndex;
+      this.concreteIndex = (this.concreteIndex + 1) % this.MAX_CONCRETE_DECALS;
+      this.concreteDecals.setMatrixAt(idx, _dummy.matrix);
+      this.concreteDecals.instanceMatrix.needsUpdate = true;
     }
-
-    decal.mesh.visible = true;
-    decal.inUse = true;
   }
 
   public spawnTracer(from: THREE.Vector3, to: THREE.Vector3, weaponId: string): void {
-    // Suppress tracer lines completely for suppressed Vanguard M4A1-S!
-    if (weaponId === 'vanguard-m4') return;
+    if (weaponId === 'vanguard-m4') return; // Suppressed
 
     const tracer = this.tracerPool[this.tracerIndex];
     this.tracerIndex = (this.tracerIndex + 1) % this.MAX_TRACERS;
@@ -206,26 +231,37 @@ export class EffectsManager {
   }
 
   public spawnShellCasing(origin: THREE.Vector3, forward: THREE.Vector3, right: THREE.Vector3): void {
-    const casing = this.shellPool[this.shellIndex];
+    const idx = this.shellIndex;
     this.shellIndex = (this.shellIndex + 1) % this.MAX_SHELLS;
 
-    casing.mesh.position.copy(origin).addScaledVector(right, 0.2).addScaledVector(forward, 0.25);
-    casing.mesh.position.y -= 0.1;
+    const offset3 = idx * 3;
+    this.shellPos[offset3] = origin.x + right.x * 0.2 + forward.x * 0.25;
+    this.shellPos[offset3 + 1] = origin.y - 0.1;
+    this.shellPos[offset3 + 2] = origin.z + right.z * 0.2 + forward.z * 0.25;
 
-    casing.velocity.copy(right).multiplyScalar(2.4 + Math.random() * 0.8);
-    casing.velocity.y = 2.0 + Math.random() * 0.6;
-    casing.velocity.addScaledVector(forward, -0.5);
+    const speed = 2.4 + Math.random() * 0.8;
+    this.shellVel[offset3] = right.x * speed - forward.x * 0.5;
+    this.shellVel[offset3 + 1] = 2.0 + Math.random() * 0.6;
+    this.shellVel[offset3 + 2] = right.z * speed - forward.z * 0.5;
 
-    casing.angularVelocity.set(
-      (Math.random() - 0.5) * 25,
-      (Math.random() - 0.5) * 25,
-      (Math.random() - 0.5) * 25
-    );
+    this.shellRot[offset3] = Math.random() * Math.PI * 2;
+    this.shellRot[offset3 + 1] = Math.random() * Math.PI * 2;
+    this.shellRot[offset3 + 2] = Math.random() * Math.PI * 2;
 
-    casing.bounces = 0;
-    casing.lifetime = 0;
-    casing.active = true;
-    casing.mesh.visible = true;
+    this.shellAngVel[offset3] = (Math.random() - 0.5) * 25;
+    this.shellAngVel[offset3 + 1] = (Math.random() - 0.5) * 25;
+    this.shellAngVel[offset3 + 2] = (Math.random() - 0.5) * 25;
+
+    this.shellLife[idx] = 0;
+    this.shellBounces[idx] = 0;
+    this.shellActive[idx] = true;
+
+    _dummy.position.set(this.shellPos[offset3], this.shellPos[offset3 + 1], this.shellPos[offset3 + 2]);
+    _dummy.rotation.set(this.shellRot[offset3], this.shellRot[offset3 + 1], this.shellRot[offset3 + 2]);
+    _dummy.scale.set(1, 1, 1);
+    _dummy.updateMatrix();
+    this.shellInstancedMesh.setMatrixAt(idx, _dummy.matrix);
+    this.shellInstancedMesh.instanceMatrix.needsUpdate = true;
   }
 
   public spawnDamagePopup(pos: THREE.Vector3, dmg: number, isHeadshot: boolean): void {
@@ -243,7 +279,7 @@ export class EffectsManager {
   }
 
   public update(dt: number): void {
-    // 1. Tick tracers (hide expired ones)
+    // 1. Tick tracers
     for (let i = 0; i < this.MAX_TRACERS; i++) {
       const tracer = this.tracerPool[i];
       if (tracer.active) {
@@ -255,36 +291,56 @@ export class EffectsManager {
       }
     }
 
-    // 2. Tick shell casings physics
+    // 2. Tick instanced shell casings physics
+    let casingsUpdated = false;
     for (let i = 0; i < this.MAX_SHELLS; i++) {
-      const casing = this.shellPool[i];
-      if (!casing.active) continue;
+      if (!this.shellActive[i]) continue;
 
-      casing.lifetime += dt;
-      if (casing.lifetime > 4.0) {
-        casing.active = false;
-        casing.mesh.visible = false;
+      this.shellLife[i] += dt;
+      if (this.shellLife[i] > 4.0) {
+        this.shellActive[i] = false;
+        _dummy.position.set(0, -500, 0);
+        _dummy.scale.set(0, 0, 0);
+        _dummy.updateMatrix();
+        this.shellInstancedMesh.setMatrixAt(i, _dummy.matrix);
+        casingsUpdated = true;
         continue;
       }
 
-      if (casing.bounces < 2) {
-        casing.velocity.y -= 19.6 * dt; // Gravity
-        casing.mesh.position.addScaledVector(casing.velocity, dt);
+      const offset3 = i * 3;
+      if (this.shellBounces[i] < 2) {
+        this.shellVel[offset3 + 1] -= 19.6 * dt; // Gravity
+        this.shellPos[offset3] += this.shellVel[offset3] * dt;
+        this.shellPos[offset3 + 1] += this.shellVel[offset3 + 1] * dt;
+        this.shellPos[offset3 + 2] += this.shellVel[offset3 + 2] * dt;
 
-        casing.mesh.rotation.x += casing.angularVelocity.x * dt;
-        casing.mesh.rotation.y += casing.angularVelocity.y * dt;
-        casing.mesh.rotation.z += casing.angularVelocity.z * dt;
+        this.shellRot[offset3] += this.shellAngVel[offset3] * dt;
+        this.shellRot[offset3 + 1] += this.shellAngVel[offset3 + 1] * dt;
+        this.shellRot[offset3 + 2] += this.shellAngVel[offset3 + 2] * dt;
 
         // Floor bounce at y = 0.015
-        if (casing.mesh.position.y <= 0.015) {
-          casing.mesh.position.y = 0.015;
-          casing.velocity.y = -casing.velocity.y * 0.45;
-          casing.velocity.x *= 0.55;
-          casing.velocity.z *= 0.55;
-          casing.angularVelocity.multiplyScalar(0.4);
-          casing.bounces++;
+        if (this.shellPos[offset3 + 1] <= 0.015) {
+          this.shellPos[offset3 + 1] = 0.015;
+          this.shellVel[offset3 + 1] = -this.shellVel[offset3 + 1] * 0.45;
+          this.shellVel[offset3] *= 0.55;
+          this.shellVel[offset3 + 2] *= 0.55;
+          this.shellAngVel[offset3] *= 0.4;
+          this.shellAngVel[offset3 + 1] *= 0.4;
+          this.shellAngVel[offset3 + 2] *= 0.4;
+          this.shellBounces[i]++;
         }
+
+        _dummy.position.set(this.shellPos[offset3], this.shellPos[offset3 + 1], this.shellPos[offset3 + 2]);
+        _dummy.rotation.set(this.shellRot[offset3], this.shellRot[offset3 + 1], this.shellRot[offset3 + 2]);
+        _dummy.scale.set(1, 1, 1);
+        _dummy.updateMatrix();
+        this.shellInstancedMesh.setMatrixAt(i, _dummy.matrix);
+        casingsUpdated = true;
       }
+    }
+
+    if (casingsUpdated) {
+      this.shellInstancedMesh.instanceMatrix.needsUpdate = true;
     }
   }
 }
