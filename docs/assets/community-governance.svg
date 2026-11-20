@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">GARAM community and project governance</title>
+  <desc id="desc">Three connected stages: respectful conduct, evidence-based contributions, and private responsible security disclosure.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101b2b"/>
+      <stop offset="1" stop-color="#07111f"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#00d5f2"/>
+      <stop offset="1" stop-color="#6af7c8"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="1196" height="296" rx="22" fill="url(#panel)" stroke="#20364a" stroke-width="2"/>
+  <path d="M50 88 H1150" stroke="#294256" stroke-width="2" stroke-dasharray="5 9"/>
+  <text x="52" y="48" fill="#e9f6ff" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="17" font-weight="700" letter-spacing="3">GARAM / COMMUNITY STANDARD</text>
+  <text x="1148" y="48" text-anchor="end" fill="#86a4b9" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" letter-spacing="1.5">RESPECT · EVIDENCE · RESPONSIBILITY</text>
+
+  <g transform="translate(52 108)">
+    <rect width="334" height="144" rx="16" fill="#111f30" stroke="#2d5368"/>
+    <circle cx="42" cy="39" r="20" fill="#06384a" stroke="#00d5f2"/>
+    <path d="M33 39 l6 6 12 -14" fill="none" stroke="#79f5df" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="76" y="35" fill="#75eaf3" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="2">01 / COMMUNITY</text>
+    <text x="24" y="82" fill="#f3f8fc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="23" font-weight="700">Respect people</text>
+    <text x="24" y="112" fill="#9db4c7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15">Professional, constructive collaboration.</text>
+  </g>
+
+  <path d="M402 180 H425" stroke="url(#accent)" stroke-width="3" filter="url(#glow)"/>
+  <path d="M418 172 l8 8 -8 8" fill="none" stroke="#6af7c8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g transform="translate(433 108)">
+    <rect width="334" height="144" rx="16" fill="#111f30" stroke="#2d5368"/>
+    <circle cx="42" cy="39" r="20" fill="#06384a" stroke="#00d5f2"/>
+    <path d="M33 45 V33 h18 v12 M37 37 h10 M37 41 h10" fill="none" stroke="#79f5df" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="76" y="35" fill="#75eaf3" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="2">02 / ENGINEERING</text>
+    <text x="24" y="82" fill="#f3f8fc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="23" font-weight="700">Prove changes</text>
+    <text x="24" y="112" fill="#9db4c7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15">Focused PRs, tests, and reproducible evidence.</text>
+  </g>
+
+  <path d="M783 180 H806" stroke="url(#accent)" stroke-width="3" filter="url(#glow)"/>
+  <path d="M799 172 l8 8 -8 8" fill="none" stroke="#6af7c8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g transform="translate(814 108)">
+    <rect width="334" height="144" rx="16" fill="#111f30" stroke="#2d5368"/>
+    <circle cx="42" cy="39" r="20" fill="#06384a" stroke="#00d5f2"/>
+    <path d="M42 27 l12 5 v9 c0 8 -6 13 -12 16 -6 -3 -12 -8 -12 -16 v-9 z" fill="none" stroke="#79f5df" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M36 40 l4 4 8 -9" fill="none" stroke="#79f5df" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="76" y="35" fill="#75eaf3" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="2">03 / SECURITY</text>
+    <text x="24" y="82" fill="#f3f8fc" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="23" font-weight="700">Disclose privately</text>
+    <text x="24" y="112" fill="#9db4c7" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="15">Protect players, systems, and sensitive details.</text>
+  </g>
+</svg>

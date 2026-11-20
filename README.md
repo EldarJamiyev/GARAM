@@ -176,7 +176,20 @@ Alternatively, on Windows, double-click **`PLAY_GARAM.bat`** in the project root
 
 ---
 
-## 8. License & Credits
+## 8. Community, Contributions & Security
+
+<p align="center">
+  <img src="docs/assets/community-governance.svg" alt="GARAM community standard: respectful collaboration, evidence-based engineering, and private security disclosure" width="100%">
+</p>
+
+| Resource | Purpose |
+| :--- | :--- |
+| [Code of Conduct](CODE_OF_CONDUCT.md) | Expectations for respectful and constructive project collaboration. |
+| [Contributing Guide](CONTRIBUTING.md) | Development setup, engineering standards, tests, and pull request expectations. |
+| [Security Policy](SECURITY.md) | Private vulnerability reporting and responsible testing guidance. |
+| [MIT License](LICENSE) | License terms for original GARAM project material. |
+
+## 9. License & Credits
 
 Built with precision by **Eldar Jamiyev** & the GARAM Systems Team.  
-All gameplay systems, deterministic kinematics, and architectural specifications are maintained under the MIT License.
+Original gameplay systems, deterministic kinematics, and architectural specifications are maintained under the MIT License. Third-party libraries and externally sourced assets remain subject to their own license and attribution terms.
