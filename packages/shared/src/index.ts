@@ -12,3 +12,4 @@ export * from './physics/SpatialGrid.js';
 export * from './net/BinaryCodec.js';
 export * from './simulation/BotBrain.js';
 export * from './simulation/MatchSimulation.js';
+export * from './ai/BotProfiles.js';

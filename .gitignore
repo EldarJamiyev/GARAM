@@ -20,6 +20,8 @@ Desktop.ini
 *.log
 *.tmp
 playtest-*.png
+*.zip
+GARAM/
 
 # Environment and secrets
 .env

@@ -10,6 +10,7 @@ export default defineConfig({
     host: true,
   },
   resolve: {
+    dedupe: ['three'],
     alias: {
       '@garam/shared': path.resolve(__dirname, '../shared/src'),
     },

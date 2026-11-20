@@ -23,6 +23,8 @@ import {
   VanguardStrategy,
   BotBrain,
   EcoDecision,
+  resolveBotArchetype,
+  BotArchetype,
 } from '@garam/shared';
 import { BotEntity } from '../maps/DeCitadelMap.js';
 
@@ -104,6 +106,7 @@ const _stepNormal = new THREE.Vector3();
 const _terminalPoint = new THREE.Vector3();
 
 interface BotInternalState {
+  archetype: BotArchetype;
   ammo: number;
   isReloading: boolean;
   reloadTimeRemaining: number;
@@ -215,6 +218,7 @@ export class BotAISystem {
       );
 
       this.botStates.set(bot.id, {
+        archetype: resolveBotArchetype(bot.id, bot.name, bot.team, this.difficulty),
         ammo: 30,
         isReloading: false,
         reloadTimeRemaining: 0,
@@ -289,6 +293,7 @@ export class BotAISystem {
       );
 
       this.botStates.set(bot.id, {
+        archetype: resolveBotArchetype(bot.id, bot.name, bot.team, this.difficulty),
         ammo: 30,
         isReloading: false,
         reloadTimeRemaining: 0,
@@ -388,6 +393,7 @@ export class BotAISystem {
       let state = this.botStates.get(bot.id);
       if (!state) {
         state = {
+          archetype: resolveBotArchetype(bot.id, bot.name, bot.team, this.difficulty),
           ammo: 30,
           isReloading: false,
           reloadTimeRemaining: 0,
@@ -451,15 +457,17 @@ export class BotAISystem {
 
           if (!this.seePlayerTimes.has(bot.id)) {
             this.seePlayerTimes.set(bot.id, now);
+            this.callbacks.onBotRadioCallout?.(bot, 'Visual contact on hostile!');
           }
           const timeSeen = now - (this.seePlayerTimes.get(bot.id) || now);
 
-          // Smooth Angular Slew toward Player
+          // Smooth Angular Slew toward Player driven by Bot Archetype slew rate
           _aimDir.subVectors(playerEye, _botEye).normalize();
           state.targetYaw = Math.atan2(_aimDir.x, _aimDir.z);
 
           // Slew aim smoothly
-          const maxTurn = (config.slewRateDegPerSec * Math.PI / 180) * dt;
+          const slewRate = state.archetype ? state.archetype.slewRateDegPerSec : config.slewRateDegPerSec;
+          const maxTurn = (slewRate * Math.PI / 180) * dt;
           let angleDiff = state.targetYaw - state.currentYaw;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -467,13 +475,16 @@ export class BotAISystem {
           bot.mesh.rotation.y = state.currentYaw;
 
           // Utility deployment before commitment (Flash or Smoke)
-          if (config.canUseUtility && !state.hasThrownFlash && distToPlayer > 18 && distToPlayer < 35) {
+          const canUseUtil = state.archetype ? state.archetype.skill >= 75 : config.canUseUtility;
+          if (canUseUtil && !state.hasThrownFlash && distToPlayer > 18 && distToPlayer < 35) {
             state.hasThrownFlash = true;
             this.callbacks.onBotThrowUtility?.(bot, 'flash', playerPos.clone());
+            this.callbacks.onBotRadioCallout?.(bot, 'Deploying tactical flash!');
           }
 
           // Combat Firing Cycle: Counter-strafe & Real Ballistic Raycast
-          if (!state.isReloading && timeSeen >= config.reactionTimeMs) {
+          const reactionWindow = state.archetype ? state.archetype.reactionTimeMs : config.reactionTimeMs;
+          if (!state.isReloading && timeSeen >= reactionWindow) {
             if (state.ammo <= 0) {
               state.isReloading = true;
               state.reloadTimeRemaining = 2.4;
@@ -490,8 +501,11 @@ export class BotAISystem {
                 state.ammo--;
 
                 // Execute deterministic ballistic raycast!
-                const spreadX = (Math.random() - 0.5) * config.spreadAngleRad;
-                const spreadY = (Math.random() - 0.5) * config.spreadAngleRad;
+                const spreadAngle = state.archetype
+                  ? Math.max(0.005, (100 - state.archetype.skill) * 0.00045)
+                  : config.spreadAngleRad;
+                const spreadX = (Math.random() - 0.5) * spreadAngle;
+                const spreadY = (Math.random() - 0.5) * spreadAngle;
 
                 const rayDir = _aimDir.clone().add(new THREE.Vector3(spreadX, spreadY, 0)).normalize();
                 const sharedRay: Ray = {
@@ -593,8 +607,9 @@ export class BotAISystem {
               _aimDir.subVectors(_targetEye, _botEye).normalize();
               state.targetYaw = Math.atan2(_aimDir.x, _aimDir.z);
 
-              // Slew towards other bot
-              const maxTurn = (config.slewRateDegPerSec * Math.PI / 180) * dt;
+              // Slew towards other bot driven by Bot Archetype
+              const botSlew = state.archetype ? state.archetype.slewRateDegPerSec : config.slewRateDegPerSec;
+              const maxTurn = (botSlew * Math.PI / 180) * dt;
               let angleDiff = state.targetYaw - state.currentYaw;
               while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
               while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -611,8 +626,11 @@ export class BotAISystem {
                   bot.lastShotTime = now;
                   state.ammo--;
 
-                  const spreadX = (Math.random() - 0.5) * config.spreadAngleRad;
-                  const spreadY = (Math.random() - 0.5) * config.spreadAngleRad;
+                  const spreadAngle = state.archetype
+                    ? Math.max(0.005, (100 - state.archetype.skill) * 0.00045)
+                    : config.spreadAngleRad;
+                  const spreadX = (Math.random() - 0.5) * spreadAngle;
+                  const spreadY = (Math.random() - 0.5) * spreadAngle;
                   const rayDir = _aimDir.clone().add(new THREE.Vector3(spreadX, spreadY, 0)).normalize();
 
                   const sharedRay: Ray = {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 
 export class SceneManager {
   public worldScene: THREE.Scene;
@@ -24,6 +25,7 @@ export class SceneManager {
     this.envMap = this.generateProceduralPMREM(renderer);
     this.worldScene.environment = this.envMap;
     this.viewmodelScene.environment = this.envMap;
+    this.loadHdrEnvironment(renderer);
 
     // 4. Calibrated Sun & Ambient Lighting
     this.hemiLight = new THREE.HemisphereLight(0xddeeff, 0x444b54, 0.85);
@@ -116,6 +118,33 @@ export class SceneManager {
     pmremGen.dispose();
 
     return envTarget.texture;
+  }
+
+  /**
+   * Asynchronously upgrades environment map to 32-bit CC0 HDR Radiance skybox
+   */
+  private loadHdrEnvironment(renderer: THREE.WebGLRenderer): void {
+    new RGBELoader().load(
+      '/textures/skybox/kloofendal_1k.hdr',
+      (texture) => {
+        const pmremGen = new THREE.PMREMGenerator(renderer);
+        pmremGen.compileEquirectangularShader();
+        const envTarget = pmremGen.fromEquirectangular(texture);
+        texture.dispose();
+        pmremGen.dispose();
+
+        if (this.envMap) {
+          this.envMap.dispose();
+        }
+        this.envMap = envTarget.texture;
+        this.worldScene.environment = this.envMap;
+        this.viewmodelScene.environment = this.envMap;
+      },
+      undefined,
+      () => {
+        // Fallback procedural PMREM already active; silent graceful degradation
+      }
+    );
   }
 
   /**

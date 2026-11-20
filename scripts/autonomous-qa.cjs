@@ -96,8 +96,20 @@ async function runAutonomousQASuite() {
   await send('Page.enable');
   await send('Log.enable');
 
-  // Wait 2.5s for WebGL scene, PMREM IBL, and sound system to initialize
-  await sleep(2500);
+  // Wait for DOM and WebGL canvas to be ready
+  for (let i = 0; i < 20; i++) {
+    await sleep(500);
+    try {
+      const res = await send('Runtime.evaluate', {
+        expression: `document.readyState === 'complete' && !!document.getElementById('game-canvas')`,
+        returnByValue: true
+      });
+      if (res && res.result && res.result.value) {
+        break;
+      }
+    } catch {}
+  }
+  await sleep(1500);
 
   // 1. Initial State & Canvas Check
   console.log('\n[Test 1] Verifying Boot, WebGL2 Context & Pre-Match Lobby...');

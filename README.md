@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-99%20Passing-00FF88?style=for-the-badge" alt="99 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-102%20Passing-00FF88?style=for-the-badge" alt="102 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -25,8 +25,9 @@
   2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin is strictly computed on server from authenticated player state (magic bullet exploits eliminated). Includes token-bucket rate limiter (150 msg/s), 4KB payload cap, origin allowlist checks, and prototype pollution defenses.
   3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All firearms (`garam-47`, `vanguard-m4`, `desert-eagle`, `sovereign-awp`) enforce `sprayPattern[0] = [0.0, 0.0]`. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy directly to the crosshair / optic center, and scoped Sovereign AWP shots evaluate spread with `wasScoped = true` prior to bolt unscope for pinpoint 1-shot lethal torso kills at 30m–60m+.
   4. **A\* Tactical Bot Brain & Persistent Anti-Stuck Evasion:** 100% verified collision-free 32-waypoint tactical navigation graph (>= 0.55m node clearance, >= 0.40m corridor clearance). Incorporates persistent 0.85s wall-tangent sliding evasion, line-of-sight corner cutting, and single-file yielding to permanently eliminate bot wall-stuck bottlenecks.
-  5. **Dual-Pass PBR Rendering & Asset Pipeline:** Depth-isolated viewmodel rendering (65° FOV) with procedural PMREM Image-Based Lighting (IBL) reflections, zero world-geometry clipping, and Box3-normalized textured GLBs with animated mechanical bone hooks.
+  5. **Dual-Pass PBR Rendering & Asset Pipeline:** Depth-isolated viewmodel rendering (65° FOV) with Poly Haven CC0 HDR skybox and procedural PMREM Image-Based Lighting (IBL) reflections, zero world-geometry clipping, single-draw-call instanced 3D brass shell casings (locked at 23 idle draw calls), and Box3-normalized textured GLBs with animated mechanical bone hooks.
   6. **Adaptive Clock-Skew Immune Lag Compensation:** Authoritative 64-tick server simulation with ping-adaptive historical hitbox rewind (up to 150ms ceiling), synchronized against client local OS clock drift.
+  7. **Clean-Room Tactical Bot Archetypes & Radio Comms:** 10 distinct personality archetypes (Maverick, Steel, Hawk, Aegis, Sentinel, Viper, Ghost, Razor, Titan, Nomad) with dynamic reaction times, slew rates, skill-based spray control, and procedural dual-tone radio squelch DSP.
 
 ---
 
@@ -115,7 +116,7 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (94 Passing Tests Across 14 Suites)
+### Test Suite Coverage (102 Passing Tests Across 15 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
@@ -124,6 +125,7 @@ npm test
  ✓ packages/server/src/__tests__/gameroom.integration.test.ts (5 tests)
  ✓ packages/server/src/__tests__/pvs.test.ts                  (1 test)
  ✓ packages/server/src/__tests__/registry.test.ts             (6 tests)
+ ✓ packages/shared/src/__tests__/botprofiles.test.ts          (3 tests)
  ✓ packages/shared/src/__tests__/kinematics.test.ts          (13 tests)
  ✓ packages/shared/src/__tests__/ballistics.test.ts          (20 tests)
  ✓ packages/shared/src/__tests__/simulation.test.ts           (7 tests)
@@ -136,8 +138,8 @@ npm test
  ✓ packages/shared/src/__tests__/economy.test.ts             (5 tests)
  ✓ packages/shared/src/__tests__/docs-sync.test.ts           (3 tests)
 
- Test Files  14 passed (14)
-      Tests  99 passed (99)
+ Test Files  15 passed (15)
+      Tests  102 passed (102)
 ```
 
 ---

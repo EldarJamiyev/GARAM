@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 interface TracerLine {
   line: THREE.Line;
@@ -128,6 +129,36 @@ export class EffectsManager {
     }
     this.shellInstancedMesh.instanceMatrix.needsUpdate = true;
     this.scene.add(this.shellInstancedMesh);
+
+    // Asynchronously upgrade casing geometry to realistic 3D 9mm brass model (0 extra draw calls)
+    new GLTFLoader().load(
+      '/models/casing_9mm.glb',
+      (gltf) => {
+        let extractedGeo: THREE.BufferGeometry | null = null;
+        gltf.scene.traverse((child) => {
+          if (!extractedGeo && child instanceof THREE.Mesh) {
+            extractedGeo = child.geometry.clone();
+          }
+        });
+        if (extractedGeo) {
+          const geo = extractedGeo as THREE.BufferGeometry;
+          geo.computeBoundingBox();
+          if (geo.boundingBox) {
+            const size = new THREE.Vector3();
+            geo.boundingBox.getSize(size);
+            const maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0) {
+              const scale = 0.024 / maxDim;
+              geo.scale(scale, scale, scale);
+            }
+          }
+          this.shellInstancedMesh.geometry.dispose();
+          this.shellInstancedMesh.geometry = geo;
+        }
+      },
+      undefined,
+      () => {}
+    );
 
     this.shellPos = new Float32Array(this.MAX_SHELLS * 3);
     this.shellVel = new Float32Array(this.MAX_SHELLS * 3);

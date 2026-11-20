@@ -75,6 +75,7 @@ export function buildBotAICallbacks(ctx: GameContext): BotAISystemCallbacks {
       );
     },
     onBotRadioCallout: (bot: BotEntity, message: string) => {
+      ctx.audio.playRadioChirp?.();
       ctx.hud.addKillfeed(`📻 ${bot.name}: "${message}"`);
     },
   };

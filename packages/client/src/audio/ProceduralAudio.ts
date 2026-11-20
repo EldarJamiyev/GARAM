@@ -782,4 +782,48 @@ export class ProceduralAudio {
     osc.start(t);
     osc.stop(t + 0.12);
   }
+
+  /**
+   * Tactical military headset radio squelch & chirp (clean-room Web Audio DSP)
+   */
+  public playRadioChirp(): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+
+    // Dual-tone radio frequency handshake tone
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(2400, t);
+    osc.frequency.exponentialRampToValueAtTime(1600, t + 0.045);
+
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain!);
+    osc.start(t);
+    osc.stop(t + 0.05);
+
+    // Subtle radio static squelch click
+    const noise = this.ctx.createBufferSource();
+    if (this.sharedNoiseBuffer) {
+      noise.buffer = this.sharedNoiseBuffer;
+    }
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(2800, t);
+    filter.Q.setValueAtTime(3.5, t);
+
+    const nGain = this.ctx.createGain();
+    nGain.gain.setValueAtTime(0.12, t);
+    nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+    noise.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(this.masterGain!);
+    noise.start(t, Math.random() * 1.5);
+    noise.stop(t + 0.04);
+  }
 }
