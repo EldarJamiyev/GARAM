@@ -18,7 +18,9 @@ import {
   ServerPacket,
   NetOperatorState,
   NetBombState,
-  validateClientPacket
+  validateClientPacket,
+  BotBrain,
+  MatchSimulation,
 } from '@garam/shared';
 import { LagCompensation, SnapshotTarget } from './LagCompensation.js';
 
@@ -84,7 +86,8 @@ export class GameRoom {
   private isRunning = false;
   private loopTimeoutHandle: NodeJS.Timeout | null = null;
 
-  // MR12 Match State
+  // MR12 Match State & Unified MatchSimulation
+  public matchSim = new MatchSimulation();
   public round = 1;
   public phase: 'FREEZE_TIME' | 'ROUND_LIVE' | 'ROUND_END' = 'FREEZE_TIME';
   public phaseTimer = 10.0;
@@ -743,10 +746,27 @@ export class GameRoom {
       s.controller.state.z = spawn.z;
     });
 
+    const synBots = this.bots.filter(b => b.team === 'Syndicate');
+    const vgBots = this.bots.filter(b => b.team === 'Vanguard');
+    const synCash = synBots.map(() => 4500);
+    const vgCash = vgBots.map(() => 4500);
+    const synBuys = BotBrain.evaluateTeamEconomy(synCash, this.matchSim.tLossStreak, this.matchSim.round, false);
+    const vgBuys = BotBrain.evaluateTeamEconomy(vgCash, this.matchSim.ctLossStreak, this.matchSim.round, true);
+
+    let synIdx = 0;
+    let vgIdx = 0;
     this.bots.forEach(b => {
       b.isDead = false;
       b.health = 100;
-      b.armor = 100;
+      const isVg = b.team === 'Vanguard';
+      const decision = isVg ? vgBuys[vgIdx++] : synBuys[synIdx++];
+      if (decision) {
+        b.armor = decision.buyArmor ? 100 : 0;
+        b.hasHelmet = decision.buyHelmet;
+      } else {
+        b.armor = 100;
+        b.hasHelmet = true;
+      }
       const spawn = b.team === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
       b.controller.state.x = spawn.x;
       b.controller.state.y = spawn.y;

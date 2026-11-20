@@ -19,6 +19,7 @@ export class ProceduralAudio {
     dist: number;
     endTime: number;
   }> = [];
+  private activeReloadNodes: Array<{ osc: OscillatorNode; gain: GainNode }> = [];
 
   constructor() {
     // Preload ElevenLabs synthesized tactical audio (non-blocking)
@@ -412,7 +413,20 @@ export class ProceduralAudio {
     osc.stop(t + 0.12);
   }
 
+  public cancelReloadAudio(): void {
+    if (this.activeReloadNodes.length === 0) return;
+    for (const node of this.activeReloadNodes) {
+      try {
+        node.osc.stop();
+        node.osc.disconnect();
+        node.gain.disconnect();
+      } catch {}
+    }
+    this.activeReloadNodes = [];
+  }
+
   public playReload(isEmpty = false): void {
+    this.cancelReloadAudio();
     this.playMagOut();
     this.playMagIn(0.45);
     if (isEmpty) {
@@ -435,6 +449,7 @@ export class ProceduralAudio {
     gain.connect(this.masterGain!);
     osc.start(t);
     osc.stop(t + 0.09);
+    this.activeReloadNodes.push({ osc, gain });
   }
 
   public playMagIn(delaySeconds = 0): void {
@@ -452,6 +467,7 @@ export class ProceduralAudio {
     gain.connect(this.masterGain!);
     osc.start(t);
     osc.stop(t + 0.14);
+    this.activeReloadNodes.push({ osc, gain });
   }
 
   public playBoltRack(delaySeconds = 0): void {
@@ -469,6 +485,7 @@ export class ProceduralAudio {
     gain.connect(this.masterGain!);
     osc.start(t);
     osc.stop(t + 0.12);
+    this.activeReloadNodes.push({ osc, gain });
   }
 
   public playBodyHitCrunch(worldPos?: THREE.Vector3, listenerPos?: THREE.Vector3, blocks: MapBlockCollider[] = []): void {

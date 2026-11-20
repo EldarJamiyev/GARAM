@@ -176,10 +176,10 @@ export class WeaponController {
     const spreadX = (Math.random() - 0.5) * dynamicSpread;
     const spreadY = (Math.random() - 0.5) * dynamicSpread;
 
-    // Exact rendered crosshair aim vector derived directly from camera orientation
+    // Exact rendered crosshair aim vector derived directly from camera matrixWorld (orthonormal columns)
     camera.getWorldDirection(_forward);
-    _right.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    const _up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    _right.setFromMatrixColumn(camera.matrixWorld, 0); // Column 0: Camera world right (unit length)
+    const _up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1); // Column 1: Camera world up (unit length)
 
     _rayDir.copy(_forward)
       .addScaledVector(_right, spreadX)
@@ -191,7 +191,7 @@ export class WeaponController {
     // Notify onFire callback with wasScoped BEFORE any zoom resets
     this.callbacks.onFire?.(weapon, wasScoped, _rayDir, false);
 
-    // Map targets for RaycastEngine with live 1:1 articulated hitboxes
+    // Map targets for RaycastEngine with live 1:1 articulated hitboxes and rotation
     const targets: TargetCollider[] = bots.map(b => ({
       id: b.id,
       name: b.name,
@@ -201,6 +201,7 @@ export class WeaponController {
       armor: 100,
       isDead: b.isDead,
       isCrouched: !!(b as unknown as { isCrouching?: boolean }).isCrouching,
+      yaw: b.mesh.rotation.y,
       hitboxes: b.rig?.getWorldHitboxes(),
     }));
 

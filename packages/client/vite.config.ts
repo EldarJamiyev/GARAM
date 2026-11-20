@@ -4,6 +4,7 @@ import path from 'path';
 export default defineConfig({
   root: '.',
   publicDir: 'public',
+  envPrefix: 'VITE_',
   server: {
     port: 3000,
     host: true,

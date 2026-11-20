@@ -139,5 +139,11 @@ describe('Zero-Copy Binary Codec (306B Snapshot & 22B Input)', () => {
     const badMagicBuf = new ArrayBuffer(34);
     new DataView(badMagicBuf).setUint8(0, 0x00);
     expect(BinaryCodec.decodeSnapshot(badMagicBuf)).toBeNull();
+
+    // Fuzz all buffer lengths from 0 to 21 bytes -> must return null with zero throws
+    for (let len = 0; len < 22; len++) {
+      const fuzzed = new ArrayBuffer(len);
+      expect(BinaryCodec.decodeInput(fuzzed)).toBeNull();
+    }
   });
 });

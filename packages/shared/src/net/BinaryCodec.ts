@@ -146,7 +146,7 @@ export class BinaryCodec {
    * Decodes a binary state snapshot back into a strongly-typed snapshot packet.
    */
   public static decodeSnapshot(buffer: ArrayBuffer | ArrayBufferLike): BinarySnapshotData | null {
-    if (buffer.byteLength < 34) return null;
+    if (!buffer || buffer.byteLength < 34) return null;
     const view = new DataView(buffer as ArrayBuffer);
 
     if (view.getUint8(0) !== BINARY_MAGIC || view.getUint8(1) !== BINARY_TYPE_SNAPSHOT) {
@@ -172,6 +172,8 @@ export class BinaryCodec {
     const timeRemaining = view.getUint16(31, true) / 10;
 
     const count = view.getUint8(33);
+    if (count > 10 || buffer.byteLength < 34 + count * 26) return null;
+
     const players: NetOperatorState[] = [];
     let offset = 34;
 
@@ -299,7 +301,7 @@ export class BinaryCodec {
    * Decodes a 22-byte binary client input frame on the authoritative server.
    */
   public static decodeInput(buffer: ArrayBuffer | ArrayBufferLike): BinaryInputData | null {
-    if (buffer.byteLength < 22) return null;
+    if (!buffer || buffer.byteLength !== 22) return null;
     const view = new DataView(buffer as ArrayBuffer);
 
     if (view.getUint8(0) !== BINARY_MAGIC || view.getUint8(1) !== BINARY_TYPE_INPUT) {

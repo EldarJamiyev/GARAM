@@ -23,19 +23,19 @@ interface ThrownGrenade {
   bounces: number;
 }
 
-interface SmokePuff {
-  mesh: THREE.Mesh;
+interface SmokePuffData {
   offset: THREE.Vector3;
   targetScale: number;
   rotSpeed: number;
+  rotationZ: number;
 }
 
 export interface ActiveSmokeCloud {
   id: string;
   center: THREE.Vector3;
   radius: number;
-  puffs: SmokePuff[];
-  group: THREE.Group;
+  puffs: SmokePuffData[];
+  instancedMesh: THREE.InstancedMesh;
   spawnTime: number;
   duration: number; // 18.0s
   clearedHoleUntil: number; // Timestamp if temporarily cleared by HE grenade
@@ -66,15 +66,18 @@ export class UtilityManager {
   private activeSmokeClouds: ActiveSmokeCloud[] = [];
   private activeFireZones: MolotovFireZone[] = [];
 
-  // Reusable materials
+  // Reusable materials & geometry
   private smokeMaterial: THREE.MeshStandardMaterial;
   private grenadeMat: THREE.MeshStandardMaterial;
   private fireMat: THREE.MeshBasicMaterial;
+  private sharedPuffGeo: THREE.SphereGeometry;
+  private dummyPuff: THREE.Object3D = new THREE.Object3D();
 
   constructor(scene: THREE.Scene, audio: ProceduralAudio, callbacks: UtilityCallbacks) {
     this.scene = scene;
     this.audio = audio;
     this.callbacks = callbacks;
+    this.sharedPuffGeo = new THREE.SphereGeometry(1.2, 10, 8);
 
     // Soft volumetric alpha smoke material
     const smokeCanvas = document.createElement('canvas');
@@ -248,10 +251,9 @@ export class UtilityManager {
 
       if (age > smoke.duration) {
         // Expired - clean up GPU resources
-        this.scene.remove(smoke.group);
-        for (const p of smoke.puffs) {
-          p.mesh.geometry.dispose();
-        }
+        this.scene.remove(smoke.instancedMesh);
+        (smoke.instancedMesh.material as THREE.Material).dispose();
+        smoke.instancedMesh.dispose();
         this.activeSmokeClouds.splice(i, 1);
         continue;
       }
@@ -268,12 +270,20 @@ export class UtilityManager {
 
       // Check if temporarily cleared by HE grenade
       const isCleared = now < smoke.clearedHoleUntil;
-      smoke.group.visible = !isCleared;
+      smoke.instancedMesh.visible = !isCleared;
 
-      for (const p of smoke.puffs) {
-        p.mesh.scale.setScalar(p.targetScale * scale);
-        p.mesh.rotation.z += p.rotSpeed * dt;
-        (p.mesh.material as THREE.MeshStandardMaterial).opacity = opacity;
+      if (!isCleared) {
+        (smoke.instancedMesh.material as THREE.MeshStandardMaterial).opacity = opacity;
+        for (let p = 0; p < smoke.puffs.length; p++) {
+          const puff = smoke.puffs[p];
+          puff.rotationZ += puff.rotSpeed * dt;
+          this.dummyPuff.position.copy(puff.offset);
+          this.dummyPuff.rotation.set(0, 0, puff.rotationZ);
+          this.dummyPuff.scale.setScalar(puff.targetScale * scale);
+          this.dummyPuff.updateMatrix();
+          smoke.instancedMesh.setMatrixAt(p, this.dummyPuff.matrix);
+        }
+        smoke.instancedMesh.instanceMatrix.needsUpdate = true;
       }
     }
 
@@ -349,15 +359,12 @@ export class UtilityManager {
       }
     }
 
-    const group = new THREE.Group();
-    group.position.copy(pos);
-    const puffs: SmokePuff[] = [];
-
-    // 28 procedural puff spheres clustered into a solid 4.6m volumetric cloud
-    const puffGeo = new THREE.SphereGeometry(1.2, 10, 8);
+    const puffs: SmokePuffData[] = [];
+    const mat = this.smokeMaterial.clone();
+    const instancedMesh = new THREE.InstancedMesh(this.sharedPuffGeo, mat, 28);
+    instancedMesh.position.copy(pos);
 
     for (let p = 0; p < 28; p++) {
-      const puffMesh = new THREE.Mesh(puffGeo, this.smokeMaterial.clone());
       const theta = Math.random() * Math.PI * 2;
       const phi = (Math.random() - 0.2) * Math.PI;
       const r = Math.random() * 2.8;
@@ -368,25 +375,29 @@ export class UtilityManager {
         r * Math.sin(phi) * Math.sin(theta)
       );
 
-      puffMesh.position.copy(offset);
-      group.add(puffMesh);
+      this.dummyPuff.position.copy(offset);
+      this.dummyPuff.rotation.set(0, 0, Math.random() * Math.PI * 2);
+      this.dummyPuff.scale.setScalar(0.001);
+      this.dummyPuff.updateMatrix();
+      instancedMesh.setMatrixAt(p, this.dummyPuff.matrix);
 
       puffs.push({
-        mesh: puffMesh,
         offset,
         targetScale: 1.4 + Math.random() * 0.6,
         rotSpeed: (Math.random() - 0.5) * 0.6,
+        rotationZ: Math.random() * Math.PI * 2,
       });
     }
 
-    this.scene.add(group);
+    instancedMesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(instancedMesh);
 
     this.activeSmokeClouds.push({
       id: Math.random().toString(36).substring(2, 9),
       center: pos.clone(),
       radius: 4.6,
       puffs,
-      group,
+      instancedMesh,
       spawnTime: performance.now(),
       duration: 18.0,
       clearedHoleUntil: 0,
@@ -407,10 +418,11 @@ export class UtilityManager {
 
     const eyePos = camera.position;
     const distToPlayer = eyePos.distanceTo(flashPos);
+    const smokeOccluders = this.getActiveSmokeOccluders();
 
     // 1. Test Player Blindness
     if (distToPlayer <= 32) {
-      const hasLOS = hasLineOfSight(eyePos, flashPos, blocks, []);
+      const hasLOS = hasLineOfSight(eyePos, flashPos, blocks, smokeOccluders);
       if (hasLOS) {
         const camForward = new THREE.Vector3();
         camera.getWorldDirection(camForward);
@@ -434,7 +446,7 @@ export class UtilityManager {
       const botEye = bot.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
       const dist = botEye.distanceTo(flashPos);
       if (dist <= 28) {
-        if (hasLineOfSight(botEye, flashPos, blocks, [])) {
+        if (hasLineOfSight(botEye, flashPos, blocks, smokeOccluders)) {
           // Bots looking towards flashbang are blinded for 2.5s
           bot.lastShotTime = performance.now() + 2500;
         }

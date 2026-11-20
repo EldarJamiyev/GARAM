@@ -21,6 +21,8 @@ import {
   RoundStrategySelection,
   SyndicateStrategy,
   VanguardStrategy,
+  BotBrain,
+  EcoDecision,
 } from '@garam/shared';
 import { BotEntity } from '../maps/DeCitadelMap.js';
 
@@ -90,6 +92,7 @@ export interface BotAISystemCallbacks {
   onBotSpawnTracer?: (from: THREE.Vector3, to: THREE.Vector3, weaponId?: string) => void;
   onBotSpawnDecal?: (point: THREE.Vector3, normal: THREE.Vector3, material: SurfaceMaterial) => void;
   onBotThrowUtility?: (bot: BotEntity, type: 'smoke' | 'flash' | 'molotov', target: THREE.Vector3) => void;
+  onBotRadioCallout?: (bot: BotEntity, message: string) => void;
 }
 
 // Scratch math objects for zero-GC bot AI hot loop
@@ -147,7 +150,7 @@ export class BotAISystem {
   /**
    * Called at start of round (Freeze Time) to orchestrate team strategies & assign tactical roles
    */
-  public startNewRound(roundNumber: number, bots: BotEntity[]): void {
+  public startNewRound(roundNumber: number, bots: BotEntity[], ctLossStreak = 0, tLossStreak = 0): void {
     this.roundStartTime = performance.now();
     this.currentStrategies = rollRandomStrategies();
     this.seePlayerTimes.clear();
@@ -155,6 +158,24 @@ export class BotAISystem {
 
     const synBots = bots.filter(b => b.team === 'Syndicate');
     const vgBots = bots.filter(b => b.team === 'Vanguard');
+
+    // Grandmaster BotBrain: Team-Wide Economy Coordination
+    const synCash = synBots.map(() => 4500);
+    const vgCash = vgBots.map(() => 4500);
+    const synBuys = BotBrain.evaluateTeamEconomy(synCash, tLossStreak, roundNumber, false);
+    const vgBuys = BotBrain.evaluateTeamEconomy(vgCash, ctLossStreak, roundNumber, true);
+
+    synBots.forEach((bot, idx) => {
+      const decision = synBuys[idx];
+      bot.armor = decision.buyArmor ? 100 : 0;
+      bot.hasHelmet = decision.buyHelmet;
+    });
+
+    vgBots.forEach((bot, idx) => {
+      const decision = vgBuys[idx];
+      bot.armor = decision.buyArmor ? 100 : 0;
+      bot.hasHelmet = decision.buyHelmet;
+    });
 
     // Assign Syndicate Roles & Objectives based on selected strategy
     synBots.forEach((bot, index) => {
@@ -304,6 +325,30 @@ export class BotAISystem {
       if (dist <= event.radius) {
         state.soundInvestigateTarget = event.pos.clone();
         state.soundInvestigateTimer = 3.5; // investigate for 3.5s
+      }
+    }
+  }
+
+  /**
+   * Anti-Flash Reaction: Elite & Sovereign bots calculate 180° escape yaw to dodge blinding effects
+   */
+  public onFlashbangExploded(flashPos: THREE.Vector3, bots: BotEntity[]): void {
+    if (this.difficulty !== 'Elite' && this.difficulty !== 'Sovereign') return;
+
+    for (const bot of bots) {
+      if (bot.isDead) continue;
+      const state = this.botStates.get(bot.id);
+      if (!state) continue;
+
+      const botPos: Vec3 = { x: bot.mesh.position.x, y: bot.mesh.position.y + 1.6, z: bot.mesh.position.z };
+      const flashPosVec: Vec3 = { x: flashPos.x, y: flashPos.y, z: flashPos.z };
+      const antiFlash = BotBrain.calculateAntiFlashYaw(state.currentYaw, flashPosVec, botPos);
+
+      if (antiFlash.shouldTurn) {
+        state.targetYaw = antiFlash.targetYaw;
+        state.currentYaw = antiFlash.targetYaw;
+        bot.mesh.rotation.y = antiFlash.targetYaw;
+        this.callbacks.onBotRadioCallout?.(bot, 'Flashing! Turning away!');
       }
     }
   }

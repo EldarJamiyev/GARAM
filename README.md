@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-94%20Passing-00FF88?style=for-the-badge" alt="94 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-99%20Passing-00FF88?style=for-the-badge" alt="99 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -38,9 +38,9 @@
 
 The project is structured as an npm workspaces monorepo enforcing strict boundaries:
 
-- **`@garam/shared`**: Pure, deterministic TypeScript kernel with **zero DOM or Three.js dependencies**. Implements 128Hz kinematics, Circle-AABB SAT collision resolution, 5-zone raycast ballistics, the 32-node `TacticalNavGraph` with A\* pathfinding, economy state rules, and network schemas.
-- **`@garam/client`**: Client application running Three.js (WebGL2), dual-pass viewmodels, procedural PMREM IBL materials, Web Audio DSP convolver reverb, 2D radar, dropped weapon physics, spectator system, and lightweight orchestrator (`main.ts <= 650 lines`).
-- **`@garam/server`**: Authoritative 64-tick Node.js server running shared physics verification, 80ms historical hitbox rewind, and match round transitions.
+- **`@garam/shared`**: Pure, deterministic TypeScript kernel with **zero DOM or Three.js dependencies**. Implements 128Hz kinematics, Circle-AABB SAT collision resolution, 5-zone raycast ballistics with CS2 target penetration priority resolution, the 32-node `TacticalNavGraph` with A\* pathfinding, economy state rules, binary network codecs, and MatchSimulation.
+- **`@garam/client`**: Client application running Three.js (WebGL2), dual-pass viewmodels, procedural PMREM IBL materials, Web Audio DSP convolver reverb, 2D radar, dropped weapon physics, spectator system, instanced volumetric smoke VFX, and lightweight orchestrator (`main.ts <= 450 lines`).
+- **`@garam/server`**: Authoritative 64-tick Node.js server running shared physics verification, 80ms historical hitbox rewind, dynamic RoomRegistry, and match round transitions.
 
 ---
 
@@ -125,7 +125,7 @@ npm test
  ✓ packages/server/src/__tests__/pvs.test.ts                  (1 test)
  ✓ packages/server/src/__tests__/registry.test.ts             (6 tests)
  ✓ packages/shared/src/__tests__/kinematics.test.ts          (13 tests)
- ✓ packages/shared/src/__tests__/ballistics.test.ts          (15 tests)
+ ✓ packages/shared/src/__tests__/ballistics.test.ts          (20 tests)
  ✓ packages/shared/src/__tests__/simulation.test.ts           (7 tests)
  ✓ packages/shared/src/__tests__/spatial.test.ts              (3 tests)
  ✓ packages/shared/src/__tests__/binarycodec.test.ts          (3 tests)
@@ -137,7 +137,7 @@ npm test
  ✓ packages/shared/src/__tests__/docs-sync.test.ts           (3 tests)
 
  Test Files  14 passed (14)
-      Tests  94 passed (94)
+      Tests  99 passed (99)
 ```
 
 ---

@@ -375,17 +375,17 @@ export class OperatorRig {
 
     const isCrouching = !!state.isCrouching;
     const targetTorsoY = isCrouching ? 0.46 : 0.88;
-    const targetHeadY = isCrouching ? 1.08 : 1.50;
-    const targetArmY = isCrouching ? 0.92 : 1.34;
-    const targetWeaponY = isCrouching ? 0.76 : 1.18;
-    const targetBillboardY = isCrouching ? 1.68 : 2.15;
+    const targetHeadY = isCrouching ? 0.95 : 1.50;
+    const targetArmY = isCrouching ? 0.82 : 1.34;
+    const targetWeaponY = isCrouching ? 0.70 : 1.18;
+    const targetBillboardY = isCrouching ? 1.60 : 2.15;
 
     this.head.position.y = targetHeadY;
     this.rightArm.position.y = targetArmY;
     this.leftArm.position.y = targetArmY;
     this.weaponMesh.position.y = targetWeaponY;
     this.uiBillboard.position.y = targetBillboardY;
-    this.headCollider.position.y = isCrouching ? 1.14 : 1.66;
+    this.headCollider.position.y = isCrouching ? 1.05 : 1.66;
     this.bodyCollider.position.y = isCrouching ? 0.55 : 0.95;
 
     // Directional velocity decomposition for natural stride & banking

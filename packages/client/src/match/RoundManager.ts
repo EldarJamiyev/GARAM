@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ECONOMY, getLossBonus, BOMBSITES, Vec3 } from '@garam/shared';
+import { ECONOMY, getLossBonus, BOMBSITES, Vec3, MatchSimulation } from '@garam/shared';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
 
@@ -16,6 +16,7 @@ export interface RoundCallbacks {
 }
 
 export class RoundManager {
+  public matchSim: MatchSimulation = new MatchSimulation();
   public roundNumber = 1;
   public ctScore = 0;
   public tScore = 0;
@@ -47,15 +48,17 @@ export class RoundManager {
   }
 
   public startMatch(): void {
-    this.roundNumber = 1;
-    this.ctScore = 0;
-    this.tScore = 0;
-    this.ctLossStreak = 0;
-    this.tLossStreak = 0;
+    this.matchSim.resetMatch();
+    this.roundNumber = this.matchSim.round;
+    this.ctScore = this.matchSim.ctScore;
+    this.tScore = this.matchSim.tScore;
+    this.ctLossStreak = this.matchSim.ctLossStreak;
+    this.tLossStreak = this.matchSim.tLossStreak;
     this.startRound();
   }
 
   public startRound(): void {
+    this.matchSim.startRound();
     this.phase = 'FREEZE_TIME';
     this.phaseTimer = ECONOMY.freezeTimeSec;
     this.isBombPlanted = false;
@@ -230,15 +233,11 @@ export class RoundManager {
     this.phase = 'ROUND_END';
     this.phaseTimer = ECONOMY.roundEndSec;
 
-    if (winner === 'Vanguard') {
-      this.ctScore++;
-      this.ctLossStreak = Math.max(0, this.ctLossStreak - 1);
-      this.tLossStreak = Math.min(4, this.tLossStreak + 1);
-    } else {
-      this.tScore++;
-      this.tLossStreak = Math.max(0, this.tLossStreak - 1);
-      this.ctLossStreak = Math.min(4, this.ctLossStreak + 1);
-    }
+    const res = this.matchSim.endRound(winner, reason);
+    this.ctScore = res.ctScore;
+    this.tScore = res.tScore;
+    this.ctLossStreak = this.matchSim.ctLossStreak;
+    this.tLossStreak = this.matchSim.tLossStreak;
 
     this.callbacks.onRoundWon(winner, reason, this.ctScore, this.tScore);
   }

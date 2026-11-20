@@ -29,9 +29,15 @@ function isOriginAllowed(originHeader?: string): boolean {
 }
 
 function getClientIp(req: http.IncomingMessage): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') {
-    return forwarded.split(',')[0].trim();
+  if (process.env.TRUST_PROXY === 'true') {
+    const flyClientIp = req.headers['fly-client-ip'];
+    if (typeof flyClientIp === 'string') return flyClientIp.trim();
+    const cfConnectingIp = req.headers['cf-connecting-ip'];
+    if (typeof cfConnectingIp === 'string') return cfConnectingIp.trim();
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string') {
+      return forwarded.split(',')[0].trim();
+    }
   }
   return req.socket.remoteAddress || '127.0.0.1';
 }

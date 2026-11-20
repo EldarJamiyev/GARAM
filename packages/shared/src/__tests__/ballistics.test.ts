@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   executeTacticalRaycast,
   hasLineOfSight,
+  computeSpreadRayDirection,
   MapBlockCollider,
   TargetCollider,
   Ray,
@@ -530,5 +531,158 @@ describe('RaycastEngine & Ballistics', () => {
     expect(hit).toBeDefined();
     expect(hit?.hitZone).toBe('HEAD');
     expect(hit?.isHeadshot).toBe(true);
+  });
+
+  it('guarantees Sovereign AWP frontal chest shot awards CHEST damage (112 HP lethal 1-shot) and is NOT hijacked by ARMS', () => {
+    const standingTarget: TargetCollider = {
+      id: 'standing_enemy',
+      name: 'Standing Defender',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 20 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+      isCrouched: false,
+      yaw: 0,
+    };
+
+    // Aimed dead-center at sternum / chest (y = 1.30m) at 20m distance
+    const ray: Ray = {
+      origin: { x: 0, y: 1.30, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      WEAPONS['sovereign-awp'].damage, // 115
+      WEAPONS['sovereign-awp'].armorPenetration, // 0.975
+      WEAPONS['sovereign-awp'].penetrationPower, // 250
+      50,
+      [],
+      [standingTarget]
+    );
+
+    const hit = hits.find(h => h.targetId === 'standing_enemy');
+    expect(hit).toBeDefined();
+    expect(hit?.hitZone).toBe('CHEST');
+    // Armored chest damage: Math.round(115 * 1.0 * 0.975) = 112 HP (guaranteed 1-shot kill, > 100 HP!)
+    expect(hit?.awardedDamage).toBe(112);
+    expect(hit?.awardedDamage).toBeGreaterThanOrEqual(100);
+  });
+
+  it('awards ARMS (0.75x) when shooting exposed shoulder peek (x = +0.38m)', () => {
+    const shoulderTarget: TargetCollider = {
+      id: 'peeking_enemy',
+      name: 'Shoulder Peeker',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 20 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+      isCrouched: false,
+      yaw: 0,
+    };
+
+    const ray: Ray = {
+      origin: { x: 0.38, y: 1.25, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      WEAPONS['sovereign-awp'].damage,
+      WEAPONS['sovereign-awp'].armorPenetration,
+      WEAPONS['sovereign-awp'].penetrationPower,
+      50,
+      [],
+      [shoulderTarget]
+    );
+
+    const hit = hits.find(h => h.targetId === 'peeking_enemy');
+    expect(hit).toBeDefined();
+    expect(hit?.hitZone).toBe('ARMS');
+    // Armored arm damage: Math.round(115 * 0.75 * 0.975) = 84 HP
+    expect(hit?.awardedDamage).toBe(84);
+  });
+
+  it('sweeps crouched silhouette from y = 0.05m to 1.20m with 100% continuous hit coverage (0 midriff gaps)', () => {
+    const crouchedTarget: TargetCollider = {
+      id: 'crouched_sweep',
+      name: 'Crouched Dummy',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 15 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+      isCrouched: true,
+      yaw: 0,
+    };
+
+    // Sweep vertical rays in 0.05m increments
+    for (let y = 0.05; y <= 1.20; y += 0.05) {
+      const ray: Ray = {
+        origin: { x: 0, y, z: 0 },
+        direction: { x: 0, y: 0, z: 1 },
+      };
+
+      const hits = executeTacticalRaycast(
+        ray,
+        36,
+        0.775,
+        200,
+        50,
+        [],
+        [crouchedTarget]
+      );
+
+      const hit = hits.find(h => h.targetId === 'crouched_sweep');
+      expect(hit, `Expected hit at y = ${y.toFixed(2)}m`).toBeDefined();
+    }
+  });
+
+  it('verifies crouched head hitbox does NOT poke through ceilings above CAPSULE_HEIGHT_CROUCH (1.22m)', () => {
+    const crouchedTarget: TargetCollider = {
+      id: 'crouched_ceiling_test',
+      name: 'Crouched Under Vent',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 15 },
+      armor: 100,
+      hasHelmet: true,
+      isDead: false,
+      isCrouched: true,
+      yaw: 0,
+    };
+
+    // Ray at y = 1.26m (just above 1.22m crouch ceiling) must miss
+    const ray: Ray = {
+      origin: { x: 0, y: 1.26, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      36,
+      0.775,
+      200,
+      50,
+      [],
+      [crouchedTarget]
+    );
+
+    const hit = hits.find(h => h.targetId === 'crouched_ceiling_test');
+    expect(hit).toBeUndefined();
+  });
+
+  it('shared computeSpreadRayDirection generates orthonormal unit basis and valid direction at steep pitch', () => {
+    const dir0 = computeSpreadRayDirection(0, 0, 0, 0);
+    expect(Math.hypot(dir0.x, dir0.y, dir0.z)).toBeCloseTo(1.0, 5);
+    expect(dir0.z).toBeCloseTo(-1.0, 5);
+
+    // Steep 60° pitch looking up at A Heaven (+1.047 rad)
+    const pitch60 = Math.PI / 3;
+    const dir60 = computeSpreadRayDirection(0, pitch60, 0.05, 0.02);
+    const len60 = Math.hypot(dir60.x, dir60.y, dir60.z);
+    expect(len60).toBeCloseTo(1.0, 5);
+    expect(dir60.y).toBeGreaterThan(0.8);
   });
 });

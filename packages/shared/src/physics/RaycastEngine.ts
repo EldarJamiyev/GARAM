@@ -52,12 +52,60 @@ export interface TargetCollider {
   armor: number;
   isDead: boolean;
   isCrouched?: boolean;
+  yaw?: number;
   hitboxes?: TargetHitboxes;
 }
 
 export interface SmokeOccluder {
   center: Vec3;
   radius: number;
+}
+
+/**
+ * Shared deterministic spread ray direction calculation.
+ * Computes exact orthonormal camera/viewplane basis vectors from yaw and pitch (with zero roll),
+ * applying viewplane tangent spread offsets (sx, sy). Never degenerates at steep pitch angles.
+ */
+export function computeSpreadRayDirection(
+  yaw: number,
+  pitch: number,
+  sx: number,
+  sy: number
+): Vec3 {
+  // Forward vector: -Z forward convention
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  const cy = Math.cos(yaw);
+  const syaw = Math.sin(yaw);
+
+  const fx = -syaw * cp;
+  const fy = sp;
+  const fz = -cy * cp;
+
+  // Right vector: orthonormal unit vector perpendicular to forward with zero roll
+  const rx = cy;
+  const ry = 0;
+  const rz = -syaw;
+
+  // Up vector: U = R x F (strictly orthonormal, unit length)
+  const ux = syaw * sp;
+  const uy = cp;
+  const uz = cy * sp;
+
+  // Viewplane spread displacement
+  const dx = fx + sx * rx + sy * ux;
+  const dy = fy + sx * ry + sy * uy;
+  const dz = fz + sx * rz + sy * uz;
+
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 1e-8) {
+    return { x: fx, y: fy, z: fz };
+  }
+  return {
+    x: dx / len,
+    y: dy / len,
+    z: dz / len,
+  };
 }
 
 /**
@@ -312,8 +360,8 @@ export function executeTacticalRaycast(
   }
 
   // 2. Gather 5-Zone Target Hitbox intersections with 100% silhouette coverage & crouch support
-  // Standing: Head [1.48..1.84] r=0.18, Chest [1.18..1.50] r=0.34, Stomach [0.88..1.18] r=0.34, Arms [0.95..1.48] r=0.45, Legs [0.00..0.88] r=0.30
-  // Crouching: Head [0.96..1.32] r=0.18, Chest [0.72..1.02] r=0.35, Stomach [0.44..0.72] r=0.35, Arms [0.48..1.00] r=0.45, Legs [0.00..0.44] r=0.32
+  // Standing: Head [1.48..1.84] r=0.18, Chest [1.16..1.50] r=0.35, Stomach [0.86..1.18] r=0.34, Left/Right Arms [0.95..1.48] r=0.12, Legs [0.00..0.88] r=0.30
+  // Crouching: Head [0.88..1.22] r=0.17 (flush with 1.22m crouch capsule!), Chest [0.72..0.96] r=0.35, Stomach [0.42..0.74] r=0.34, Left/Right Arms [0.48..0.96] r=0.12, Legs [0.00..0.44] r=0.30
   for (const t of targets) {
     if (t.isDead) continue;
     const bx = t.center.x;
@@ -324,7 +372,7 @@ export function executeTacticalRaycast(
 
     // Fast bounding-sphere early out: distance to operator center
     const opCenter: Vec3 = isCrouched
-      ? { x: bx, y: by + 0.65, z: bz }
+      ? { x: bx, y: by + 0.61, z: bz }
       : { x: bx, y: by + 0.92, z: bz };
     const boundRadius = isCrouched ? 1.05 : 1.30;
     const boundCheck = intersectRaySphere(ray, opCenter, boundRadius);
@@ -333,9 +381,10 @@ export function executeTacticalRaycast(
     }
 
     // Head Sphere (uses articulated bone position if available)
-    const headDefaultY = isCrouched ? by + 1.14 : by + 1.66;
+    const headDefaultY = isCrouched ? by + 1.05 : by + 1.66;
+    const headRadius = isCrouched ? 0.17 : 0.18;
     const headPos = hb?.head ?? { x: bx, y: headDefaultY, z: bz };
-    const headHit = intersectRaySphere(ray, headPos, 0.18);
+    const headHit = intersectRaySphere(ray, headPos, headRadius);
     if (headHit.hit && headHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -344,15 +393,15 @@ export function executeTacticalRaycast(
         target: t,
         hitZone: 'HEAD',
         tNear: headHit.t,
-        tFar: headHit.t + 0.36,
+        tFar: headHit.t + headRadius * 2,
       });
     }
 
     // Chest Cylinder / Box
     const chestX = hb?.chest?.x ?? bx;
     const chestZ = hb?.chest?.z ?? bz;
-    const chestMinY = hb?.chest ? hb.chest.y - 0.16 : (isCrouched ? by + 0.72 : by + 1.18);
-    const chestMaxY = hb?.chest ? hb.chest.y + 0.16 : (isCrouched ? by + 1.02 : by + 1.50);
+    const chestMinY = hb?.chest ? hb.chest.y - 0.16 : (isCrouched ? by + 0.72 : by + 1.16);
+    const chestMaxY = hb?.chest ? hb.chest.y + 0.16 : (isCrouched ? by + 0.96 : by + 1.50);
     const chestHit = intersectRayVerticalCylinder(ray, chestX, chestZ, chestMinY, chestMaxY, 0.35);
     if (chestHit.hit && chestHit.t <= maxRange) {
       candidates.push({
@@ -366,12 +415,12 @@ export function executeTacticalRaycast(
       });
     }
 
-    // Stomach Cylinder
+    // Stomach Cylinder (2cm overlap with chest & legs guarantees zero midriff gaps)
     const stomX = hb?.stomach?.x ?? bx;
     const stomZ = hb?.stomach?.z ?? bz;
-    const stomMinY = hb?.stomach ? hb.stomach.y - 0.15 : (isCrouched ? by + 0.44 : by + 0.88);
-    const stomMaxY = hb?.stomach ? hb.stomach.y + 0.15 : (isCrouched ? by + 0.72 : by + 1.18);
-    const stomHit = intersectRayVerticalCylinder(ray, stomX, stomZ, stomMinY, stomMaxY, 0.35);
+    const stomMinY = hb?.stomach ? hb.stomach.y - 0.15 : (isCrouched ? by + 0.42 : by + 0.86);
+    const stomMaxY = hb?.stomach ? hb.stomach.y + 0.15 : (isCrouched ? by + 0.74 : by + 1.18);
+    const stomHit = intersectRayVerticalCylinder(ray, stomX, stomZ, stomMinY, stomMaxY, 0.34);
     if (stomHit.hit && stomHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -380,29 +429,51 @@ export function executeTacticalRaycast(
         target: t,
         hitZone: 'STOMACH',
         tNear: stomHit.t,
-        tFar: stomHit.t + 0.70,
+        tFar: stomHit.t + 0.68,
       });
     }
 
-    // Arms (Outer shoulder cylinders covering out to r=0.45)
+    // Arms: modeled as two laterally offset cylinders (leftArm & rightArm at local x = ±0.34m, r = 0.12m)
+    // rotated by target yaw so frontal chest shots NEVER hit an oversized coaxial barrel
+    const targetYaw = t.yaw ?? 0;
+    const cosY = Math.cos(targetYaw);
+    const sinY = Math.sin(targetYaw);
+    const leftArmX = hb?.leftArm?.x ?? (bx - 0.34 * cosY);
+    const leftArmZ = hb?.leftArm?.z ?? (bz + 0.34 * sinY);
+    const rightArmX = hb?.rightArm?.x ?? (bx + 0.34 * cosY);
+    const rightArmZ = hb?.rightArm?.z ?? (bz - 0.34 * sinY);
     const armsMinY = isCrouched ? by + 0.48 : by + 0.95;
-    const armsMaxY = isCrouched ? by + 1.00 : by + 1.48;
-    const armsHit = intersectRayVerticalCylinder(ray, bx, bz, armsMinY, armsMaxY, 0.45);
-    if (armsHit.hit && armsHit.t <= maxRange && !chestHit.hit) {
+    const armsMaxY = isCrouched ? by + 0.96 : by + 1.48;
+
+    const leftArmHit = intersectRayVerticalCylinder(ray, leftArmX, leftArmZ, armsMinY, armsMaxY, 0.12);
+    if (leftArmHit.hit && leftArmHit.t <= maxRange) {
       candidates.push({
         type: 'target',
-        distance: armsHit.t,
+        distance: leftArmHit.t,
         normal: { x: 0, y: 0, z: 1 },
         target: t,
         hitZone: 'ARMS',
-        tNear: armsHit.t,
-        tFar: armsHit.t + 0.90,
+        tNear: leftArmHit.t,
+        tFar: leftArmHit.t + 0.24,
+      });
+    }
+
+    const rightArmHit = intersectRayVerticalCylinder(ray, rightArmX, rightArmZ, armsMinY, armsMaxY, 0.12);
+    if (rightArmHit.hit && rightArmHit.t <= maxRange) {
+      candidates.push({
+        type: 'target',
+        distance: rightArmHit.t,
+        normal: { x: 0, y: 0, z: 1 },
+        target: t,
+        hitZone: 'ARMS',
+        tNear: rightArmHit.t,
+        tFar: rightArmHit.t + 0.24,
       });
     }
 
     // Legs Cylinder (extends from ground y=0.00 up to pelvis, 100% continuous coverage)
     const legsMaxY = isCrouched ? by + 0.44 : by + 0.88;
-    const legsHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.00, legsMaxY, 0.32);
+    const legsHit = intersectRayVerticalCylinder(ray, bx, bz, by + 0.00, legsMaxY, 0.30);
     if (legsHit.hit && legsHit.t <= maxRange) {
       candidates.push({
         type: 'target',
@@ -411,7 +482,7 @@ export function executeTacticalRaycast(
         target: t,
         hitZone: 'LEGS',
         tNear: legsHit.t,
-        tFar: legsHit.t + 0.64,
+        tFar: legsHit.t + 0.60,
       });
     }
   }
@@ -419,7 +490,16 @@ export function executeTacticalRaycast(
   // 3. Sort chronologically along the ray path
   candidates.sort((a, b) => a.distance - b.distance);
 
+  const ZONE_PRIORITY: Record<HitZone, number> = {
+    HEAD: 4,    // 4.0x
+    STOMACH: 3, // 1.15x
+    CHEST: 2,   // 1.0x
+    ARMS: 1,    // 0.75x
+    LEGS: 1,    // 0.75x
+  };
+
   const results: RaycastHit[] = [];
+  const processedTargetIds = new Set<string>();
   let currentDamage = baseDamage;
   let wallsPenetrated = 0;
 
@@ -478,26 +558,50 @@ export function executeTacticalRaycast(
         break;
       }
     } else if (c.target && c.hitZone) {
+      if (processedTargetIds.has(c.target.id)) continue;
+      processedTargetIds.add(c.target.id);
+
+      // CS2 Target Penetration Priority Resolution:
+      // Scan all hitboxes of that same target reached before any intervening impenetrable wall
+      // and award the highest-priority damage multiplier (HEAD > STOMACH > CHEST > ARMS/LEGS)
+      let bestCandidate = c;
+      let bestPriority = ZONE_PRIORITY[c.hitZone];
+
+      for (const other of candidates) {
+        if (other.type === 'block' && other.block) {
+          if (SURFACE_MATERIALS[other.block.material].isImpenetrable && other.distance > c.distance) {
+            break; // Impenetrable barrier prevents further penetration into target
+          }
+        }
+        if (other.type === 'target' && other.target?.id === c.target.id && other.hitZone) {
+          const prio = ZONE_PRIORITY[other.hitZone];
+          if (prio > bestPriority) {
+            bestPriority = prio;
+            bestCandidate = other;
+          }
+        }
+      }
+
       // 5-Zone Damage Multipliers
       let zoneMultiplier = 1.0;
       let isArmoredZone = false;
 
-      switch (c.hitZone) {
+      switch (bestCandidate.hitZone) {
         case 'HEAD':
           zoneMultiplier = HITBOX.HEAD_MULTIPLIER; // 4.0x
-          isArmoredZone = c.target.hasHelmet;
+          isArmoredZone = bestCandidate.target!.hasHelmet;
           break;
         case 'CHEST':
           zoneMultiplier = HITBOX.CHEST_MULTIPLIER; // 1.0x
-          isArmoredZone = c.target.armor > 0;
+          isArmoredZone = bestCandidate.target!.armor > 0;
           break;
         case 'STOMACH':
           zoneMultiplier = HITBOX.STOMACH_MULTIPLIER; // 1.15x
-          isArmoredZone = c.target.armor > 0;
+          isArmoredZone = bestCandidate.target!.armor > 0;
           break;
         case 'ARMS':
           zoneMultiplier = HITBOX.ARMS_MULTIPLIER; // 0.75x
-          isArmoredZone = c.target.armor > 0;
+          isArmoredZone = bestCandidate.target!.armor > 0;
           break;
         case 'LEGS':
           zoneMultiplier = HITBOX.LEGS_MULTIPLIER; // 0.75x
@@ -506,27 +610,33 @@ export function executeTacticalRaycast(
       }
 
       // Apply range dropoff: effective damage decays per 10m traveled
-      const rangeDecay = Math.pow(rangeDropoff, c.distance / 10);
+      const rangeDecay = Math.pow(rangeDropoff, bestCandidate.distance / 10);
       const effectiveDamage = currentDamage * rangeDecay;
 
       const rawDamage = effectiveDamage * zoneMultiplier;
       let healthDamage = Math.round(rawDamage);
       let armorDamage = 0;
 
-      if (isArmoredZone && c.target.armor > 0) {
+      if (isArmoredZone && bestCandidate.target!.armor > 0) {
         healthDamage = Math.round(rawDamage * armorPenetration);
         armorDamage = Math.round(rawDamage * (1 - armorPenetration) * 0.5);
       }
 
+      const bestHitPoint: Vec3 = {
+        x: ray.origin.x + ray.direction.x * bestCandidate.distance,
+        y: ray.origin.y + ray.direction.y * bestCandidate.distance,
+        z: ray.origin.z + ray.direction.z * bestCandidate.distance,
+      };
+
       results.push({
         hit: true,
-        point: hitPoint,
-        normal: c.normal,
-        distance: c.distance,
+        point: bestHitPoint,
+        normal: bestCandidate.normal,
+        distance: bestCandidate.distance,
         material: 'WOOD_THIN', // Flesh
-        targetId: c.target.id,
-        hitZone: c.hitZone,
-        isHeadshot: c.hitZone === 'HEAD',
+        targetId: bestCandidate.target!.id,
+        hitZone: bestCandidate.hitZone,
+        isHeadshot: bestCandidate.hitZone === 'HEAD',
         awardedDamage: healthDamage,
         armorDamage,
         penetratedWalls: wallsPenetrated,
