@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import { settingsStore } from '../core/SettingsStore.js';
+
+const _headWorld = new THREE.Vector3();
+const _chestWorld = new THREE.Vector3();
+const _stomWorld = new THREE.Vector3();
 
 export interface OperatorVisualState {
   isMoving: boolean;
@@ -81,6 +86,9 @@ export class OperatorRig {
   private uiCanvas: HTMLCanvasElement;
   private uiCtx: CanvasRenderingContext2D;
   private uiTexture: THREE.CanvasTexture;
+  private lastBillboardKey = '';
+  private ownedMaterials: THREE.Material[] = [];
+  private ownedGeometries: THREE.BufferGeometry[] = [];
 
   // Animation Timers & Physics
   private walkCycle = Math.random() * Math.PI * 2;
@@ -280,6 +288,26 @@ export class OperatorRig {
     this.uiBillboard.castShadow = false;
     this.root.add(this.uiBillboard);
 
+    // Track per-instance materials/geometries for clean GPU disposal on disconnect
+    this.ownedMaterials.push(
+      jacketMat,
+      vestMat,
+      accentMat,
+      headMat,
+      helmetMat,
+      visorMat,
+      shadowMat,
+      wfMatHead,
+      wfMatBody,
+      spriteMat
+    );
+    this.ownedGeometries.push(
+      wfHead.geometry,
+      wfChest.geometry,
+      wfStomach.geometry,
+      wfLegs.geometry
+    );
+
     this.updateBillboard(1.0, team, name);
   }
 
@@ -290,20 +318,29 @@ export class OperatorRig {
   public getWorldHitboxes() {
     this.head.updateWorldMatrix(true, false);
     this.torso.updateWorldMatrix(true, false);
-    const headWorld = new THREE.Vector3();
-    const chestWorld = new THREE.Vector3();
-    const stomWorld = new THREE.Vector3();
-    this.head.getWorldPosition(headWorld);
-    this.torso.getWorldPosition(chestWorld);
-    chestWorld.y += 0.28;
-    stomWorld.copy(chestWorld);
-    stomWorld.y -= 0.30;
+    this.head.getWorldPosition(_headWorld);
+    this.torso.getWorldPosition(_chestWorld);
+    _chestWorld.y += 0.28;
+    _stomWorld.copy(_chestWorld);
+    _stomWorld.y -= 0.30;
 
     return {
-      head: { x: headWorld.x, y: headWorld.y + 0.16, z: headWorld.z },
-      chest: { x: chestWorld.x, y: chestWorld.y, z: chestWorld.z },
-      stomach: { x: stomWorld.x, y: stomWorld.y, z: stomWorld.z },
+      head: { x: _headWorld.x, y: _headWorld.y + 0.16, z: _headWorld.z },
+      chest: { x: _chestWorld.x, y: _chestWorld.y, z: _chestWorld.z },
+      stomach: { x: _stomWorld.x, y: _stomWorld.y, z: _stomWorld.z },
     };
+  }
+
+  public dispose(): void {
+    this.uiTexture.dispose();
+    for (const mat of this.ownedMaterials) {
+      mat.dispose();
+    }
+    for (const geo of this.ownedGeometries) {
+      geo.dispose();
+    }
+    this.ownedMaterials = [];
+    this.ownedGeometries = [];
   }
 
   public triggerDeath(hitDir?: THREE.Vector3, isHeadshot?: boolean): void {
@@ -368,6 +405,13 @@ export class OperatorRig {
       this.uiBillboard.visible = false;
       this.contactShadow.visible = false;
       return;
+    }
+
+    // Reset collapse pose cleanly upon respawn
+    if (this.deathProgress > 0) {
+      this.deathProgress = 0;
+      this.root.rotation.x = 0;
+      this.deathKnockback.set(0, 0, 0);
     }
 
     this.uiBillboard.visible = true;
@@ -445,28 +489,32 @@ export class OperatorRig {
    * Renders high-contrast tactical overhead Health Bar + Nameplate
    */
   private updateBillboard(hpRatio: number, team: 'Vanguard' | 'Syndicate', name: string): void {
+    const localTeam = settingsStore.settings.faction;
+    const hpPct = Math.max(0, Math.min(100, Math.round(hpRatio * 100)));
+    const key = `${hpPct}:${team}:${localTeam}:${name}`;
+    if (key === this.lastBillboardKey) return;
+    this.lastBillboardKey = key;
+
     const ctx = this.uiCtx;
     ctx.clearRect(0, 0, 256, 80);
 
-    const isAlly = team === 'Vanguard';
+    const isAlly = team === localTeam;
     const tagColor = isAlly ? '#3b9eff' : '#ffaa00';
     const tagText = isAlly ? `[ALLY] ${name}` : `[ENEMY] ${name}`;
 
-    // Background pill
     ctx.fillStyle = 'rgba(8, 11, 16, 0.88)';
+    ctx.beginPath();
     ctx.roundRect(10, 8, 236, 64, 8);
     ctx.fill();
     ctx.strokeStyle = tagColor;
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Name Text
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 18px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(tagText, 128, 34);
 
-    // Health Bar Frame
     const barX = 24;
     const barY = 44;
     const barW = 208;
@@ -475,13 +523,12 @@ export class OperatorRig {
     ctx.fillStyle = '#22262c';
     ctx.fillRect(barX, barY, barW, barH);
 
-    // Dynamic HP fill color: Green -> Yellow -> Red
     let hpColor = '#00ff88';
     if (hpRatio < 0.35) hpColor = '#ff2233';
     else if (hpRatio < 0.65) hpColor = '#ffaa00';
 
     ctx.fillStyle = hpColor;
-    ctx.fillRect(barX, barY, Math.max(0, barW * hpRatio), barH);
+    ctx.fillRect(barX, barY, Math.max(0, barW * (hpPct / 100)), barH);
 
     this.uiTexture.needsUpdate = true;
   }

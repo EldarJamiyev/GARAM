@@ -9,10 +9,24 @@ export class SceneManager {
   public sunLight: THREE.DirectionalLight;
   public hemiLight: THREE.HemisphereLight;
   public skyMesh: THREE.Mesh;
-  public horizonGroup: THREE.Group;
+  public horizonMesh: THREE.InstancedMesh;
   public envMap: THREE.Texture;
+  public isSoftwareGl = false;
 
   constructor(renderer: THREE.WebGLRenderer) {
+    // Detect software WebGL (SwiftShader / llvmpipe) to prevent shadow-pass stalls
+    const gl = renderer.getContext();
+    const dbgInfo = gl.getExtension('WEBGL_debug_renderer_info');
+    const rendererStr = dbgInfo
+      ? String(gl.getParameter(dbgInfo.UNMASKED_RENDERER_WEBGL) || '')
+      : String(gl.getParameter(gl.RENDERER) || '');
+    this.isSoftwareGl = /swiftshader|llvmpipe|software|mesa/i.test(rendererStr);
+
+    if (this.isSoftwareGl) {
+      renderer.setPixelRatio(1);
+      renderer.shadowMap.enabled = false;
+    }
+
     // 1. World Scene & Camera
     this.worldScene = new THREE.Scene();
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 600);
@@ -33,7 +47,7 @@ export class SceneManager {
 
     this.sunLight = new THREE.DirectionalLight(0xfff3e0, 1.45);
     this.sunLight.position.set(55, 80, 40);
-    this.sunLight.castShadow = true;
+    this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.width = 2048;
     this.sunLight.shadow.mapSize.height = 2048;
     this.sunLight.shadow.camera.near = 1.0;
@@ -64,21 +78,17 @@ export class SceneManager {
     this.skyMesh = this.buildAtmosphericSky();
     this.worldScene.add(this.skyMesh);
 
-    // 6. Distant Low-Poly Industrial Horizon Silhouette
-    this.horizonGroup = this.buildDistantHorizon();
-    this.worldScene.add(this.horizonGroup);
+    // 6. Distant Low-Poly Industrial Horizon Silhouette (Single InstancedMesh = 1 draw call)
+    this.horizonMesh = this.buildDistantHorizon();
+    this.worldScene.add(this.horizonMesh);
   }
 
-  /**
-   * Generates a realistic PMREM specular environment cube texture procedurally
-   */
   private generateProceduralPMREM(renderer: THREE.WebGLRenderer): THREE.Texture {
     const pmremGen = new THREE.PMREMGenerator(renderer);
     pmremGen.compileEquirectangularShader();
 
     const envScene = new THREE.Scene();
 
-    // Zenith to horizon dome
     const geo = new THREE.SphereGeometry(100, 32, 16);
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -86,15 +96,14 @@ export class SceneManager {
     const ctx = canvas.getContext('2d')!;
 
     const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0.0, '#1a5796'); // Azure zenith
-    grad.addColorStop(0.55, '#89b6db'); // Mid sky
-    grad.addColorStop(0.78, '#eaf2fa'); // Warm horizon
-    grad.addColorStop(0.82, '#6b665c'); // Ground boundary
-    grad.addColorStop(1.0, '#302d29'); // Earth bounce
+    grad.addColorStop(0.0, '#1a5796');
+    grad.addColorStop(0.55, '#89b6db');
+    grad.addColorStop(0.78, '#eaf2fa');
+    grad.addColorStop(0.82, '#6b665c');
+    grad.addColorStop(1.0, '#302d29');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 256);
 
-    // Sun disc in reflection map
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(360, 60, 28, 0, Math.PI * 2);
@@ -110,7 +119,6 @@ export class SceneManager {
 
     const envTarget = pmremGen.fromScene(envScene);
 
-    // Clean up temporary baking resources
     envScene.remove(envMesh);
     geo.dispose();
     envMat.dispose();
@@ -120,9 +128,6 @@ export class SceneManager {
     return envTarget.texture;
   }
 
-  /**
-   * Asynchronously upgrades environment map to 32-bit CC0 HDR Radiance skybox
-   */
   private loadHdrEnvironment(renderer: THREE.WebGLRenderer): void {
     new RGBELoader().load(
       '/textures/skybox/kloofendal_1k.hdr',
@@ -142,14 +147,11 @@ export class SceneManager {
       },
       undefined,
       () => {
-        // Fallback procedural PMREM already active; silent graceful degradation
+        // Fallback procedural PMREM already active
       }
     );
   }
 
-  /**
-   * Custom ShaderMaterial Atmospheric Sky with Horizon Fog & Sun Corona
-   */
   private buildAtmosphericSky(): THREE.Mesh {
     const skyGeo = new THREE.SphereGeometry(450, 32, 24);
 
@@ -170,10 +172,8 @@ export class SceneManager {
         vec3 dir = normalize(vWorldPosition);
         float y = dir.y;
 
-        // Gradient: Deep Azure Zenith -> Warm Horizon Haze -> Ground
         vec3 zenithColor = vec3(0.09, 0.34, 0.62);
         vec3 horizonColor = vec3(0.85, 0.91, 0.98);
-        vec3 hazeColor = vec3(0.96, 0.88, 0.78);
         vec3 groundColor = vec3(0.24, 0.22, 0.20);
 
         vec3 sky = mix(horizonColor, zenithColor, clamp(pow(max(y, 0.0), 0.65), 0.0, 1.0));
@@ -181,7 +181,6 @@ export class SceneManager {
           sky = mix(horizonColor, groundColor, clamp(-y * 6.0, 0.0, 1.0));
         }
 
-        // Sun disc + corona
         vec3 sunDir = normalize(sunPosition);
         float cosTheta = dot(dir, sunDir);
         float sunDisc = smoothstep(0.9982, 0.9996, cosTheta);
@@ -206,56 +205,65 @@ export class SceneManager {
   }
 
   /**
-   * Distant low-poly industrial silhouette outside the 120m fortress perimeter
+   * Distant low-poly industrial silhouette batched into 1 single InstancedMesh (1 draw call instead of 48)
    */
-  private buildDistantHorizon(): THREE.Group {
-    const horizon = new THREE.Group();
+  private buildDistantHorizon(): THREE.InstancedMesh {
+    const numStructures = 48;
+    const unitBox = new THREE.BoxGeometry(1, 1, 1);
     const horizonMat = new THREE.MeshBasicMaterial({
       color: 0x485868,
       fog: false,
     });
 
+    const instanced = new THREE.InstancedMesh(unitBox, horizonMat, numStructures);
+    instanced.frustumCulled = false;
+
+    const dummy = new THREE.Object3D();
     const radius = 175;
-    const numStructures = 48;
 
     for (let i = 0; i < numStructures; i++) {
+      // Deterministic pseudo-random silhouette layout
+      const seed = Math.sin(i * 12.9898) * 43758.5453;
+      const r1 = seed - Math.floor(seed);
+      const seed2 = Math.sin(i * 78.233) * 19341.1234;
+      const r2 = seed2 - Math.floor(seed2);
+
       const angle = (i / numStructures) * Math.PI * 2;
-      const x = Math.cos(angle) * (radius + (Math.random() - 0.5) * 30);
-      const z = Math.sin(angle) * (radius + (Math.random() - 0.5) * 30);
+      const dist = radius + (r1 - 0.5) * 30;
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
 
-      const type = Math.random();
-      let geo: THREE.BufferGeometry;
+      let sx: number;
+      let sy: number;
+      let sz: number;
 
-      if (type < 0.45) {
-        // Warehouse building block
-        const w = 18 + Math.random() * 24;
-        const h = 14 + Math.random() * 32;
-        const d = 16 + Math.random() * 18;
-        geo = new THREE.BoxGeometry(w, h, d);
-      } else if (type < 0.75) {
-        // Industrial chimney / silo
-        const r = 3 + Math.random() * 3.5;
-        const h = 35 + Math.random() * 45;
-        geo = new THREE.CylinderGeometry(r * 0.7, r, h, 8);
+      if (r1 < 0.45) {
+        sx = 18 + r2 * 24;
+        sy = 14 + r1 * 32;
+        sz = 16 + r2 * 18;
+      } else if (r1 < 0.75) {
+        sx = 6 + r2 * 5;
+        sy = 35 + r2 * 45;
+        sz = 6 + r2 * 5;
       } else {
-        // Crane / radio tower truss
-        const w = 4;
-        const h = 45 + Math.random() * 35;
-        geo = new THREE.BoxGeometry(w, h, w);
+        sx = 4;
+        sy = 45 + r2 * 35;
+        sz = 4;
       }
 
-      const mesh = new THREE.Mesh(geo, horizonMat);
-      mesh.position.set(x, 10, z);
-      mesh.rotation.y = Math.random() * Math.PI;
-      horizon.add(mesh);
+      dummy.position.set(x, sy * 0.5 - 4, z);
+      dummy.rotation.set(0, r2 * Math.PI, 0);
+      dummy.scale.set(sx, sy, sz);
+      dummy.updateMatrix();
+      instanced.setMatrixAt(i, dummy.matrix);
     }
 
-    return horizon;
+    instanced.instanceMatrix.needsUpdate = true;
+    return instanced;
   }
 
-  public update(dt: number, cameraPos: THREE.Vector3): void {
-    // Keep sky dome and horizon centered on camera
+  public update(_dt: number, cameraPos: THREE.Vector3): void {
     this.skyMesh.position.copy(cameraPos);
-    this.horizonGroup.position.set(cameraPos.x, 0, cameraPos.z);
+    this.horizonMesh.position.set(cameraPos.x, 0, cameraPos.z);
   }
 }

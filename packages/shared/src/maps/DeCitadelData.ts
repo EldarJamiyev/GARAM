@@ -128,27 +128,28 @@ export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   makeBlock('wall_east', 'East Perimeter Wall (B Warehouse)', 60, 0, 0, 3, 9, 120, 'CONCRETE'),
 
   // --- Bombsite A: Armory Courtyard & A Heaven (+3.5m Elevation) ---
-  makeBlock('site_a_back_wall', 'Armory Back Wall', -32, 0, -42, 28, 7, 3, 'CONCRETE'),
+  makeBlock('site_a_back_wall', 'Armory Back Wall', -32, 0, -46.5, 28, 7, 3, 'CONCRETE'),
   makeBlock('site_a_long_wall', 'A Long Partition Wall', -44, 0, -25, 3, 6, 25, 'CONCRETE'),
-  // A Heaven Balcony (+3.5m overlook)
+  // A Heaven Balcony (+3.5m overlook, clean flush backing against Armory Back Wall)
   makeBlock('a_heaven_balcony', 'A Heaven Platform', -24, 0, -40, 8, 3.5, 10, 'CONCRETE'),
-  makeBlock('a_heaven_railing', 'A Heaven Safety Railing', -20.2, 3.5, -40, 0.4, 1.1, 10, 'METAL_SHEET'),
-  // A Heaven Walkable Stairs (10 steps, riser 0.35m each)
-  makeBlock('a_stairs_1', 'A Stairs Step 1', -24, 0.0, -34.5, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_2', 'A Stairs Step 2', -24, 0.35, -35.6, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_3', 'A Stairs Step 3', -24, 0.70, -36.7, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_4', 'A Stairs Step 4', -24, 1.05, -37.8, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_5', 'A Stairs Step 5', -24, 1.40, -38.9, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_6', 'A Stairs Step 6', -24, 1.75, -40.0, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_7', 'A Stairs Step 7', -24, 2.10, -41.1, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_8', 'A Stairs Step 8', -24, 2.45, -42.2, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_9', 'A Stairs Step 9', -24, 2.80, -43.3, 3.6, 0.35, 1.1, 'CONCRETE'),
-  makeBlock('a_stairs_10', 'A Stairs Step 10', -24, 3.15, -44.4, 3.6, 0.35, 1.1, 'CONCRETE'),
-  // A Site Triple Stack Wood Crates (Wallbangable corners & edges)
+  makeBlock('a_heaven_landing', 'A Heaven Stair Landing', -18, 0, -37.0, 3.6, 3.5, 4.0, 'CONCRETE'),
+  makeBlock('a_heaven_railing', 'A Heaven Safety Railing', -20.2, 3.5, -42.0, 0.4, 1.1, 6.0, 'METAL_SHEET'),
+  // A Heaven Walkable Stairs (10 non-overlapping risers, 0.35m each, ascending outside balcony along x = -18)
+  makeBlock('a_stairs_1', 'A Stairs Step 1', -18, 0.0, -25.5, 3.6, 0.35, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_2', 'A Stairs Step 2', -18, 0.0, -26.5, 3.6, 0.70, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_3', 'A Stairs Step 3', -18, 0.0, -27.5, 3.6, 1.05, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_4', 'A Stairs Step 4', -18, 0.0, -28.5, 3.6, 1.40, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_5', 'A Stairs Step 5', -18, 0.0, -29.5, 3.6, 1.75, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_6', 'A Stairs Step 6', -18, 0.0, -30.5, 3.6, 2.10, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_7', 'A Stairs Step 7', -18, 0.0, -31.5, 3.6, 2.45, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_8', 'A Stairs Step 8', -18, 0.0, -32.5, 3.6, 2.80, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_9', 'A Stairs Step 9', -18, 0.0, -33.5, 3.6, 3.15, 1.0, 'CONCRETE'),
+  makeBlock('a_stairs_10', 'A Stairs Step 10', -18, 0.0, -34.5, 3.6, 3.50, 1.0, 'CONCRETE'),
+  // A Site Triple Stack Wood Crates (Wallbangable corners & edges, flush stacked)
   makeBlock('crate_a_low', 'A Site Wood Crate Low', -34, 0, -28, 3.2, 2.5, 3.2, 'WOOD_THIN'),
   makeBlock('crate_a_mid', 'A Site Wood Crate Mid', -30.5, 0, -28, 3.0, 1.80, 3.0, 'WOOD_THIN'),
-  makeBlock('crate_a_high', 'A Site Wood Crate Top', -32.5, 2.2, -28, 2.5, 2.0, 2.5, 'WOOD_THIN'),
-  makeBlock('site_a_catwalk', 'A Catwalk Ledge', -22, 0, -32, 4, 3.2, 14, 'CONCRETE'),
+  makeBlock('crate_a_high', 'A Site Wood Crate Top', -34, 2.5, -28, 2.5, 2.0, 2.5, 'WOOD_THIN'),
+  makeBlock('site_a_catwalk', 'A Catwalk Ledge', -22, 0, -29.5, 4, 3.2, 11, 'CONCRETE'),
 
   // --- A Connector & B Connector (Mid to Sites) ---
   makeBlock('a_connector_wall', 'A Connector Partition', -18, 0, -14, 3, 6, 16, 'CONCRETE'),
@@ -178,6 +179,9 @@ export const DE_CITADEL_BLOCKS: MapBlockCollider[] = [
   makeBlock('container_red', 'B Site Red Cargo Container', 37, 0, -25, 4.0, 4.2, 7.0, 'METAL_SHEET'),
   makeBlock('crate_b_stack', 'B Site Staging Crates', 26, 0, -18, 4.0, 3.0, 4.0, 'WOOD_THIN'),
   makeBlock('crate_b_corner', 'B Site Dark Corner Crate', 48, 0, -38, 3.2, 2.5, 3.2, 'WOOD_THIN'),
+  // Tactical B-Site Jersey Barriers (1:1 visual/physics parity)
+  makeBlock('jersey_b1', 'B Connector Jersey Barrier', 34, 0, -15, 3.2, 1.0, 0.7, 'CONCRETE'),
+  makeBlock('jersey_b2', 'B Site Jersey Barrier', 28, 0, -30, 0.7, 1.0, 3.2, 'CONCRETE'),
 
   // --- CT Spawn & T Spawn Cover Props ---
   makeBlock('ct_barrier_1', 'CT Spawn Low Cover', -6, 0, 30, 8, 1.5, 1.5, 'CONCRETE'),
@@ -268,11 +272,12 @@ export function getCalloutName(x: number, y: number, z: number): string {
 }
 
 // Full 5v5 Roster: 4 Vanguard AI allies (with player as 5th) + 5 Obsidian Syndicate AI enemies
+// Every bot name maps 1:1 to a named BOT_ARCHETYPES specialist profile in BotProfiles.ts
 export const TACTICAL_BOTS: BotSpawnDef[] = [
   // --- Vanguard Allies (CT) ---
   {
     id: 'bot_vanguard_1',
-    name: 'Vanguard Alex',
+    name: 'Vanguard Steel',
     team: 'Vanguard',
     startPos: { x: 6, y: 0, z: 36 },
     waypoints: [
@@ -283,7 +288,7 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
   },
   {
     id: 'bot_vanguard_2',
-    name: 'Vanguard Elena',
+    name: 'Vanguard Hawk',
     team: 'Vanguard',
     startPos: { x: -6, y: 0, z: 36 },
     waypoints: [
@@ -294,7 +299,7 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
   },
   {
     id: 'bot_vanguard_3',
-    name: 'Vanguard Marcus',
+    name: 'Vanguard Aegis',
     team: 'Vanguard',
     startPos: { x: 12, y: 0, z: 40 },
     waypoints: [
@@ -305,7 +310,7 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
   },
   {
     id: 'bot_vanguard_4',
-    name: 'Vanguard Dmitri',
+    name: 'Vanguard Sentinel',
     team: 'Vanguard',
     startPos: { x: -12, y: 0, z: 40 },
     waypoints: [
@@ -318,7 +323,7 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
   // --- Obsidian Syndicate Enemies (T) ---
   {
     id: 'bot_syndicate_1',
-    name: 'Syndicate Kaine',
+    name: 'Syndicate Razor',
     team: 'Syndicate',
     startPos: { x: 0, y: 0, z: -46 },
     waypoints: [
@@ -351,7 +356,7 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
   },
   {
     id: 'bot_syndicate_4',
-    name: 'Syndicate Jax',
+    name: 'Syndicate Titan',
     team: 'Syndicate',
     startPos: { x: -6, y: 0, z: -44 },
     waypoints: [
@@ -362,7 +367,7 @@ export const TACTICAL_BOTS: BotSpawnDef[] = [
   },
   {
     id: 'bot_syndicate_5',
-    name: 'Syndicate Raven',
+    name: 'Syndicate Nomad',
     team: 'Syndicate',
     startPos: { x: 6, y: 0, z: -44 },
     waypoints: [

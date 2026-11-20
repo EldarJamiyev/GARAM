@@ -1,6 +1,13 @@
 import * as THREE from 'three';
-import { MapBlockCollider, BOMBSITES, SmokeOccluder } from '@garam/shared';
+import {
+  MapBlockCollider,
+  BOMBSITES,
+  SmokeOccluder,
+  hasLineOfSight,
+  SpatialGrid,
+} from '@garam/shared';
 import { BotEntity } from '../maps/DeCitadelMap.js';
+import { settingsStore } from '../core/SettingsStore.js';
 
 interface SpottedEnemyMarker {
   botId: string;
@@ -9,15 +16,25 @@ interface SpottedEnemyMarker {
   timestamp: number;
 }
 
+/**
+ * Computes canvas 2D rotation angle (radians) so player's look direction always points UP on radar.
+ * In Three.js right-handed coordinates (+X right, -Z forward at yaw=0, +yaw = turn left):
+ * Rotating world-relative (dx, dz) by +playerYaw maps forward (-sin(yaw), -cos(yaw)) -> (0, -1) (UP).
+ */
+export function computeRadarRotationRad(playerYaw: number): number {
+  return playerYaw;
+}
+
 export class RadarRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private spottedMarkers: Map<string, SpottedEnemyMarker> = new Map();
+  private lastSpotCheckMs = 0;
   private readonly RADAR_SIZE = 185;
   private readonly MAP_SCALE = 1.6; // World units to radar pixels
 
   constructor() {
-    let el = document.getElementById('tactical-radar') as HTMLCanvasElement;
+    let el = document.getElementById('tactical-radar') as HTMLCanvasElement | null;
     if (!el) {
       el = document.createElement('canvas');
       el.id = 'tactical-radar';
@@ -29,8 +46,7 @@ export class RadarRenderer {
       el.style.borderRadius = '50%';
       el.style.border = '2px solid rgba(59, 158, 255, 0.45)';
       el.style.boxShadow = '0 0 20px rgba(0, 0, 0, 0.75), inset 0 0 15px rgba(0, 0, 0, 0.8)';
-      el.style.background = 'rgba(6, 10, 16, 0.88)';
-      el.style.backdropFilter = 'blur(10px)';
+      el.style.background = 'rgba(6, 10, 16, 0.92)';
       el.style.zIndex = '40';
       el.style.pointerEvents = 'none';
 
@@ -43,7 +59,15 @@ export class RadarRenderer {
     }
 
     this.canvas = el;
-    this.ctx = el.getContext('2d')!;
+    const context = el.getContext('2d');
+    if (!context) {
+      throw new Error('Failed to initialize 2D context for Tactical Radar');
+    }
+    this.ctx = context;
+  }
+
+  public clearSpotted(): void {
+    this.spottedMarkers.clear();
   }
 
   public update(
@@ -53,11 +77,13 @@ export class RadarRenderer {
     bots: BotEntity[],
     smokeOccluders: SmokeOccluder[],
     bombPos: THREE.Vector3 | null,
-    isBombArmed: boolean
+    isBombArmed: boolean,
+    spatialGrid?: SpatialGrid
   ): void {
     const ctx = this.ctx;
     const center = this.RADAR_SIZE / 2;
     const now = performance.now();
+    const localTeam = settingsStore.settings.faction;
 
     ctx.clearRect(0, 0, this.RADAR_SIZE, this.RADAR_SIZE);
 
@@ -78,14 +104,13 @@ export class RadarRenderer {
     // Rotate map around player yaw (Player forward = radar UP)
     ctx.save();
     ctx.translate(center, center);
-    ctx.rotate(-playerYaw - Math.PI);
+    ctx.rotate(computeRadarRotationRad(playerYaw));
 
     // World to Radar relative coordinates
-    const toRadar = (wx: number, wz: number) => {
-      const rx = (wx - playerPos.x) * this.MAP_SCALE;
-      const rz = (wz - playerPos.z) * this.MAP_SCALE;
-      return { x: rx, y: rz };
-    };
+    const toRadar = (wx: number, wz: number) => ({
+      x: (wx - playerPos.x) * this.MAP_SCALE,
+      y: (wz - playerPos.z) * this.MAP_SCALE,
+    });
 
     // 1. Draw Map Block Colliders
     ctx.fillStyle = 'rgba(65, 95, 125, 0.45)';
@@ -124,7 +149,7 @@ export class RadarRenderer {
     // 3. Active Smoke Cloud Rings
     for (const s of smokeOccluders) {
       const sp = toRadar(s.center.x, s.center.z);
-      ctx.fillStyle = 'rgba(180, 190, 200, 0.28)';
+      ctx.fillStyle = 'rgba(180, 190, 200, 0.32)';
       ctx.beginPath();
       ctx.arc(sp.x, sp.y, s.radius * this.MAP_SCALE, 0, Math.PI * 2);
       ctx.fill();
@@ -140,21 +165,66 @@ export class RadarRenderer {
       ctx.fill();
     }
 
-    // 5. Bot Entities
+    // 5. Bot Entities (Allies always visible; enemies gated by LOS + smoke occlusion)
+    const shouldCheckSpots = now - this.lastSpotCheckMs >= 120;
+    if (shouldCheckSpots) {
+      this.lastSpotCheckMs = now;
+    }
+
+    const playerEye = { x: playerPos.x, y: playerPos.y + 1.55, z: playerPos.z };
+
     for (const bot of bots) {
-      if (bot.isDead) continue;
+      if (bot.isDead) {
+        this.spottedMarkers.delete(bot.id);
+        continue;
+      }
+
       const bp = toRadar(bot.mesh.position.x, bot.mesh.position.z);
 
-      if (bot.team === 'Vanguard') {
+      if (bot.team === localTeam) {
         // Ally (Always visible in Blue)
         ctx.fillStyle = '#3b9eff';
         ctx.beginPath();
         ctx.arc(bp.x, bp.y, 4, 0, Math.PI * 2);
         ctx.fill();
-      } else {
-        // Enemy (Visible when in range or firing)
-        const dist = playerPos.distanceTo(bot.mesh.position);
-        if (dist <= 38) {
+      } else if (shouldCheckSpots) {
+        const dx = bot.mesh.position.x - playerPos.x;
+        const dz = bot.mesh.position.z - playerPos.z;
+        const distSq = dx * dx + dz * dz;
+        const enemyEye = {
+          x: bot.mesh.position.x,
+          y: bot.mesh.position.y + 1.5,
+          z: bot.mesh.position.z,
+        };
+
+        let isSpotted = false;
+
+        // Direct player LOS (smoke-occluded) within 55m
+        if (distSq <= 55 * 55 && hasLineOfSight(playerEye, enemyEye, blocks, smokeOccluders, spatialGrid)) {
+          isSpotted = true;
+        }
+
+        // Shared teammate LOS within 42m
+        if (!isSpotted) {
+          for (const ally of bots) {
+            if (ally.isDead || ally.team !== localTeam) continue;
+            const adx = bot.mesh.position.x - ally.mesh.position.x;
+            const adz = bot.mesh.position.z - ally.mesh.position.z;
+            if (adx * adx + adz * adz <= 42 * 42) {
+              const allyEye = {
+                x: ally.mesh.position.x,
+                y: ally.mesh.position.y + 1.5,
+                z: ally.mesh.position.z,
+              };
+              if (hasLineOfSight(allyEye, enemyEye, blocks, smokeOccluders, spatialGrid)) {
+                isSpotted = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (isSpotted) {
           this.spottedMarkers.set(bot.id, {
             botId: bot.id,
             x: bot.mesh.position.x,
@@ -175,7 +245,7 @@ export class RadarRenderer {
 
       const ep = toRadar(marker.x, marker.z);
       const alpha = Math.max(0.2, 1 - age / 2.5);
-      ctx.fillStyle = `rgba(255, 45, 65, ${alpha})`;
+      ctx.fillStyle = `rgba(255, 45, 65, ${alpha.toFixed(2)})`;
       ctx.beginPath();
       ctx.arc(ep.x, ep.y, 4.5, 0, Math.PI * 2);
       ctx.fill();
@@ -204,3 +274,4 @@ export class RadarRenderer {
     ctx.restore(); // Undo circular clip
   }
 }
+

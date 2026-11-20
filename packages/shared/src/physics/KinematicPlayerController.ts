@@ -418,9 +418,10 @@ export class KinematicPlayerController {
     if (this.state.isGrounded) {
       const currentHozSpeed = Math.hypot(this.state.vx, this.state.vz);
 
-      // Source-accurate ground friction
+      // Source-accurate ground friction with STOP_SPEED to eliminate exponential ice-skating tail
       if (currentHozSpeed > 0.0001) {
-        const drop = currentHozSpeed * KINEMATICS.FRICTION_GROUND * dt;
+        const control = Math.max(currentHozSpeed, KINEMATICS.STOP_SPEED);
+        const drop = control * KINEMATICS.FRICTION_GROUND * dt;
         const newSpeed = Math.max(0, currentHozSpeed - drop);
         const frictionRatio = newSpeed / currentHozSpeed;
         this.state.vx *= frictionRatio;
@@ -520,6 +521,7 @@ export class KinematicPlayerController {
       this.state.isGrounded = true;
     }
 
+    let bestLandingY = -Infinity;
     for (const b of colliders) {
       // Must be falling or in mid-air tuck
       const effectivePrevY = this.state.y + tuckOffset;
@@ -531,10 +533,23 @@ export class KinematicPlayerController {
         const dx = this.state.x - cx;
         const dz = this.state.z - cz;
         if ((dx * dx + dz * dz) <= (this.radius * this.radius * 0.75)) {
-          newY = b.maxY;
-          this.state.vy = 0;
-          this.state.isGrounded = true;
+          if (b.maxY > bestLandingY) {
+            bestLandingY = b.maxY;
+          }
         }
+      }
+    }
+
+    if (bestLandingY > -Infinity) {
+      // Guard upward crouch-tuck snap against overhead ceilings so head never clips through roofs
+      const canSnap = bestLandingY <= this.state.y || hasHeadClearance(this.state.x, bestLandingY, this.state.z, currentHeight, colliders);
+      if (canSnap) {
+        if (bestLandingY > newY + 0.05) {
+          this.stepOffsetY -= (bestLandingY - newY);
+        }
+        newY = bestLandingY;
+        this.state.vy = 0;
+        this.state.isGrounded = true;
       }
     }
 

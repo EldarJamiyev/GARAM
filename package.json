@@ -10,9 +10,10 @@
     "dev:client": "npm --workspace=@garam/client run dev",
     "dev:server": "npm --workspace=@garam/server run dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "build": "npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces",
-    "test": "npm run test --workspaces"
+    "build": "npm run build -w @garam/shared && npm run build -w @garam/server && npm run build -w @garam/client",
+    "typecheck": "npm run build -w @garam/shared && npm run typecheck --workspaces",
+    "lint": "npm run typecheck",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@gradio/client": "^2.8.0",

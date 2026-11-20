@@ -167,6 +167,13 @@ export function validateClientPacket(raw: unknown): ClientPacket | null {
       return { type: 'ping', timestamp: packet.timestamp };
     }
 
+    case 'pong_challenge': {
+      if (typeof packet.nonce !== 'number' || !Number.isInteger(packet.nonce) || packet.nonce < 0) {
+        return null;
+      }
+      return { type: 'pong_challenge', nonce: packet.nonce };
+    }
+
     default:
       return null;
   }

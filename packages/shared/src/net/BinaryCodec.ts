@@ -14,6 +14,7 @@ export const WEAPON_TO_INDEX: Record<string, number> = {
   'smoke-grenade': 5,
   'flashbang': 6,
   'he-grenade': 7,
+  'molotov': 8,
 };
 
 export const INDEX_TO_WEAPON: string[] = [
@@ -25,6 +26,7 @@ export const INDEX_TO_WEAPON: string[] = [
   'smoke-grenade',
   'flashbang',
   'he-grenade',
+  'molotov',
 ];
 
 export interface BinarySnapshotData {
@@ -46,16 +48,20 @@ export interface BinaryInputData {
   weaponId: string;
 }
 
+const SNAPSHOT_HEADER_BYTES = 36;
+const SNAPSHOT_PLAYER_STRIDE = 29;
+const MAX_SNAPSHOT_PLAYERS = 16;
+
 export class BinaryCodec {
   // Pre-allocated static scratch buffers to achieve 0 runtime GC allocations during network ticks
-  private static readonly SNAPSHOT_BUFFER = new ArrayBuffer(512);
+  private static readonly SNAPSHOT_BUFFER = new ArrayBuffer(640);
   private static readonly SNAPSHOT_VIEW = new DataView(BinaryCodec.SNAPSHOT_BUFFER);
 
   private static readonly INPUT_BUFFER = new ArrayBuffer(22);
   private static readonly INPUT_VIEW = new DataView(BinaryCodec.INPUT_BUFFER);
 
   /**
-   * Encodes a 64Hz server state snapshot into a zero-copy binary buffer (~284 - 306 bytes).
+   * Encodes a 64Hz server state snapshot into a compact zero-copy binary buffer (36 + 29*N bytes).
    */
   public static encodeSnapshot(snap: BinarySnapshotData): ArrayBuffer {
     const view = BinaryCodec.SNAPSHOT_VIEW;
@@ -68,32 +74,33 @@ export class BinaryCodec {
 
     const phaseId = snap.roundPhase === 'FREEZE_TIME' ? 0 : snap.roundPhase === 'ROUND_LIVE' ? 1 : 2;
     view.setUint8(18, phaseId);
-    view.setUint16(19, Math.max(0, Math.min(65535, snap.roundTime)), true);
+    view.setUint16(19, Math.max(0, Math.min(65535, Math.round(snap.roundTime))), true);
     view.setUint8(21, snap.ctScore & 0xff);
     view.setUint8(22, snap.tScore & 0xff);
 
-    // Bomb State (9 bytes)
+    // Bomb State (12 bytes: planted, site, xyz, timeRemaining, plantProgress, defuseProgress)
     view.setUint8(23, snap.bomb.isPlanted ? 1 : 0);
     view.setUint8(24, snap.bomb.site === 'A' ? 1 : snap.bomb.site === 'B' ? 2 : 0);
     view.setInt16(25, Math.round(snap.bomb.x * 10), true);
     view.setInt16(27, Math.round(snap.bomb.y * 10), true);
     view.setInt16(29, Math.round(snap.bomb.z * 10), true);
     view.setUint16(31, Math.round(Math.max(0, snap.bomb.timeRemaining) * 10), true);
+    view.setUint8(33, Math.max(0, Math.min(255, Math.round(snap.bomb.plantProgress * 255))));
+    view.setUint8(34, Math.max(0, Math.min(255, Math.round(snap.bomb.defuseProgress * 255))));
 
-    const count = Math.min(10, snap.players.length);
-    view.setUint8(33, count);
+    const count = Math.min(MAX_SNAPSHOT_PLAYERS, snap.players.length);
+    view.setUint8(35, count);
 
-    let offset = 34;
+    let offset = SNAPSHOT_HEADER_BYTES;
 
     for (let i = 0; i < count; i++) {
       const p = snap.players[i];
 
-      // Parse slot number from id or fallback to i
-      let slot = i;
-      if (p.id.startsWith('player_')) {
-        const hash = p.id.split('').reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0);
-        slot = hash % 10;
-      }
+      // Authoritative collision-free entitySlot (0..255), falling back to unique index i
+      const slot =
+        typeof p.entitySlot === 'number' && Number.isInteger(p.entitySlot) && p.entitySlot >= 0 && p.entitySlot <= 255
+          ? p.entitySlot
+          : i;
       view.setUint8(offset, slot);
       view.setUint8(offset + 1, p.team === 'Vanguard' ? 0 : 1);
 
@@ -134,9 +141,13 @@ export class BinaryCodec {
 
       view.setUint8(offset + 22, p.kills & 0xff);
       view.setUint8(offset + 23, p.deaths & 0xff);
-      view.setUint16(offset + 24, Math.max(0, Math.min(65535, p.ping)), true);
+      view.setUint16(offset + 24, Math.max(0, Math.min(65535, Math.round(p.ping))), true);
 
-      offset += 26;
+      // Live ammo state (uint8 mag + uint16 reserve)
+      view.setUint8(offset + 26, Math.max(0, Math.min(255, Math.round(p.currentAmmo))));
+      view.setUint16(offset + 27, Math.max(0, Math.min(65535, Math.round(p.reserveAmmo))), true);
+
+      offset += SNAPSHOT_PLAYER_STRIDE;
     }
 
     return BinaryCodec.SNAPSHOT_BUFFER.slice(0, offset);
@@ -146,7 +157,7 @@ export class BinaryCodec {
    * Decodes a binary state snapshot back into a strongly-typed snapshot packet.
    */
   public static decodeSnapshot(buffer: ArrayBuffer | ArrayBufferLike): BinarySnapshotData | null {
-    if (!buffer || buffer.byteLength < 34) return null;
+    if (!buffer || buffer.byteLength < SNAPSHOT_HEADER_BYTES) return null;
     const view = new DataView(buffer as ArrayBuffer);
 
     if (view.getUint8(0) !== BINARY_MAGIC || view.getUint8(1) !== BINARY_TYPE_SNAPSHOT) {
@@ -170,15 +181,19 @@ export class BinaryCodec {
     const bombY = view.getInt16(27, true) / 10;
     const bombZ = view.getInt16(29, true) / 10;
     const timeRemaining = view.getUint16(31, true) / 10;
+    const plantProgress = view.getUint8(33) / 255;
+    const defuseProgress = view.getUint8(34) / 255;
 
-    const count = view.getUint8(33);
-    if (count > 10 || buffer.byteLength < 34 + count * 26) return null;
+    const count = view.getUint8(35);
+    if (count > MAX_SNAPSHOT_PLAYERS || buffer.byteLength < SNAPSHOT_HEADER_BYTES + count * SNAPSHOT_PLAYER_STRIDE) {
+      return null;
+    }
 
     const players: NetOperatorState[] = [];
-    let offset = 34;
+    let offset = SNAPSHOT_HEADER_BYTES;
 
     for (let i = 0; i < count; i++) {
-      if (offset + 26 > buffer.byteLength) break;
+      if (offset + SNAPSHOT_PLAYER_STRIDE > buffer.byteLength) break;
 
       const slot = view.getUint8(offset);
       const teamId = view.getUint8(offset + 1);
@@ -215,8 +230,12 @@ export class BinaryCodec {
       const deaths = view.getUint8(offset + 23);
       const ping = view.getUint16(offset + 24, true);
 
+      const currentAmmo = view.getUint8(offset + 26);
+      const reserveAmmo = view.getUint16(offset + 27, true);
+
       players.push({
         id: `slot_${slot}`,
+        entitySlot: slot,
         name: `Operator ${slot + 1}`,
         team,
         x,
@@ -232,8 +251,8 @@ export class BinaryCodec {
         hasHelmet,
         hasDefuseKit,
         activeWeapon,
-        currentAmmo: 30,
-        reserveAmmo: 90,
+        currentAmmo,
+        reserveAmmo,
         isScoped,
         isReloading,
         isCrouching,
@@ -243,7 +262,7 @@ export class BinaryCodec {
         ping,
       });
 
-      offset += 26;
+      offset += SNAPSHOT_PLAYER_STRIDE;
     }
 
     return {
@@ -260,8 +279,8 @@ export class BinaryCodec {
         x: bombX,
         y: bombY,
         z: bombZ,
-        plantProgress: 0,
-        defuseProgress: 0,
+        plantProgress,
+        defuseProgress,
         timeRemaining,
       },
       players,
@@ -276,8 +295,9 @@ export class BinaryCodec {
 
     view.setUint8(0, BINARY_MAGIC);
     view.setUint8(1, BINARY_TYPE_INPUT);
-    view.setUint32(2, data.seq, true);
-    view.setUint32(6, data.timestamp & 0xffffffff, true);
+    view.setUint32(2, data.seq >>> 0, true);
+    // Unsigned monotonic relative millisecond timestamp (mod 2^32, ~49.7 days wrap)
+    view.setUint32(6, Math.max(0, Math.floor(data.timestamp)) >>> 0, true);
 
     let bits = 0;
     if (data.input.forward) bits |= 1 << 0;

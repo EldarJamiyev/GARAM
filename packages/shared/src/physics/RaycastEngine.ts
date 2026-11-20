@@ -302,7 +302,8 @@ export function executeTacticalRaycast(
   blocks: MapBlockCollider[] = [],
   targets: TargetCollider[] = [],
   rangeDropoff = 1.0,
-  spatialGrid?: SpatialGrid
+  spatialGrid?: SpatialGrid,
+  headDamageMultiplier: number = HITBOX.HEAD_MULTIPLIER
 ): RaycastHit[] {
   interface HitCandidate {
     type: 'block' | 'target';
@@ -588,7 +589,7 @@ export function executeTacticalRaycast(
 
       switch (bestCandidate.hitZone) {
         case 'HEAD':
-          zoneMultiplier = HITBOX.HEAD_MULTIPLIER; // 4.0x
+          zoneMultiplier = headDamageMultiplier; // 4.0x firearms, 1.0x melee
           isArmoredZone = bestCandidate.target!.hasHelmet;
           break;
         case 'CHEST':
@@ -673,17 +674,15 @@ export function hasLineOfSight(
     direction: { x: dx / dist, y: dy / dist, z: dz / dist },
   };
 
-  // Check world concrete / opaque blocks
+  // Check all opaque world geometry (concrete, crates, containers — any block intersected by the sightline)
   if (spatialGrid) {
     let obstructed = false;
     spatialGrid.queryRay(ray, dist, (idx) => {
       const b = blocks[idx];
       const res = intersectRayAABB(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ);
       if (res.hit && res.tNear < dist && res.tNear > 0.05) {
-        if (b.material === 'CONCRETE' || b.h >= 2.0) {
-          obstructed = true;
-          return true; // early exit traversal
-        }
+        obstructed = true;
+        return true; // early exit traversal
       }
     });
     if (obstructed) return false;
@@ -691,14 +690,25 @@ export function hasLineOfSight(
     for (const b of blocks) {
       const res = intersectRayAABB(ray, b.minX, b.maxX, b.minY, b.maxY, b.minZ, b.maxZ);
       if (res.hit && res.tNear < dist && res.tNear > 0.05) {
-        if (b.material === 'CONCRETE') return false;
-        if (b.h >= 2.0) return false;
+        return false;
       }
     }
   }
 
-  // Check smoke occluders
+  // Check smoke occluders (blocks sightlines passing through OR originating/terminating inside smoke)
   for (const s of smokeOccluders) {
+    const rSq = s.radius * s.radius;
+    const dASq =
+      (eyeA.x - s.center.x) ** 2 +
+      (eyeA.y - s.center.y) ** 2 +
+      (eyeA.z - s.center.z) ** 2;
+    const dBSq =
+      (eyeB.x - s.center.x) ** 2 +
+      (eyeB.y - s.center.y) ** 2 +
+      (eyeB.z - s.center.z) ** 2;
+    if (dASq < rSq || dBSq < rSq) {
+      return false;
+    }
     const hit = intersectRaySphere(ray, s.center, s.radius);
     if (hit.hit && hit.t < dist && hit.t > 0) {
       return false;

@@ -4,8 +4,10 @@ import {
   AABBCollider,
   Vec3,
   SmokeOccluder,
+  SpatialGrid,
   hasLineOfSight,
   resolveHorizontalAABB,
+  computeSpreadRayDirection,
   KINEMATICS,
   BOMBSITES,
   executeTacticalRaycast,
@@ -15,16 +17,13 @@ import {
   SurfaceMaterial,
   DE_CITADEL_NAV_GRAPH,
   DE_CITADEL_BLOCKS,
-  findNearestNavNode,
   findPathAStar,
   rollRandomStrategies,
   RoundStrategySelection,
-  SyndicateStrategy,
-  VanguardStrategy,
   BotBrain,
-  EcoDecision,
   resolveBotArchetype,
   BotArchetype,
+  WEAPONS,
 } from '@garam/shared';
 import { BotEntity } from '../maps/DeCitadelMap.js';
 
@@ -75,7 +74,7 @@ const DIFFICULTY_PRESETS: Record<BotDifficulty, DifficultyConfig> = {
     burstCooldownMs: 500,
     patrolSpeed: 3.8,
     canUseUtility: true,
-    spreadAngleRad: 0.006, // Pinpoint competitive precision
+    spreadAngleRad: 0.006,
   },
 };
 
@@ -88,8 +87,23 @@ export interface SoundEvent {
 }
 
 export interface BotAISystemCallbacks {
-  onBotShootPlayer: (bot: BotEntity, dmg: number, hitZone: HitZone, isHeadshot: boolean, penetratedWalls: number) => void;
-  onBotShootBot: (shooter: BotEntity, victim: BotEntity, dmg: number, hitZone: HitZone, isHeadshot: boolean, penetratedWalls: number) => void;
+  onBotShootPlayer: (
+    bot: BotEntity,
+    dmg: number,
+    hitZone: HitZone,
+    isHeadshot: boolean,
+    penetratedWalls: number,
+    armorDamage?: number
+  ) => void;
+  onBotShootBot: (
+    shooter: BotEntity,
+    victim: BotEntity,
+    dmg: number,
+    hitZone: HitZone,
+    isHeadshot: boolean,
+    penetratedWalls: number,
+    armorDamage?: number
+  ) => void;
   onEnemySpotted?: (bot: BotEntity) => void;
   onBotSpawnTracer?: (from: THREE.Vector3, to: THREE.Vector3, weaponId?: string) => void;
   onBotSpawnDecal?: (point: THREE.Vector3, normal: THREE.Vector3, material: SurfaceMaterial) => void;
@@ -97,15 +111,19 @@ export interface BotAISystemCallbacks {
   onBotRadioCallout?: (bot: BotEntity, message: string) => void;
 }
 
-// Scratch math objects for zero-GC bot AI hot loop
+// Pre-allocated scratch math objects for zero-GC bot AI hot loop
 const _botEye = new THREE.Vector3();
 const _targetEye = new THREE.Vector3();
 const _aimDir = new THREE.Vector3();
 const _toTarget = new THREE.Vector3();
 const _stepNormal = new THREE.Vector3();
 const _terminalPoint = new THREE.Vector3();
+const _sepPush = new THREE.Vector3();
+const _hitNormal = new THREE.Vector3();
+const _hitPoint = new THREE.Vector3();
 
 interface BotInternalState {
+  team: 'Vanguard' | 'Syndicate';
   archetype: BotArchetype;
   ammo: number;
   isReloading: boolean;
@@ -129,6 +147,7 @@ interface BotInternalState {
   hasThrownFlash: boolean;
   targetYaw: number;
   currentYaw: number;
+  vy: number;
 }
 
 export class BotAISystem {
@@ -150,23 +169,27 @@ export class BotAISystem {
     this.difficulty = diff;
   }
 
-  /**
-   * Called at start of round (Freeze Time) to orchestrate team strategies & assign tactical roles
-   */
   public startNewRound(roundNumber: number, bots: BotEntity[], ctLossStreak = 0, tLossStreak = 0): void {
     this.roundStartTime = performance.now();
     this.currentStrategies = rollRandomStrategies();
     this.seePlayerTimes.clear();
     this.seeBotTimes.clear();
 
-    const synBots = bots.filter(b => b.team === 'Syndicate');
-    const vgBots = bots.filter(b => b.team === 'Vanguard');
+    const synBots = bots.filter((b) => b.team === 'Syndicate');
+    const vgBots = bots.filter((b) => b.team === 'Vanguard');
 
-    // Grandmaster BotBrain: Team-Wide Economy Coordination
-    const synCash = synBots.map(() => 4500);
-    const vgCash = vgBots.map(() => 4500);
-    const synBuys = BotBrain.evaluateTeamEconomy(synCash, tLossStreak, roundNumber, false);
-    const vgBuys = BotBrain.evaluateTeamEconomy(vgCash, ctLossStreak, roundNumber, true);
+    const synBuys = BotBrain.evaluateTeamEconomy(
+      synBots.map(() => 4500),
+      tLossStreak,
+      roundNumber,
+      false
+    );
+    const vgBuys = BotBrain.evaluateTeamEconomy(
+      vgBots.map(() => 4500),
+      ctLossStreak,
+      roundNumber,
+      true
+    );
 
     synBots.forEach((bot, idx) => {
       const decision = synBuys[idx];
@@ -180,7 +203,6 @@ export class BotAISystem {
       bot.hasHelmet = decision.buyHelmet;
     });
 
-    // Assign Syndicate Roles & Objectives based on selected strategy
     synBots.forEach((bot, index) => {
       let role: BotInternalState['role'] = 'entry';
       let dest: Vec3 = BOMBSITES.A.center;
@@ -198,7 +220,6 @@ export class BotAISystem {
         role = index < 3 ? 'entry' : 'support';
         dest = index < 3 ? DE_CITADEL_NAV_GRAPH['b_connector_site'].pos : BOMBSITES.B.center;
       } else {
-        // DEFAULT_PICKS_AND_LATE_EXEC
         role = index === 0 ? 'entry' : index === 1 ? 'lurker' : 'rotator';
         const spots = [
           DE_CITADEL_NAV_GRAPH['a_long_corner'].pos,
@@ -218,6 +239,7 @@ export class BotAISystem {
       );
 
       this.botStates.set(bot.id, {
+        team: bot.team,
         archetype: resolveBotArchetype(bot.id, bot.name, bot.team, this.difficulty),
         ammo: 30,
         isReloading: false,
@@ -241,10 +263,10 @@ export class BotAISystem {
         hasThrownFlash: false,
         targetYaw: bot.mesh.rotation.y,
         currentYaw: bot.mesh.rotation.y,
+        vy: 0,
       });
     });
 
-    // Assign Vanguard Roles & Defensive Setups
     vgBots.forEach((bot, index) => {
       let role: BotInternalState['role'] = 'anchor';
       let dest: Vec3 = BOMBSITES.A.center;
@@ -275,7 +297,6 @@ export class BotAISystem {
         ];
         dest = spots[index % spots.length];
       } else {
-        // RETAKE_ANCHOR
         const spots = [
           DE_CITADEL_NAV_GRAPH['ct_a_lane'].pos,
           DE_CITADEL_NAV_GRAPH['a_site_center'].pos,
@@ -293,6 +314,7 @@ export class BotAISystem {
       );
 
       this.botStates.set(bot.id, {
+        team: bot.team,
         archetype: resolveBotArchetype(bot.id, bot.name, bot.team, this.difficulty),
         ammo: 30,
         isReloading: false,
@@ -316,27 +338,23 @@ export class BotAISystem {
         hasThrownFlash: false,
         targetYaw: bot.mesh.rotation.y,
         currentYaw: bot.mesh.rotation.y,
+        vy: 0,
       });
     });
   }
 
-  /**
-   * Sound Event Listener: notifies bots within hearing radius to investigate or turn
-   */
   public onSoundEvent(event: SoundEvent): void {
-    const now = performance.now();
-    for (const [botId, state] of this.botStates.entries()) {
+    for (const state of this.botStates.values()) {
+      // Only investigate hostile team audio events
+      if (state.team === event.team) continue;
       const dist = event.pos.distanceTo(state.lastDisplacementPos);
       if (dist <= event.radius) {
         state.soundInvestigateTarget = event.pos.clone();
-        state.soundInvestigateTimer = 3.5; // investigate for 3.5s
+        state.soundInvestigateTimer = 3.5;
       }
     }
   }
 
-  /**
-   * Anti-Flash Reaction: Elite & Sovereign bots calculate 180° escape yaw to dodge blinding effects
-   */
   public onFlashbangExploded(flashPos: THREE.Vector3, bots: BotEntity[]): void {
     if (this.difficulty !== 'Elite' && this.difficulty !== 'Sovereign') return;
 
@@ -358,22 +376,41 @@ export class BotAISystem {
     }
   }
 
+  private findSupportingFloorY(x: number, y: number, z: number, colliders: AABBCollider[]): number {
+    let bestY = 0;
+    const r = KINEMATICS.CAPSULE_RADIUS;
+    for (let i = 0; i < colliders.length; i++) {
+      const b = colliders[i];
+      if (x + r > b.minX && x - r < b.maxX && z + r > b.minZ && z - r < b.maxZ) {
+        if (b.maxY <= y + 0.25 && b.maxY > bestY) {
+          bestY = b.maxY;
+        }
+      }
+    }
+    return bestY;
+  }
+
   public update(
     bots: BotEntity[],
     dt: number,
     colliders: AABBCollider[],
     blocks: MapBlockCollider[],
-    playerPos: THREE.Vector3,
+    playerFeetPos: THREE.Vector3,
     playerEye: THREE.Vector3,
     smokeOccluders: SmokeOccluder[] = [],
     isBombArmed = false,
     bombTargetSite: 'A' | 'B' | null = null,
     playerHealth = 100,
-    playerArmor = 100
+    playerArmor = 100,
+    playerTeam: 'Vanguard' | 'Syndicate' = 'Vanguard',
+    isFreezeTime = false,
+    spatialGrid?: SpatialGrid,
+    playerHasHelmet = true
   ): void {
     const config = DIFFICULTY_PRESETS[this.difficulty];
     const now = performance.now();
     const roundElapsed = (now - this.roundStartTime) / 1000;
+    const botWeapon = WEAPONS['garam-47'];
 
     for (let bIdx = 0; bIdx < bots.length; bIdx++) {
       const bot = bots[bIdx];
@@ -390,9 +427,25 @@ export class BotAISystem {
         continue;
       }
 
+      // Freeze Time: bots hold spawn positions and idle cleanly until round goes live
+      if (isFreezeTime) {
+        bot.vx = 0;
+        bot.vz = 0;
+        bot.rig?.update(dt, {
+          isMoving: false,
+          speed: 0,
+          isDead: false,
+          healthRatio: Math.max(0, bot.health / bot.maxHealth),
+          team: bot.team,
+          name: bot.name,
+        });
+        continue;
+      }
+
       let state = this.botStates.get(bot.id);
       if (!state) {
         state = {
+          team: bot.team,
           archetype: resolveBotArchetype(bot.id, bot.name, bot.team, this.difficulty),
           ammo: 30,
           isReloading: false,
@@ -416,6 +469,7 @@ export class BotAISystem {
           hasThrownFlash: false,
           targetYaw: bot.mesh.rotation.y,
           currentYaw: bot.mesh.rotation.y,
+          vy: 0,
         };
         this.botStates.set(bot.id, state);
       }
@@ -423,7 +477,6 @@ export class BotAISystem {
       const botPos = bot.mesh.position;
       _botEye.set(botPos.x, botPos.y + 1.68, botPos.z);
 
-      // --- Reload State Machine ---
       if (state.isReloading) {
         state.reloadTimeRemaining -= dt;
         if (state.reloadTimeRemaining <= 0) {
@@ -432,7 +485,6 @@ export class BotAISystem {
         }
       }
 
-      // --- Sound Investigation Decay ---
       if (state.soundInvestigateTimer > 0) {
         state.soundInvestigateTimer -= dt;
         if (state.soundInvestigateTimer <= 0) {
@@ -440,16 +492,17 @@ export class BotAISystem {
         }
       }
 
-      // --- 1. Target Acquisition: Check Player Visibility (if Syndicate vs Player) ---
+      // --- 1. Target Acquisition: Check Player Visibility (if opposing faction) ---
       let canSeePlayer = false;
-      const distToPlayer = botPos.distanceTo(playerPos);
+      const distToPlayer = botPos.distanceTo(playerFeetPos);
 
-      if (bot.team === 'Syndicate' && playerHealth > 0 && distToPlayer <= 50) {
+      if (bot.team !== playerTeam && playerHealth > 0 && distToPlayer <= 50) {
         canSeePlayer = hasLineOfSight(
           { x: _botEye.x, y: _botEye.y, z: _botEye.z },
           { x: playerEye.x, y: playerEye.y, z: playerEye.z },
           blocks,
-          smokeOccluders
+          smokeOccluders,
+          spatialGrid
         );
 
         if (canSeePlayer) {
@@ -461,28 +514,24 @@ export class BotAISystem {
           }
           const timeSeen = now - (this.seePlayerTimes.get(bot.id) || now);
 
-          // Smooth Angular Slew toward Player driven by Bot Archetype slew rate
           _aimDir.subVectors(playerEye, _botEye).normalize();
           state.targetYaw = Math.atan2(_aimDir.x, _aimDir.z);
 
-          // Slew aim smoothly
           const slewRate = state.archetype ? state.archetype.slewRateDegPerSec : config.slewRateDegPerSec;
-          const maxTurn = (slewRate * Math.PI / 180) * dt;
+          const maxTurn = ((slewRate * Math.PI) / 180) * dt;
           let angleDiff = state.targetYaw - state.currentYaw;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
           state.currentYaw += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), maxTurn);
           bot.mesh.rotation.y = state.currentYaw;
 
-          // Utility deployment before commitment (Flash or Smoke)
           const canUseUtil = state.archetype ? state.archetype.skill >= 75 : config.canUseUtility;
           if (canUseUtil && !state.hasThrownFlash && distToPlayer > 18 && distToPlayer < 35) {
             state.hasThrownFlash = true;
-            this.callbacks.onBotThrowUtility?.(bot, 'flash', playerPos.clone());
+            this.callbacks.onBotThrowUtility?.(bot, 'flash', playerFeetPos.clone());
             this.callbacks.onBotRadioCallout?.(bot, 'Deploying tactical flash!');
           }
 
-          // Combat Firing Cycle: Counter-strafe & Real Ballistic Raycast
           const reactionWindow = state.archetype ? state.archetype.reactionTimeMs : config.reactionTimeMs;
           if (!state.isReloading && timeSeen >= reactionWindow) {
             if (state.ammo <= 0) {
@@ -495,74 +544,84 @@ export class BotAISystem {
 
               state.burstTimer -= dt;
               if (state.burstTimer <= 0) {
-                state.burstTimer = 0.11; // 545 RPM burst rate
+                state.burstTimer = 0.11;
                 state.burstRemaining--;
                 bot.lastShotTime = now;
                 state.ammo--;
 
-                // Execute deterministic ballistic raycast!
+                // Viewplane-orthonormal spread using shared computeSpreadRayDirection
                 const spreadAngle = state.archetype
                   ? Math.max(0.005, (100 - state.archetype.skill) * 0.00045)
                   : config.spreadAngleRad;
                 const spreadX = (Math.random() - 0.5) * spreadAngle;
                 const spreadY = (Math.random() - 0.5) * spreadAngle;
+                const aimYaw = Math.atan2(-_aimDir.x, -_aimDir.z);
+                const aimPitch = Math.asin(Math.max(-1, Math.min(1, _aimDir.y)));
+                const rayDirVec = computeSpreadRayDirection(aimYaw, aimPitch, spreadX, spreadY);
 
-                const rayDir = _aimDir.clone().add(new THREE.Vector3(spreadX, spreadY, 0)).normalize();
                 const sharedRay: Ray = {
                   origin: { x: _botEye.x, y: _botEye.y, z: _botEye.z },
-                  direction: { x: rayDir.x, y: rayDir.y, z: rayDir.z },
+                  direction: rayDirVec,
                 };
 
-                // Player target with accurate 5-zone hitboxes
+                // Accurate ground-referenced player hitboxes (feet Y -> eye Y)
+                const isCrouched = playerEye.y - playerFeetPos.y < 1.35;
                 const playerTarget: TargetCollider = {
                   id: 'player',
-                  name: 'Eldar Garamov',
-                  team: 'Vanguard',
-                  center: { x: playerPos.x, y: playerPos.y, z: playerPos.z },
-                  hasHelmet: true,
+                  name: 'Player',
+                  team: playerTeam,
+                  center: { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
+                  hasHelmet: playerHasHelmet,
                   armor: playerArmor,
                   isDead: playerHealth <= 0,
+                  isCrouched,
                   hitboxes: {
-                    head: { x: playerPos.x, y: playerEye.y + 0.05, z: playerPos.z },
-                    chest: { x: playerPos.x, y: playerPos.y + 1.25, z: playerPos.z },
-                    stomach: { x: playerPos.x, y: playerPos.y + 0.95, z: playerPos.z },
-                    leftArm: { x: playerPos.x - 0.28, y: playerPos.y + 1.2, z: playerPos.z },
-                    rightArm: { x: playerPos.x + 0.28, y: playerPos.y + 1.2, z: playerPos.z },
-                    leftLeg: { x: playerPos.x - 0.16, y: playerPos.y + 0.45, z: playerPos.z },
-                    rightLeg: { x: playerPos.x + 0.16, y: playerPos.y + 0.45, z: playerPos.z },
+                    head: { x: playerFeetPos.x, y: playerEye.y + 0.04, z: playerFeetPos.z },
+                    chest: { x: playerFeetPos.x, y: playerFeetPos.y + (isCrouched ? 0.82 : 1.25), z: playerFeetPos.z },
+                    stomach: { x: playerFeetPos.x, y: playerFeetPos.y + (isCrouched ? 0.62 : 0.95), z: playerFeetPos.z },
+                    leftArm: { x: playerFeetPos.x - 0.28, y: playerFeetPos.y + (isCrouched ? 0.80 : 1.20), z: playerFeetPos.z },
+                    rightArm: { x: playerFeetPos.x + 0.28, y: playerFeetPos.y + (isCrouched ? 0.80 : 1.20), z: playerFeetPos.z },
+                    leftLeg: { x: playerFeetPos.x - 0.16, y: playerFeetPos.y + (isCrouched ? 0.30 : 0.45), z: playerFeetPos.z },
+                    rightLeg: { x: playerFeetPos.x + 0.16, y: playerFeetPos.y + (isCrouched ? 0.30 : 0.45), z: playerFeetPos.z },
                   },
                 };
 
                 const hits = executeTacticalRaycast(
                   sharedRay,
-                  36, // Garam-47 base damage
-                  0.775,
-                  2.0,
+                  botWeapon.damage,
+                  botWeapon.armorPenetration,
+                  botWeapon.penetrationPower,
                   200,
                   blocks,
                   [playerTarget],
-                  0.98
+                  botWeapon.damageDropoffPer10m,
+                  spatialGrid,
+                  botWeapon.headDamageMultiplier
                 );
 
-                _terminalPoint.copy(_botEye).addScaledVector(rayDir, 80);
-                if (hits.length > 0) {
-                  const firstHit = hits[0];
-                  _terminalPoint.set(firstHit.point.x, firstHit.point.y, firstHit.point.z);
+                _terminalPoint.set(
+                  _botEye.x + rayDirVec.x * 80,
+                  _botEye.y + rayDirVec.y * 80,
+                  _botEye.z + rayDirVec.z * 80
+                );
 
-                  if (firstHit.targetId === 'player') {
+                for (const hit of hits) {
+                  _hitPoint.set(hit.point.x, hit.point.y, hit.point.z);
+                  _terminalPoint.copy(_hitPoint);
+
+                  if (hit.targetId === 'player') {
                     this.callbacks.onBotShootPlayer(
                       bot,
-                      firstHit.awardedDamage,
-                      firstHit.hitZone || 'CHEST',
-                      firstHit.isHeadshot || false,
-                      firstHit.penetratedWalls
+                      hit.awardedDamage,
+                      hit.hitZone || 'CHEST',
+                      hit.isHeadshot || false,
+                      hit.penetratedWalls,
+                      hit.armorDamage
                     );
-                  } else if (firstHit.material) {
-                    this.callbacks.onBotSpawnDecal?.(
-                      _terminalPoint,
-                      new THREE.Vector3(firstHit.normal.x, firstHit.normal.y, firstHit.normal.z),
-                      firstHit.material
-                    );
+                    break;
+                  } else if (hit.material) {
+                    _hitNormal.set(hit.normal.x, hit.normal.y, hit.normal.z);
+                    this.callbacks.onBotSpawnDecal?.(_hitPoint, _hitNormal, hit.material);
                   }
                 }
 
@@ -571,7 +630,6 @@ export class BotAISystem {
             }
           }
 
-          // Counter-strafe in place while firing
           bot.rig?.update(dt, {
             isMoving: false,
             speed: 0,
@@ -586,7 +644,7 @@ export class BotAISystem {
         }
       }
 
-      // --- 2. Inter-Bot Combat: Real Ballistic Raycast between Bot Teams ---
+      // --- 2. Inter-Bot Combat ---
       let engagedBotTarget: BotEntity | null = null;
       const enemyTeam = bot.team === 'Syndicate' ? 'Vanguard' : 'Syndicate';
 
@@ -599,7 +657,8 @@ export class BotAISystem {
               { x: _botEye.x, y: _botEye.y, z: _botEye.z },
               { x: _targetEye.x, y: _targetEye.y, z: _targetEye.z },
               blocks,
-              smokeOccluders
+              smokeOccluders,
+              spatialGrid
             );
 
             if (los) {
@@ -607,9 +666,8 @@ export class BotAISystem {
               _aimDir.subVectors(_targetEye, _botEye).normalize();
               state.targetYaw = Math.atan2(_aimDir.x, _aimDir.z);
 
-              // Slew towards other bot driven by Bot Archetype
               const botSlew = state.archetype ? state.archetype.slewRateDegPerSec : config.slewRateDegPerSec;
-              const maxTurn = (botSlew * Math.PI / 180) * dt;
+              const maxTurn = ((botSlew * Math.PI) / 180) * dt;
               let angleDiff = state.targetYaw - state.currentYaw;
               while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
               while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -631,11 +689,13 @@ export class BotAISystem {
                     : config.spreadAngleRad;
                   const spreadX = (Math.random() - 0.5) * spreadAngle;
                   const spreadY = (Math.random() - 0.5) * spreadAngle;
-                  const rayDir = _aimDir.clone().add(new THREE.Vector3(spreadX, spreadY, 0)).normalize();
+                  const aimYaw = Math.atan2(-_aimDir.x, -_aimDir.z);
+                  const aimPitch = Math.asin(Math.max(-1, Math.min(1, _aimDir.y)));
+                  const rayDirVec = computeSpreadRayDirection(aimYaw, aimPitch, spreadX, spreadY);
 
                   const sharedRay: Ray = {
                     origin: { x: _botEye.x, y: _botEye.y, z: _botEye.z },
-                    direction: { x: rayDir.x, y: rayDir.y, z: rayDir.z },
+                    direction: rayDirVec,
                   };
 
                   const targetCol: TargetCollider = {
@@ -646,6 +706,7 @@ export class BotAISystem {
                     armor: other.armor,
                     hasHelmet: other.hasHelmet,
                     isDead: other.isDead,
+                    yaw: other.mesh.rotation.y,
                     hitboxes: other.rig?.getWorldHitboxes(),
                   };
 
@@ -653,17 +714,24 @@ export class BotAISystem {
                     sharedRay,
                     34,
                     0.75,
-                    2.0,
+                    botWeapon.penetrationPower,
                     180,
                     blocks,
                     [targetCol],
-                    0.98
+                    botWeapon.damageDropoffPer10m,
+                    spatialGrid,
+                    botWeapon.headDamageMultiplier
                   );
 
-                  _terminalPoint.copy(_botEye).addScaledVector(rayDir, 70);
-                  if (hits.length > 0) {
-                    const hit = hits[0];
-                    _terminalPoint.set(hit.point.x, hit.point.y, hit.point.z);
+                  _terminalPoint.set(
+                    _botEye.x + rayDirVec.x * 70,
+                    _botEye.y + rayDirVec.y * 70,
+                    _botEye.z + rayDirVec.z * 70
+                  );
+
+                  for (const hit of hits) {
+                    _hitPoint.set(hit.point.x, hit.point.y, hit.point.z);
+                    _terminalPoint.copy(_hitPoint);
                     if (hit.targetId === other.id) {
                       other.rig?.triggerFlinch();
                       this.callbacks.onBotShootBot(
@@ -672,10 +740,13 @@ export class BotAISystem {
                         hit.awardedDamage,
                         hit.hitZone || 'CHEST',
                         hit.isHeadshot || false,
-                        hit.penetratedWalls
+                        hit.penetratedWalls,
+                        hit.armorDamage
                       );
+                      break;
                     }
                   }
+
                   this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, 'garam-47');
                 }
               }
@@ -702,7 +773,7 @@ export class BotAISystem {
         _toTarget.subVectors(state.soundInvestigateTarget, botPos);
         _toTarget.y = 0;
         state.targetYaw = Math.atan2(_toTarget.x, _toTarget.z);
-        const maxTurn = (config.slewRateDegPerSec * Math.PI / 180) * dt;
+        const maxTurn = ((config.slewRateDegPerSec * Math.PI) / 180) * dt;
         let angleDiff = state.targetYaw - state.currentYaw;
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
@@ -711,11 +782,9 @@ export class BotAISystem {
       }
 
       // --- 4. Tactical Objective Navigation with A* Nav-Graph ---
-      // Post-Plant & Retake Logic:
       if (isBombArmed) {
         const bombSitePos = bombTargetSite === 'A' ? BOMBSITES.A.center : BOMBSITES.B.center;
         if (bot.team === 'Vanguard') {
-          // All surviving Vanguard bots converge on planted site!
           if (state.path.length === 0 || dist3D(state.path[state.path.length - 1], bombSitePos) > 4.0) {
             state.path = findPathAStar(
               { x: botPos.x, y: botPos.y, z: botPos.z },
@@ -726,26 +795,24 @@ export class BotAISystem {
             state.pathIndex = 0;
           }
         } else if (bot.team === 'Syndicate') {
-          // Syndicate bots hold crossfire off-angles around bomb site
           if (state.path.length === 0) {
-            const defenseNodes = Object.values(DE_CITADEL_NAV_GRAPH).filter(n =>
-              dist3D(n.pos, bombSitePos) < 16.0 && n.coverType === 'HIGH'
+            const defenseNodes = Object.values(DE_CITADEL_NAV_GRAPH).filter(
+              (n) => dist3D(n.pos, bombSitePos) < 16.0 && n.coverType === 'HIGH'
             );
-            const chosen = defenseNodes[bIdx % Math.max(1, defenseNodes.length)] || DE_CITADEL_NAV_GRAPH['a_site_crates'];
+            const chosen =
+              defenseNodes[bIdx % Math.max(1, defenseNodes.length)] || DE_CITADEL_NAV_GRAPH['a_site_crates'];
             state.path = [chosen.pos];
             state.pathIndex = 0;
           }
         }
       }
 
-      // Progress along path waypoints
       let targetWaypoint = state.path[state.pathIndex] || bot.patrolTarget;
 
       _toTarget.subVectors(targetWaypoint, botPos);
       _toTarget.y = 0;
       let distToWaypoint = _toTarget.length();
 
-      // Increased waypoint tolerance (1.6m) + Corner-cutting lookahead
       if (distToWaypoint < 1.6) {
         if (state.pathIndex < state.path.length - 1) {
           state.pathIndex++;
@@ -755,7 +822,6 @@ export class BotAISystem {
           _toTarget.y = 0;
           distToWaypoint = _toTarget.length();
         } else if (!isBombArmed) {
-          // Reached destination: repath to another strategic point
           bot.waypointIndex = (bot.waypointIndex + 1) % bot.patrolWaypoints.length;
           const nextTarget = bot.patrolWaypoints[bot.waypointIndex];
           state.path = findPathAStar(
@@ -772,14 +838,12 @@ export class BotAISystem {
           distToWaypoint = _toTarget.length();
         }
       } else if (state.pathIndex < state.path.length - 1) {
-        // Line-of-sight corner cutting: if bot can see next-next waypoint with capsule clearance, skip corner!
         const nextNext = state.path[state.pathIndex + 1];
-        if (nextNext) {
+        if (nextNext && Math.abs(nextNext.y - botPos.y) < 0.5) {
           const eyeA = { x: botPos.x, y: botPos.y + 1.2, z: botPos.z };
           const eyeB = { x: nextNext.x, y: nextNext.y + 1.2, z: nextNext.z };
-          const losCenter = hasLineOfSight(eyeA, eyeB, blocks, []);
+          const losCenter = hasLineOfSight(eyeA, eyeB, blocks, smokeOccluders, spatialGrid);
           if (losCenter) {
-            // Also verify lateral offset clearance (0.40m capsule clearance)
             const dirX = nextNext.x - botPos.x;
             const dirZ = nextNext.z - botPos.z;
             const len = Math.hypot(dirX, dirZ);
@@ -791,13 +855,15 @@ export class BotAISystem {
                 { x: eyeA.x + perpX, y: eyeA.y, z: eyeA.z + perpZ },
                 { x: eyeB.x + perpX, y: eyeB.y, z: eyeB.z + perpZ },
                 blocks,
-                []
+                smokeOccluders,
+                spatialGrid
               );
               const losRight = hasLineOfSight(
                 { x: eyeA.x - perpX, y: eyeA.y, z: eyeA.z - perpZ },
                 { x: eyeB.x - perpX, y: eyeB.y, z: eyeB.z - perpZ },
                 blocks,
-                []
+                smokeOccluders,
+                spatialGrid
               );
               canCutCorner = losLeft && losRight;
             }
@@ -818,18 +884,15 @@ export class BotAISystem {
       if (distToWaypoint >= 0.4) {
         _toTarget.normalize();
 
-        // Lurker bot takes silent slow walk after 20s
         const isSilentWalk = state.isLurking && roundElapsed > 20;
         let currentSpeed = isSilentWalk ? 2.1 : config.patrolSpeed;
 
-        // Anti-Stuck Displacement Monitor (0.4s / 0.16m check)
         state.stuckTimer += dt;
         if (state.stuckTimer >= 0.4) {
           const displacement = botPos.distanceTo(state.lastDisplacementPos);
           if (displacement < 0.16) {
             state.consecutiveStuckCount++;
 
-            // Find nearest colliding block and compute ejection / tangent sliding vector
             let nearestCollider: AABBCollider | null = null;
             let minDistToWall = Infinity;
             for (const col of colliders) {
@@ -856,7 +919,6 @@ export class BotAISystem {
                 nz = 1;
               }
 
-              // Compute tangent along wall that best matches waypoint heading
               const tan1X = -nz;
               const tan1Z = nx;
               const tan2X = nz;
@@ -865,7 +927,6 @@ export class BotAISystem {
               const chosenTanX = dot1 >= 0 ? tan1X : tan2X;
               const chosenTanZ = dot1 >= 0 ? tan1Z : tan2Z;
 
-              // Blend 70% tangent slide + 50% push away from wall
               state.unstuckDir.set(chosenTanX * 0.7 + nx * 0.5, 0, chosenTanZ * 0.7 + nz * 0.5).normalize();
               state.unstuckDuration = 0.85;
             } else {
@@ -874,18 +935,15 @@ export class BotAISystem {
               state.unstuckDuration = 0.6;
             }
 
-            // If stuck for 2+ consecutive checks, recalculate path with obstacle-awareness
-            if (state.consecutiveStuckCount >= 2) {
-              if (state.path.length > 0) {
-                const goal = state.path[state.path.length - 1];
-                state.path = findPathAStar(
-                  { x: botPos.x, y: botPos.y, z: botPos.z },
-                  goal,
-                  undefined,
-                  blocks
-                );
-                state.pathIndex = 0;
-              }
+            if (state.consecutiveStuckCount >= 2 && state.path.length > 0) {
+              const goal = state.path[state.path.length - 1];
+              state.path = findPathAStar(
+                { x: botPos.x, y: botPos.y, z: botPos.z },
+                goal,
+                undefined,
+                blocks
+              );
+              state.pathIndex = 0;
             }
           } else {
             state.consecutiveStuckCount = 0;
@@ -894,7 +952,6 @@ export class BotAISystem {
           state.stuckTimer = 0;
         }
 
-        // Apply active unstuck recovery heading or abort early if dual-ray clearance opened
         if (state.unstuckDuration > 0) {
           const probeDist = Math.min(distToWaypoint, 2.5);
           const probeTargetX = botPos.x + _toTarget.x * probeDist;
@@ -906,33 +963,34 @@ export class BotAISystem {
             { x: eyeA.x + perpX, y: eyeA.y, z: eyeA.z + perpZ },
             { x: probeTargetX + perpX, y: eyeA.y, z: probeTargetZ + perpZ },
             blocks,
-            []
+            smokeOccluders,
+            spatialGrid
           );
           const clearR = hasLineOfSight(
             { x: eyeA.x - perpX, y: eyeA.y, z: eyeA.z - perpZ },
             { x: probeTargetX - perpX, y: eyeA.y, z: probeTargetZ - perpZ },
             blocks,
-            []
+            smokeOccluders,
+            spatialGrid
           );
           if (clearL && clearR) {
-            state.unstuckDuration = 0; // Dual-ray clearance opened, abort unstuck immediately!
+            state.unstuckDuration = 0;
           } else {
             state.unstuckDuration -= dt;
             _toTarget.lerp(state.unstuckDir, 0.75).normalize();
           }
         }
 
-        // Staggered formation & bot-to-bot separation with corridor headway yielding
+        // Zero-allocation bot-to-bot separation with corridor headway yielding
         for (let j = 0; j < bots.length; j++) {
           if (j === bIdx) continue;
           const otherBot = bots[j];
           if (otherBot.isDead) continue;
           const distBetween = botPos.distanceTo(otherBot.mesh.position);
           if (distBetween < 1.8 && distBetween > 0.05) {
-            const push = new THREE.Vector3().subVectors(botPos, otherBot.mesh.position).normalize();
-            _toTarget.addScaledVector(push, (1.8 - distBetween) * 1.0).normalize();
+            _sepPush.subVectors(botPos, otherBot.mesh.position).setY(0).normalize();
+            _toTarget.addScaledVector(_sepPush, (1.8 - distBetween) * 1.0).normalize();
 
-            // Tactical spacing: follower bot yields speed to prevent corridor bunching (cone dot > 0.70, dist < 1.6m, release at > 1.8m)
             const toOtherX = otherBot.mesh.position.x - botPos.x;
             const toOtherZ = otherBot.mesh.position.z - botPos.z;
             const dotHeading = (toOtherX * _toTarget.x + toOtherZ * _toTarget.z) / distBetween;
@@ -949,7 +1007,6 @@ export class BotAISystem {
         const vx = _toTarget.x * currentSpeed;
         const vz = _toTarget.z * currentSpeed;
 
-        // Strict AABB Wall sliding so bots never pass through geometry
         const resolved = resolveHorizontalAABB(
           botPos.x,
           botPos.y,
@@ -964,7 +1021,22 @@ export class BotAISystem {
           KINEMATICS.STEP_HEIGHT
         );
 
-        bot.mesh.position.set(resolved.x, resolved.y, resolved.z);
+        // Gravity / vertical grounding so bots walking off A Heaven drop smoothly to lower floor
+        const floorY = this.findSupportingFloorY(resolved.x, resolved.y, resolved.z, colliders);
+        let nextY = resolved.y;
+        if (nextY > floorY + 0.02) {
+          state.vy -= KINEMATICS.GRAVITY * dt;
+          nextY += state.vy * dt;
+          if (nextY <= floorY) {
+            nextY = floorY;
+            state.vy = 0;
+          }
+        } else {
+          nextY = floorY;
+          state.vy = 0;
+        }
+
+        bot.mesh.position.set(resolved.x, nextY, resolved.z);
         bot.vx = resolved.vx;
         bot.vz = resolved.vz;
 
@@ -988,7 +1060,6 @@ export class BotAISystem {
         }
       }
 
-      // Update operator rig animation
       bot.rig?.update(dt, {
         isMoving,
         speed: actualSpeed,

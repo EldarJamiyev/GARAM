@@ -34,12 +34,11 @@ export class CombatReportManager {
       el.style.top = '120px';
       el.style.right = '28px';
       el.style.width = '340px';
-      el.style.background = 'rgba(12, 16, 22, 0.92)';
+      el.style.background = 'rgba(12, 16, 22, 0.94)';
       el.style.border = '1px solid rgba(255, 255, 255, 0.16)';
       el.style.borderRadius = '8px';
       el.style.padding = '14px 18px';
       el.style.boxShadow = '0 8px 32px rgba(0, 0, 0, 0.8)';
-      el.style.backdropFilter = 'blur(10px)';
       el.style.color = '#fff';
       el.style.fontFamily = "'Segoe UI', sans-serif";
       el.style.display = 'none';

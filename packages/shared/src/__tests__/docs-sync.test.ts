@@ -9,33 +9,35 @@ describe('Living Documentation & Architecture Parity (README.md)', () => {
   const readmeContent = fs.readFileSync(readmePath, 'utf-8');
 
   it('guarantees README weapon telemetry matches shared kernel WEAPONS constants', () => {
-    // Garam-47
-    expect(readmeContent).toContain(`36 / 144 HP`);
-    expect(readmeContent).toContain(`30 / 90`);
+    const headMult = HITBOX.HEAD_MULTIPLIER;
 
-    // Vanguard M4A1-S
-    expect(readmeContent).toContain(`33 / 132 HP`);
-    expect(readmeContent).toContain(`666`);
-    expect(readmeContent).toContain(`25 / 75`);
+    const ak = WEAPONS['garam-47'];
+    expect(readmeContent).toContain(`${ak.damage} / ${Math.round(ak.damage * headMult)} HP`);
+    expect(readmeContent).toContain(`${ak.magCapacity} / ${ak.reserveAmmo}`);
 
-    // Sovereign AWP
-    expect(readmeContent).toContain(`115 / 450 HP`);
-    expect(readmeContent).toContain(`5 / 30`);
+    const m4 = WEAPONS['vanguard-m4'];
+    expect(readmeContent).toContain(`${m4.damage} / ${Math.round(m4.damage * headMult)} HP`);
+    expect(readmeContent).toContain(`${m4.fireRateRpm}`);
+    expect(readmeContent).toContain(`${m4.magCapacity} / ${m4.reserveAmmo}`);
 
-    // Desert Eagle
-    expect(readmeContent).toContain(`53 / 212 HP`);
-    expect(readmeContent).toContain(`7 / 35`);
+    const awp = WEAPONS['sovereign-awp'];
+    expect(readmeContent).toContain(`${awp.damage} / ${Math.round(awp.damage * headMult)} HP`);
+    expect(readmeContent).toContain(`${awp.magCapacity} / ${awp.reserveAmmo}`);
 
-    // Crimson Karambit
-    expect(readmeContent).toContain(`55 / 55 (180 Backstab)`);
+    const deagle = WEAPONS['desert-eagle'];
+    expect(readmeContent).toContain(`${deagle.damage} / ${Math.round(deagle.damage * headMult)} HP`);
+    expect(readmeContent).toContain(`${deagle.magCapacity} / ${deagle.reserveAmmo}`);
+
+    const knife = WEAPONS['garam-karambit'];
+    expect(readmeContent).toContain(`${knife.damage} / ${knife.damage} (180 Backstab)`);
   });
 
   it('guarantees 5-zone hitboxes match shared kernel HITBOX constants with no phantom zones', () => {
-    expect(readmeContent).toContain(`Head (\`HEAD\`):** 4.00x multiplier`);
-    expect(readmeContent).toContain(`Chest (\`CHEST\`):** 1.00x baseline damage`);
-    expect(readmeContent).toContain(`Stomach (\`STOMACH\`):** 1.15x multiplier`);
-    expect(readmeContent).toContain(`Arms & Hands (\`ARMS\`):** 0.75x multiplier`);
-    expect(readmeContent).toContain(`Legs & Feet (\`LEGS\`):** 0.75x multiplier`);
+    expect(readmeContent).toContain(`Head (\`HEAD\`):** ${HITBOX.HEAD_MULTIPLIER.toFixed(2)}x multiplier`);
+    expect(readmeContent).toContain(`Chest (\`CHEST\`):** ${HITBOX.CHEST_MULTIPLIER.toFixed(2)}x baseline damage`);
+    expect(readmeContent).toContain(`Stomach (\`STOMACH\`):** ${HITBOX.STOMACH_MULTIPLIER.toFixed(2)}x multiplier`);
+    expect(readmeContent).toContain(`Arms & Hands (\`ARMS\`):** ${HITBOX.ARMS_MULTIPLIER.toFixed(2)}x multiplier`);
+    expect(readmeContent).toContain(`Legs & Feet (\`LEGS\`):** ${HITBOX.LEGS_MULTIPLIER.toFixed(2)}x multiplier`);
 
     // Ensure phantom zones like NECK are completely purged
     expect(readmeContent).not.toContain(`NECK`);

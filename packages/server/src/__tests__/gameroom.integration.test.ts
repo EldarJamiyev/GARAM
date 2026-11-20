@@ -6,6 +6,7 @@ import type { WebSocket } from 'ws';
 
 class MockWebSocket extends EventEmitter {
   public readyState = 1; // WebSocket.OPEN
+  public bufferedAmount = 0;
   public sentMessages: ServerPacket[] = [];
   public closed = false;
   public closeCode?: number;
@@ -37,9 +38,7 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
 
   afterEach(() => {
     if (room) {
-      // Clear game room interval
-      const handle = (room as unknown as { intervalHandle?: NodeJS.Timeout }).intervalHandle;
-      if (handle) clearInterval(handle);
+      room.stop();
       room = null;
     }
   });
@@ -270,5 +269,92 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     // Assert no hit_confirm was generated for this malicious shot
     const hitConfirms = ws.sentMessages.filter(m => m.type === 'hit_confirm');
     expect(hitConfirms.length).toBe(0);
+  });
+
+  it('rejects firing unowned weapons, out-of-range melee strikes, and spoofed client ping timestamps', async () => {
+    room = new GameRoom();
+    const attackerWs = new MockWebSocket();
+    const victimWs = new MockWebSocket();
+    room.handleConnection(attackerWs as unknown as WebSocket);
+    room.handleConnection(victimWs as unknown as WebSocket);
+
+    attackerWs.simulateClientMessage({ type: 'join', callsign: 'Attacker', faction: 'Vanguard' });
+    victimWs.simulateClientMessage({ type: 'join', callsign: 'Victim', faction: 'Syndicate' });
+
+    // Transition to ROUND_LIVE and place victim directly in front of attacker
+    room.phase = 'ROUND_LIVE';
+    const sessions = (
+      room as unknown as {
+        sessions: Map<
+          string,
+          {
+            controller: { state: { x: number; y: number; z: number; yaw: number; pitch: number } };
+            health: number;
+            cash: number;
+            ping: number;
+            ownedWeapons: Set<string>;
+          }
+        >;
+      }
+    ).sessions;
+    const [attacker, victim] = Array.from(sessions.values());
+    attacker.controller.state.x = 0;
+    attacker.controller.state.y = 0;
+    attacker.controller.state.z = 0;
+    attacker.controller.state.yaw = 0;
+    attacker.controller.state.pitch = 0;
+
+    // 1. Unowned Sovereign AWP fire must be rejected
+    victim.controller.state.x = 0;
+    victim.controller.state.y = 0;
+    victim.controller.state.z = -15;
+    attacker.ownedWeapons.delete('sovereign-awp');
+    attackerWs.simulateClientMessage({
+      type: 'fire',
+      seq: 1,
+      targetServerTime: Date.now(),
+      weaponId: 'sovereign-awp',
+      direction: { x: 0, y: 0, z: -1 },
+      yaw: 0,
+      pitch: 0,
+      isScoped: true,
+    });
+    expect(victim.health).toBe(100);
+
+    // 2. Out-of-range Karambit melee strike at 15m must deal 0 damage
+    attackerWs.simulateClientMessage({
+      type: 'fire',
+      seq: 2,
+      targetServerTime: Date.now(),
+      weaponId: 'garam-karambit',
+      direction: { x: 0, y: 0, z: -1 },
+      yaw: 0,
+      pitch: 0,
+      isScoped: false,
+    });
+    expect(victim.health).toBe(100);
+
+    // 3. Spoofed legacy ping timestamp must NOT inflate session.ping
+    const initialPing = attacker.ping;
+    attackerWs.simulateClientMessage({
+      type: 'ping',
+      clientTime: Date.now() - 5000,
+    });
+    expect(attacker.ping).toBe(initialPing);
+
+    // 4. Buy action enforces buy-zone bounds: rejected outside spawn (0,0,0), accepted inside CT spawn
+    room.phase = 'FREEZE_TIME';
+    attacker.cash = 5000;
+    attackerWs.simulateClientMessage({ type: 'buy', item: 'sovereign-awp' });
+    expect(attacker.ownedWeapons.has('sovereign-awp')).toBe(false);
+    expect(attacker.cash).toBe(5000);
+
+    attacker.controller.state.x = 0;
+    attacker.controller.state.y = 0;
+    attacker.controller.state.z = 42;
+    attackerWs.simulateClientMessage({ type: 'buy', item: 'sovereign-awp' });
+    expect(attacker.ownedWeapons.has('sovereign-awp')).toBe(true);
+    expect(attacker.cash).toBe(250);
+    expect(attackerWs.sentMessages.some(m => m.type === 'economy_sync')).toBe(true);
   });
 });

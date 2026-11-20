@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WEAPONS, SPAWN_POINTS, KinematicPlayerController } from '@garam/shared';
+import { WEAPONS, SPAWN_POINTS, KinematicPlayerController, MapBlockCollider } from '@garam/shared';
 import { settingsStore } from '../core/SettingsStore.js';
 import { InventoryManager } from './InventoryManager.js';
 import { DroppedWeaponManager } from './DroppedWeaponManager.js';
@@ -32,6 +32,9 @@ export class PlayerManager {
   private callbacks: PlayerManagerCallbacks;
 
   private _forward = new THREE.Vector3();
+  private _spawnPos = new THREE.Vector3();
+  private _playerVel = new THREE.Vector3();
+  private _dropDir = new THREE.Vector3(0, 0, 1);
 
   constructor(
     player: KinematicPlayerController,
@@ -68,7 +71,22 @@ export class PlayerManager {
     this.economy.armor = 100;
   }
 
-  public damagePlayer(dmg: number, attackerPos: THREE.Vector3 | null, cameraPos: THREE.Vector3, inputYaw: number, bots: BotEntity[]): void {
+  /**
+   * Apply damage to the local player.
+   * When armorAlreadyApplied is true (e.g., from executeTacticalRaycast), dmg is already
+   * post-armor awardedDamage and armorDamage is subtracted directly — preventing double-armor halving.
+   */
+  public damagePlayer(
+    dmg: number,
+    attackerPos: THREE.Vector3 | null,
+    cameraPos: THREE.Vector3,
+    inputYaw: number,
+    bots: BotEntity[],
+    armorAlreadyApplied = false,
+    armorDamage = 0
+  ): void {
+    if (this.playerHealth <= 0) return;
+
     this.player.applyTagging(0.58);
 
     if (attackerPos) {
@@ -76,28 +94,29 @@ export class PlayerManager {
       this.hud.triggerDamageIndicator(angle);
     }
 
-    if (this.economy.armor > 0) {
-      this.economy.armor = Math.max(0, this.economy.armor - Math.round(dmg * 0.5));
-      this.playerHealth = Math.max(0, this.playerHealth - Math.round(dmg * 0.5));
+    if (armorAlreadyApplied) {
+      this.economy.armor = Math.max(0, this.economy.armor - Math.round(armorDamage));
+      this.playerHealth = Math.max(0, this.playerHealth - Math.round(dmg));
+    } else if (this.economy.armor > 0) {
+      const absorbed = Math.round(dmg * 0.35);
+      this.economy.armor = Math.max(0, this.economy.armor - absorbed);
+      this.playerHealth = Math.max(0, this.playerHealth - Math.max(1, Math.round(dmg - absorbed)));
     } else {
-      this.playerHealth = Math.max(0, this.playerHealth - dmg);
+      this.playerHealth = Math.max(0, this.playerHealth - Math.round(dmg));
     }
 
     if (this.playerHealth <= 0) {
       this.deaths++;
-      this.hud.addKillfeed('💀 Eldar Garamov was eliminated');
+      const callsign = settingsStore.settings.callsign || 'Operator';
+      const playerTeam = settingsStore.settings.faction;
+      this.hud.addKillfeed(`💀 ${callsign} was eliminated`);
       this.combatReport.show();
 
-      const livingAllies = bots.filter((b) => b.team === 'Vanguard' && !b.isDead);
+      const livingAllies = bots.filter((b) => b.team === playerTeam && !b.isDead);
       if (livingAllies.length > 0) {
         this.spectator.startDeathCam(attackerPos);
-      } else {
-        const spawn = settingsStore.settings.faction === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
-        this.player.state.x = spawn.x;
-        this.player.state.z = spawn.z;
-        this.playerHealth = 100;
-        this.economy.armor = 100;
       }
+      // Note: RoundManager checks living team count (including player) to end the round cleanly
     }
   }
 
@@ -109,11 +128,12 @@ export class PlayerManager {
     if (!state) return;
 
     worldCamera.getWorldDirection(this._forward);
+    this._spawnPos.copy(worldCamera.position).addScaledVector(this._forward, 0.8);
     this.droppedWeapons.dropWeapon(
       state.weaponId,
       state.currentAmmo,
       state.reserveAmmo,
-      worldCamera.position.clone().addScaledVector(this._forward, 0.8),
+      this._spawnPos,
       this._forward
     );
 
@@ -145,24 +165,32 @@ export class PlayerManager {
     const active = this.inventory.getActiveWeapon();
     const type = active.id as UtilityType;
     worldCamera.getWorldDirection(this._forward);
-    const spawnPos = worldCamera.position.clone().addScaledVector(this._forward, 0.4);
-    const playerVel = new THREE.Vector3(this.player.state.vx, this.player.state.vy, this.player.state.vz);
+    this._spawnPos.copy(worldCamera.position).addScaledVector(this._forward, 0.4);
+    this._playerVel.set(this.player.state.vx, this.player.state.vy, this.player.state.vz);
 
-    this.utilityManager.throwGrenade(type, spawnPos, this._forward, playerVel, mode);
+    this.utilityManager.throwGrenade(type, this._spawnPos, this._forward, this._playerVel, mode);
+    if (!this.economy.practiceInfiniteUtility) {
+      this.economy.consumeUtility(type);
+    }
     this.inventory.slots[4] = null;
-    this.inventory.equipSlot(3);
+    this.inventory.equipSlot(1) || this.inventory.equipSlot(2) || this.inventory.equipSlot(3);
     this.callbacks.onSyncActiveWeapon();
   }
 
   public handleQuickUtility(type: 'smoke' | 'flash' | 'he' | 'molotov'): void {
-    const utilityMap: Record<string, string> = {
+    const utilityMap: Record<'smoke' | 'flash' | 'he' | 'molotov', UtilityType> = {
       smoke: 'smoke-grenade',
       flash: 'flashbang',
       he: 'he-grenade',
       molotov: 'molotov',
     };
-    this.inventory.slots[4] = { weaponId: utilityMap[type], currentAmmo: 1, reserveAmmo: 0 };
-    this.inventory.equipSlot(4);
+    const utilId = utilityMap[type];
+    if (!this.economy.practiceInfiniteUtility && !this.economy.hasUtility(utilId)) {
+      this.hud.showCenterBanner('NO UTILITY OWNED', `Buy ${utilId.toUpperCase()} in Buy Menu [B]`, 1400);
+      return;
+    }
+    this.inventory.slots[4] = { weaponId: utilId, currentAmmo: 1, reserveAmmo: 0 };
+    this.inventory.equipSlot(4, true);
     this.callbacks.onSyncActiveWeapon();
   }
 
@@ -171,6 +199,7 @@ export class PlayerManager {
       bot.isDead = false;
       bot.health = bot.maxHealth;
       bot.armor = 100;
+      bot.mesh.visible = true;
       if (bot.patrolWaypoints.length > 0) {
         bot.waypointIndex = 0;
         bot.patrolTarget = bot.patrolWaypoints[0];
@@ -179,11 +208,18 @@ export class PlayerManager {
     }
   }
 
-  public handlePlayerKill(killerName: string, victimBot: BotEntity, headshot: boolean, weaponName: string, reward: number, bots: BotEntity[]): void {
+  public handlePlayerKill(
+    killerName: string,
+    victimBot: BotEntity,
+    headshot: boolean,
+    weaponName: string,
+    reward: number,
+    bots: BotEntity[]
+  ): void {
     this.kills++;
     this.economy.addCash(reward);
     victimBot.isDead = true;
-    this.droppedWeapons.dropWeapon('garam-47', 30, 90, victimBot.mesh.position, new THREE.Vector3(0, 0, 1));
+    this.droppedWeapons.dropWeapon('garam-47', 30, 90, victimBot.mesh.position, this._dropDir);
     const text = CombatReportManager.formatKillfeedEntry(killerName, victimBot.name, weaponName, headshot);
     this.hud.addKillfeed(text);
     this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, bots);
@@ -195,23 +231,28 @@ export class PlayerManager {
     dmg: number,
     isHeadshot: boolean,
     penetrated: number,
-    blocks: any[],
+    blocks: MapBlockCollider[],
     cameraPos: THREE.Vector3,
-    bots: BotEntity[]
+    bots: BotEntity[],
+    armorDamage = 0
   ): void {
     this.audio.playGunshot('garam-47', shooter.mesh.position, cameraPos, blocks);
-    if (victim.armor > 0) {
-      victim.armor = Math.max(0, victim.armor - Math.round(dmg * 0.5));
-      victim.health = Math.max(0, victim.health - Math.round(dmg * 0.5));
-    } else {
-      victim.health = Math.max(0, victim.health - dmg);
-    }
+    // dmg from BotAISystem is already post-armor awardedDamage from executeTacticalRaycast
+    victim.armor = Math.max(0, victim.armor - Math.round(armorDamage));
+    victim.health = Math.max(0, victim.health - Math.round(dmg));
+
     if (victim.health <= 0 && !victim.isDead) {
       victim.isDead = true;
       shooter.kills++;
       victim.deaths++;
-      this.droppedWeapons.dropWeapon('garam-47', 30, 90, victim.mesh.position, new THREE.Vector3(0, 0, 1));
-      const killfeedText = CombatReportManager.formatKillfeedEntry(shooter.name, victim.name, 'Garam-47', isHeadshot, penetrated > 0);
+      this.droppedWeapons.dropWeapon('garam-47', 30, 90, victim.mesh.position, this._dropDir);
+      const killfeedText = CombatReportManager.formatKillfeedEntry(
+        shooter.name,
+        victim.name,
+        'Garam-47',
+        isHeadshot,
+        penetrated > 0
+      );
       this.hud.addKillfeed(killfeedText);
       this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, bots);
     }

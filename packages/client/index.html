@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GARAM: ZERO HOUR</title>
+  <meta name="description" content="Browser-native 5v5 competitive tactical FPS featuring 128Hz deterministic kinematics, 5-zone ballistics, dual-pass viewmodels, and 64-tick authoritative multiplayer.">
+  <meta property="og:title" content="GARAM: ZERO HOUR">
+  <meta property="og:description" content="Browser-native 5v5 competitive tactical FPS featuring 128Hz deterministic kinematics, 5-zone ballistics, and 64-tick authoritative multiplayer.">
   <style>
     * {
       box-sizing: border-box;
@@ -126,11 +129,10 @@
       display: grid;
       grid-template-columns: minmax(130px, 190px) minmax(90px, 110px) minmax(130px, 190px);
       align-items: center;
-      background: rgba(12, 15, 20, 0.94);
+      background: rgba(12, 15, 20, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 6px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.65);
-      backdrop-filter: blur(12px);
       overflow: hidden;
       white-space: nowrap;
       max-width: calc(100vw - 32px);
@@ -230,11 +232,10 @@
       font-weight: 700;
     }
     .hud-block {
-      background: rgba(12, 16, 22, 0.88);
+      background: rgba(12, 16, 22, 0.92);
       border: 1px solid rgba(255, 255, 255, 0.12);
       padding: 12px 22px;
       border-radius: 6px;
-      backdrop-filter: blur(10px);
       box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
     }
     .hud-label {
@@ -304,7 +305,6 @@
       padding: 24px;
       display: none;
       box-shadow: 0 0 35px rgba(0, 0, 0, 0.85);
-      backdrop-filter: blur(14px);
       z-index: 90;
     }
     .score-table {
@@ -335,7 +335,6 @@
       padding: 28px;
       display: none;
       box-shadow: 0 0 50px rgba(59, 158, 255, 0.4);
-      backdrop-filter: blur(16px);
       z-index: 150;
       pointer-events: auto;
     }
@@ -358,6 +357,8 @@
       padding: 14px;
       border-radius: 6px;
       cursor: pointer;
+      text-align: left;
+      font-family: inherit;
       transition: all 0.2s ease;
     }
     .buy-card:hover {
@@ -387,8 +388,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(8, 11, 15, 0.58);
-      backdrop-filter: blur(4px);
+      background: rgba(8, 11, 15, 0.64);
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -430,8 +430,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      background: rgba(10, 14, 20, 0.78);
-      backdrop-filter: blur(18px);
+      background: rgba(10, 14, 20, 0.92);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 8px;
       padding: 28px 40px;
@@ -577,8 +576,8 @@
     }
   </style>
 </head>
-<body>
-  <canvas id="game-canvas"></canvas>
+<body data-state="title">
+  <canvas id="game-canvas" data-testid="game-canvas"></canvas>
 
   <div id="ui-overlay">
     <!-- Sniper Scope Overlay -->
@@ -695,46 +694,46 @@
       </div>
     </div>
     <div class="buy-grid">
-      <div class="buy-card" data-buy="garam-47" data-key="1">
+      <button type="button" class="buy-card" data-buy="garam-47" data-key="1">
         <div class="buy-key">[1] RIFLE</div>
         <div class="buy-name">Garam-47</div>
         <div class="buy-price">$2,700</div>
-      </div>
-      <div class="buy-card" data-buy="vanguard-m4" data-key="2">
+      </button>
+      <button type="button" class="buy-card" data-buy="vanguard-m4" data-key="2">
         <div class="buy-key">[2] RIFLE</div>
         <div class="buy-name">Vanguard M4A1-S</div>
         <div class="buy-price">$2,750</div>
-      </div>
-      <div class="buy-card" data-buy="sovereign-awp" data-key="3">
+      </button>
+      <button type="button" class="buy-card" data-buy="sovereign-awp" data-key="3">
         <div class="buy-key">[3] SNIPER</div>
         <div class="buy-name">Sovereign AWP</div>
         <div class="buy-price">$4,750</div>
-      </div>
-      <div class="buy-card" data-buy="desert-eagle" data-key="4">
+      </button>
+      <button type="button" class="buy-card" data-buy="desert-eagle" data-key="4">
         <div class="buy-key">[4] PISTOL</div>
         <div class="buy-name">Desert Eagle</div>
         <div class="buy-price">$700</div>
-      </div>
-      <div class="buy-card" data-buy="kevlar" data-key="5">
+      </button>
+      <button type="button" class="buy-card" data-buy="kevlar" data-key="5">
         <div class="buy-key">[5] GEAR</div>
         <div class="buy-name">Kevlar Vest</div>
         <div class="buy-price">$650</div>
-      </div>
-      <div class="buy-card" data-buy="kevlar-helmet" data-key="6">
+      </button>
+      <button type="button" class="buy-card" data-buy="kevlar-helmet" data-key="6">
         <div class="buy-key">[6] GEAR</div>
         <div class="buy-name">Kevlar + Helmet</div>
         <div class="buy-price">$1,000</div>
-      </div>
-      <div class="buy-card" data-buy="defuse-kit" data-key="7">
+      </button>
+      <button type="button" class="buy-card" data-buy="defuse-kit" data-key="7">
         <div class="buy-key">[7] GEAR</div>
         <div class="buy-name">Defuse Kit</div>
         <div class="buy-price">$300</div>
-      </div>
-      <div class="buy-card" data-buy="smoke-grenade" data-key="8">
+      </button>
+      <button type="button" class="buy-card" data-buy="smoke-grenade" data-key="8">
         <div class="buy-key">[8] UTILITY</div>
         <div class="buy-name">Smoke Grenade</div>
         <div class="buy-price">$300</div>
-      </div>
+      </button>
     </div>
   </div>
 
@@ -803,7 +802,7 @@
       </div>
 
       <div style="display: flex; gap: 12px; width: 100%; margin-top: 14px;">
-        <button class="start-prompt" id="spawn-btn" style="flex: 2;">DEPLOY OPERATOR</button>
+        <button class="start-prompt" id="spawn-btn" data-start="true" style="flex: 2;">DEPLOY OPERATOR</button>
         <button class="lobby-btn" id="open-customizer-btn" style="flex: 1; background: rgba(59, 158, 255, 0.2); border-color: #3b9eff; color: #fff; font-size: 12px;">[F2] SANDBOX</button>
       </div>
 

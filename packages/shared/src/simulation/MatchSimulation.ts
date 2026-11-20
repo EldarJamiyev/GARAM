@@ -1,4 +1,4 @@
-import { ECONOMY } from '../constants/economy.js';
+import { ECONOMY, getLossBonus } from '../constants/economy.js';
 import { Vec3 } from '../physics/RaycastEngine.js';
 
 export type MatchPhase = 'FREEZE_TIME' | 'ROUND_LIVE' | 'ROUND_END' | 'MATCH_OVER';
@@ -28,7 +28,7 @@ export interface MatchSimulationConfig {
 export class MatchSimulation {
   public phase: MatchPhase = 'FREEZE_TIME';
   public round = 1;
-  public phaseTimer = 10.0;
+  public phaseTimer: number = ECONOMY.freezeTimeSec;
   public ctScore = 0;
   public tScore = 0;
   public ctLossStreak = 0;
@@ -43,17 +43,19 @@ export class MatchSimulation {
   public defuseProgress = 0;
 
   public readonly maxRounds: number;
+  public readonly roundsToWin: number;
   public readonly freezeTimeDuration: number;
   public readonly roundLiveDuration: number;
   public readonly roundEndDuration: number;
   public readonly bombDetonateDuration: number;
 
   constructor(config: MatchSimulationConfig = {}) {
-    this.maxRounds = config.maxRounds ?? 24;
-    this.freezeTimeDuration = config.freezeTimeDuration ?? 10.0;
-    this.roundLiveDuration = config.roundLiveDuration ?? 115.0; // 1:55
-    this.roundEndDuration = config.roundEndDuration ?? 5.0;
-    this.bombDetonateDuration = config.bombDetonateDuration ?? 40.0;
+    this.maxRounds = config.maxRounds ?? ECONOMY.maxRounds;
+    this.roundsToWin = Math.floor(this.maxRounds / 2) + 1; // MR12: 24/2 + 1 = 13
+    this.freezeTimeDuration = config.freezeTimeDuration ?? ECONOMY.freezeTimeSec;
+    this.roundLiveDuration = config.roundLiveDuration ?? ECONOMY.roundLiveSec; // 1:55
+    this.roundEndDuration = config.roundEndDuration ?? ECONOMY.roundEndSec;
+    this.bombDetonateDuration = config.bombDetonateDuration ?? ECONOMY.bombTimerSec;
     this.phaseTimer = this.freezeTimeDuration;
   }
 
@@ -88,6 +90,7 @@ export class MatchSimulation {
     this.bombSite = site;
     this.bombPos = { ...pos };
     this.bombTimer = this.bombDetonateDuration;
+    this.plantProgress = 1.0;
   }
 
   public stepDefuse(dt: number, hasKit: boolean): { defused: boolean; progress: number } {
@@ -125,8 +128,7 @@ export class MatchSimulation {
         }
       } else if (this.phase === 'ROUND_END') {
         this.round++;
-        const targetRoundsToWin = Math.ceil(this.maxRounds / 2);
-        if (this.ctScore >= targetRoundsToWin || this.tScore >= targetRoundsToWin) {
+        if (this.ctScore >= this.roundsToWin || this.tScore >= this.roundsToWin) {
           this.phase = 'MATCH_OVER';
         } else {
           this.phase = 'FREEZE_TIME';
@@ -141,28 +143,36 @@ export class MatchSimulation {
 
   public endRound(winner: 'Vanguard' | 'Syndicate', reason: string): RoundEndResult {
     const isVanguard = winner === 'Vanguard';
+    const isPistolRound = this.round === 1 || this.round === ECONOMY.halfTimeRound + 1;
+    const winBonus = reason.includes('Detonated') || reason.includes('Defused')
+      ? ECONOMY.winCashBomb
+      : ECONOMY.winCashElimination;
+
+    let ctPayout: number;
+    let tPayout: number;
+
     if (isVanguard) {
       this.ctScore++;
-      this.ctLossStreak = 0;
-      this.tLossStreak = Math.min(4, this.tLossStreak + 1);
+      ctPayout = winBonus;
+      // CS2 MR12 loss bonus: calculate payout for current loss streak BEFORE incrementing (pistol starts at $1,900)
+      const baseTLoss = getLossBonus(this.tLossStreak, isPistolRound);
+      const postPlantBonus = this.isBombPlanted ? ECONOMY.tLossBonusPostPlant : 0;
+      tPayout = baseTLoss + postPlantBonus;
+      // CS2 MR12: winning decrements loss streak by 1 (not hard-reset to 0)
+      this.ctLossStreak = Math.max(0, this.ctLossStreak - 1);
+      this.tLossStreak = Math.min(4, (isPistolRound ? Math.max(1, this.tLossStreak) : this.tLossStreak) + 1);
     } else {
       this.tScore++;
-      this.tLossStreak = 0;
-      this.ctLossStreak = Math.min(4, this.ctLossStreak + 1);
+      tPayout = winBonus;
+      ctPayout = getLossBonus(this.ctLossStreak, isPistolRound);
+      this.tLossStreak = Math.max(0, this.tLossStreak - 1);
+      this.ctLossStreak = Math.min(4, (isPistolRound ? Math.max(1, this.ctLossStreak) : this.ctLossStreak) + 1);
     }
-
-    const ctLossBonus = ECONOMY.lossBonusBase + this.ctLossStreak * ECONOMY.lossBonusStep;
-    const tLossBonus = ECONOMY.lossBonusBase + this.tLossStreak * ECONOMY.lossBonusStep;
-
-    const winBonus = reason.includes('Detonated') || reason.includes('Defused') ? ECONOMY.winCashBomb : ECONOMY.winCashElimination;
-    const ctPayout = isVanguard ? winBonus : Math.min(ECONOMY.lossBonusMax, ctLossBonus);
-    const tPayout = !isVanguard ? winBonus : Math.min(ECONOMY.lossBonusMax, tLossBonus);
 
     this.phase = 'ROUND_END';
     this.phaseTimer = this.roundEndDuration;
 
-    const targetWins = Math.ceil(this.maxRounds / 2);
-    const isMatchComplete = this.ctScore >= targetWins || this.tScore >= targetWins;
+    const isMatchComplete = this.ctScore >= this.roundsToWin || this.tScore >= this.roundsToWin;
     if (isMatchComplete) {
       this.phase = 'MATCH_OVER';
     }

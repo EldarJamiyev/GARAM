@@ -50,14 +50,13 @@ export class CustomizerUI {
     el.style.transform = 'translate(-50%, -50%)';
     el.style.width = '780px';
     el.style.maxHeight = '88vh';
-    el.style.background = 'rgba(10, 14, 20, 0.94)';
-    el.style.backdropFilter = 'blur(20px)';
+    el.style.background = 'rgba(10, 14, 20, 0.96)';
     el.style.border = '1px solid rgba(59, 158, 255, 0.3)';
     el.style.borderRadius = '8px';
     el.style.boxShadow = '0 0 60px rgba(0, 0, 0, 0.9), inset 0 0 20px rgba(0, 0, 0, 0.7)';
     el.style.color = '#fff';
     el.style.fontFamily = 'sans-serif';
-    el.style.zIndex = '90';
+    el.style.zIndex = '250';
     el.style.display = 'none';
     el.style.flexDirection = 'column';
     el.style.overflow = 'hidden';
@@ -65,7 +64,10 @@ export class CustomizerUI {
     el.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3);">
         <div style="font-size: 16px; font-weight: 800; letter-spacing: 2px; color: #3b9eff;">GARAM ESPORTS SANDBOX & CUSTOMIZER [F2]</div>
-        <button id="cust-close-btn" style="background: none; border: none; color: #8892a0; font-size: 18px; cursor: pointer;">✕</button>
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <span id="cust-status-toast" style="font-size: 11px; font-weight: 700; color: #00ff88; letter-spacing: 1px; opacity: 0; transition: opacity 0.2s ease;"></span>
+          <button id="cust-close-btn" aria-label="Close Customizer" style="background: none; border: none; color: #8892a0; font-size: 18px; cursor: pointer;">✕</button>
+        </div>
       </div>
 
       <div style="display: flex; gap: 8px; padding: 12px 24px 0; border-bottom: 1px solid rgba(255,255,255,0.08);">
@@ -113,12 +115,12 @@ export class CustomizerUI {
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 12px;">
-            <div class="cust-row"><span>DAMAGE</span><input type="number" id="wp-dmg" style="width: 70px;"></div>
-            <div class="cust-row"><span>RATE OF FIRE (RPM)</span><input type="number" id="wp-rpm" style="width: 70px;"></div>
-            <div class="cust-row"><span>MAGAZINE SIZE</span><input type="number" id="wp-mag" style="width: 70px;"></div>
-            <div class="cust-row"><span>RELOAD TIME (S)</span><input type="number" id="wp-reload" step="0.1" style="width: 70px;"></div>
-            <div class="cust-row"><span>MOVE SPEED (M/S)</span><input type="number" id="wp-speed" step="0.1" style="width: 70px;"></div>
-            <div class="cust-row"><span>ARMOR PENETRATION</span><input type="number" id="wp-pen" step="0.01" style="width: 70px;"></div>
+            <div class="cust-row"><span>DAMAGE</span><input type="number" id="wp-dmg" min="1" max="500" style="width: 70px;"></div>
+            <div class="cust-row"><span>RATE OF FIRE (RPM)</span><input type="number" id="wp-rpm" min="20" max="2000" style="width: 70px;"></div>
+            <div class="cust-row"><span>MAGAZINE SIZE</span><input type="number" id="wp-mag" min="1" max="200" style="width: 70px;"></div>
+            <div class="cust-row"><span>RELOAD TIME (S)</span><input type="number" id="wp-reload" min="0.2" max="10" step="0.1" style="width: 70px;"></div>
+            <div class="cust-row"><span>MOVE SPEED (M/S)</span><input type="number" id="wp-speed" min="1.5" max="10" step="0.1" style="width: 70px;"></div>
+            <div class="cust-row"><span>ARMOR PENETRATION</span><input type="number" id="wp-pen" min="0" max="1" step="0.01" style="width: 70px;"></div>
           </div>
         </div>
 
@@ -211,6 +213,17 @@ export class CustomizerUI {
     return el;
   }
 
+  private showStatusToast(message: string, isError = false): void {
+    const toast = this.modal.querySelector('#cust-status-toast') as HTMLElement | null;
+    if (!toast) return;
+    toast.textContent = message;
+    toast.style.color = isError ? '#ff4455' : '#00ff88';
+    toast.style.opacity = '1';
+    setTimeout(() => {
+      toast.style.opacity = '0';
+    }, 2200);
+  }
+
   private bindEvents(): void {
     // Close button
     this.modal.querySelector('#cust-close-btn')?.addEventListener('click', () => this.toggle(false));
@@ -229,7 +242,6 @@ export class CustomizerUI {
     });
 
     // Crosshair inputs
-    const ch = settingsStore.settings.crosshair;
     const lenInput = this.modal.querySelector('#ch-len') as HTMLInputElement;
     const thickInput = this.modal.querySelector('#ch-thick') as HTMLInputElement;
     const gapInput = this.modal.querySelector('#ch-gap') as HTMLInputElement;
@@ -238,19 +250,27 @@ export class CustomizerUI {
     const outlineInput = this.modal.querySelector('#ch-outline') as HTMLInputElement;
     const dynInput = this.modal.querySelector('#ch-dyn') as HTMLInputElement;
 
-    lenInput.value = ch.length.toString();
-    thickInput.value = ch.thickness.toString();
-    gapInput.value = ch.gap.toString();
-    colorInput.value = ch.color;
-    dotInput.checked = ch.centerDot;
-    outlineInput.checked = ch.outline;
-    dynInput.checked = ch.dynamicSpread;
+    const syncCrosshairInputs = (cfg: CrosshairConfig) => {
+      lenInput.value = cfg.length.toString();
+      thickInput.value = cfg.thickness.toString();
+      gapInput.value = cfg.gap.toString();
+      colorInput.value = cfg.color;
+      dotInput.checked = cfg.centerDot;
+      outlineInput.checked = cfg.outline;
+      dynInput.checked = cfg.dynamicSpread;
+      this.modal.querySelector('#ch-len-v')!.textContent = cfg.length.toString();
+      this.modal.querySelector('#ch-thick-v')!.textContent = cfg.thickness.toString();
+      this.modal.querySelector('#ch-gap-v')!.textContent = cfg.gap.toString();
+    };
+
+    syncCrosshairInputs(settingsStore.settings.crosshair);
 
     const onChUpdate = () => {
-      ch.length = parseInt(lenInput.value, 10);
-      ch.thickness = parseInt(thickInput.value, 10);
-      ch.gap = parseInt(gapInput.value, 10);
-      ch.color = colorInput.value;
+      const ch = settingsStore.settings.crosshair;
+      ch.length = Math.max(2, Math.min(20, parseInt(lenInput.value, 10) || 8));
+      ch.thickness = Math.max(1, Math.min(6, parseInt(thickInput.value, 10) || 2));
+      ch.gap = Math.max(0, Math.min(16, parseInt(gapInput.value, 10) || 4));
+      ch.color = colorInput.value || '#00ff66';
       ch.centerDot = dotInput.checked;
       ch.outline = outlineInput.checked;
       ch.dynamicSpread = dynInput.checked;
@@ -264,7 +284,7 @@ export class CustomizerUI {
       this.renderCrosshairPreview();
     };
 
-    const followInput = this.modal.querySelector('#ch-follow') as HTMLInputElement;
+    const followInput = this.modal.querySelector('#ch-follow') as HTMLInputElement | null;
     if (followInput) {
       followInput.checked = !!settingsStore.settings.followRecoil;
       followInput.addEventListener('change', () => {
@@ -277,16 +297,46 @@ export class CustomizerUI {
       el.addEventListener('input', onChUpdate);
     });
 
-    // Copy JSON
+    // Copy JSON (non-blocking inline toast, no window.alert)
     this.modal.querySelector('#cust-ch-export')?.addEventListener('click', () => {
-      navigator.clipboard.writeText(JSON.stringify(ch, null, 2));
-      alert('Crosshair JSON copied to clipboard!');
+      const json = JSON.stringify(settingsStore.settings.crosshair, null, 2);
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard
+          .writeText(json)
+          .then(() => this.showStatusToast('CROSSHAIR JSON COPIED'))
+          .catch(() => this.showStatusToast('CLIPBOARD BLOCKED BY BROWSER', true));
+      } else {
+        this.showStatusToast('CLIPBOARD UNAVAILABLE', true);
+      }
+    });
+
+    // Reset Crosshair to Competitive Defaults
+    this.modal.querySelector('#cust-ch-reset')?.addEventListener('click', () => {
+      const defaults: CrosshairConfig = {
+        length: 8,
+        thickness: 2,
+        gap: 4,
+        color: '#00ff66',
+        centerDot: false,
+        outline: true,
+        dynamicSpread: true,
+      };
+      settingsStore.update('crosshair', defaults);
+      syncCrosshairInputs(defaults);
+      if (followInput) {
+        followInput.checked = false;
+        settingsStore.update('followRecoil', false);
+        this.callbacks.onToggleFollowRecoil?.(false);
+      }
+      this.callbacks.onCrosshairChanged(defaults);
+      this.renderCrosshairPreview();
+      this.showStatusToast('CROSSHAIR RESET TO DEFAULTS');
     });
 
     // Weapon select
     const wpSelect = this.modal.querySelector('#cust-wp-select') as HTMLSelectElement;
     const populateWeaponFields = (wpId: string) => {
-      const base = WEAPONS[wpId];
+      const base = this.originalWeapons[wpId] || WEAPONS[wpId];
       if (!base) return;
       const override = settingsStore.sandboxWeaponOverrides[wpId] || {};
       const def = { ...base, ...override };
@@ -301,26 +351,59 @@ export class CustomizerUI {
     wpSelect.addEventListener('change', () => populateWeaponFields(wpSelect.value));
     populateWeaponFields('garam-47');
 
-    const updateWpField = (field: string, val: number) => {
+    const updateWpField = (
+      field: 'damage' | 'fireRateRpm' | 'magCapacity' | 'reloadTime' | 'movementSpeed' | 'armorPenetration',
+      rawVal: number,
+      min: number,
+      max: number,
+      inputEl: HTMLInputElement
+    ) => {
       const wpId = wpSelect.value;
+      if (!Number.isFinite(rawVal)) {
+        populateWeaponFields(wpId);
+        this.showStatusToast('INVALID NUMERIC OVERRIDE', true);
+        return;
+      }
+      const clamped = Math.max(min, Math.min(max, rawVal));
+      inputEl.value = clamped.toString();
       if (!settingsStore.sandboxWeaponOverrides[wpId]) {
         settingsStore.sandboxWeaponOverrides[wpId] = {};
       }
-      settingsStore.sandboxWeaponOverrides[wpId]![field] = val;
+      settingsStore.sandboxWeaponOverrides[wpId]![field] = clamped;
+      this.showStatusToast(`UPDATED ${field.toUpperCase()}`);
     };
 
-    this.modal.querySelector('#wp-dmg')?.addEventListener('change', (e) => updateWpField('damage', parseFloat((e.target as HTMLInputElement).value)));
-    this.modal.querySelector('#wp-rpm')?.addEventListener('change', (e) => updateWpField('fireRateRpm', parseFloat((e.target as HTMLInputElement).value)));
-    this.modal.querySelector('#wp-mag')?.addEventListener('change', (e) => updateWpField('magCapacity', parseInt((e.target as HTMLInputElement).value, 10)));
-    this.modal.querySelector('#wp-reload')?.addEventListener('change', (e) => updateWpField('reloadTime', parseFloat((e.target as HTMLInputElement).value)));
-    this.modal.querySelector('#wp-speed')?.addEventListener('change', (e) => updateWpField('movementSpeed', parseFloat((e.target as HTMLInputElement).value)));
-    this.modal.querySelector('#wp-pen')?.addEventListener('change', (e) => updateWpField('armorPenetration', parseFloat((e.target as HTMLInputElement).value)));
+    this.modal.querySelector('#wp-dmg')?.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      updateWpField('damage', parseFloat(input.value), 1, 500, input);
+    });
+    this.modal.querySelector('#wp-rpm')?.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      updateWpField('fireRateRpm', parseFloat(input.value), 20, 2000, input);
+    });
+    this.modal.querySelector('#wp-mag')?.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      updateWpField('magCapacity', parseInt(input.value, 10), 1, 200, input);
+    });
+    this.modal.querySelector('#wp-reload')?.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      updateWpField('reloadTime', parseFloat(input.value), 0.2, 10, input);
+    });
+    this.modal.querySelector('#wp-speed')?.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      updateWpField('movementSpeed', parseFloat(input.value), 1.5, 10, input);
+    });
+    this.modal.querySelector('#wp-pen')?.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      updateWpField('armorPenetration', parseFloat(input.value), 0, 1, input);
+    });
 
     // Reset weapon
     this.modal.querySelector('#cust-wp-reset')?.addEventListener('click', () => {
       const wpId = wpSelect.value;
       delete settingsStore.sandboxWeaponOverrides[wpId];
       populateWeaponFields(wpId);
+      this.showStatusToast('WEAPON STATS RESET');
     });
 
     // Sandbox buttons

@@ -13,6 +13,7 @@ export interface CrosshairConfig {
 }
 
 export interface UserSettings {
+  callsign: string;
   faction: PlayerFaction;
   botDifficulty: BotDifficulty;
   mouseSensitivity: number;
@@ -27,6 +28,7 @@ export interface UserSettings {
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
+  callsign: 'Eldar Garamov',
   faction: 'Vanguard',
   botDifficulty: 'Veteran',
   mouseSensitivity: 2.2,
@@ -68,21 +70,30 @@ export class SettingsStore {
 
   private load(): UserSettings {
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      if (data) {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(data) };
+      if (typeof localStorage !== 'undefined') {
+        const data = localStorage.getItem(STORAGE_KEY);
+        if (data) {
+          const parsed = JSON.parse(data) as Partial<UserSettings>;
+          return {
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            crosshair: { ...DEFAULT_SETTINGS.crosshair, ...(parsed.crosshair ?? {}) },
+          };
+        }
       }
-    } catch (e) {
-      console.warn('[SettingsStore] Failed to load localStorage settings, using defaults');
+    } catch {
+      // Fallback to defaults when storage is blocked or unavailable
     }
-    return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, crosshair: { ...DEFAULT_SETTINGS.crosshair } };
   }
 
   public save(): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
-    } catch (e) {
-      console.warn('[SettingsStore] Failed to save settings to localStorage');
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.settings));
+      }
+    } catch {
+      // Ignore storage quota / sandbox restrictions
     }
   }
 

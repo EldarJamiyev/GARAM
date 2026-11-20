@@ -3,6 +3,15 @@ import { MapBlockCollider, intersectRayAABB } from '@garam/shared';
 
 export type SurfaceMaterialType = 'CONCRETE' | 'WOOD_THIN' | 'METAL_SHEET';
 
+const _listenerForward = new THREE.Vector3();
+const _occDir = new THREE.Vector3();
+
+const WEAPON_SAMPLE_MAP: Record<string, { url: string; volume: number }> = {
+  'vanguard-m4': { url: '/audio/m4_suppressed.mp3', volume: 0.72 },
+  'desert-eagle': { url: '/audio/deagle_shot.mp3', volume: 0.85 },
+  'sovereign-awp': { url: '/audio/awp_shot.mp3', volume: 0.95 },
+};
+
 export class ProceduralAudio {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -11,6 +20,8 @@ export class ProceduralAudio {
   private reverbGain: GainNode | null = null;
   private masterVolume = 0.85;
   private audioBufferCache: Map<string, AudioBuffer> = new Map();
+  private rawSampleCache: Map<string, ArrayBuffer> = new Map();
+  private decodingSamples: Set<string> = new Set();
   private sharedNoiseBuffer: AudioBuffer | null = null;
   private activeSpatialVoices: Array<{
     panner: PannerNode;
@@ -22,23 +33,38 @@ export class ProceduralAudio {
   private activeReloadNodes: Array<{ osc: OscillatorNode; gain: GainNode }> = [];
 
   constructor() {
-    // Preload ElevenLabs synthesized tactical audio (non-blocking)
-    this.preloadAudio('/audio/knife_draw.mp3');
-    this.preloadAudio('/audio/low_ammo_click.mp3');
-    this.preloadAudio('/audio/m4_suppressed.mp3');
-    this.preloadAudio('/audio/deagle_shot.mp3');
-    this.preloadAudio('/audio/awp_shot.mp3');
+    // Pre-fetch ElevenLabs synthesized tactical audio bytes without creating an AudioContext before user gesture
+    this.prefetchRawAudio('/audio/knife_draw.mp3');
+    this.prefetchRawAudio('/audio/low_ammo_click.mp3');
+    this.prefetchRawAudio('/audio/m4_suppressed.mp3');
+    this.prefetchRawAudio('/audio/deagle_shot.mp3');
+    this.prefetchRawAudio('/audio/awp_shot.mp3');
   }
 
-  public async preloadAudio(url: string): Promise<AudioBuffer | null> {
-    if (this.audioBufferCache.has(url)) return this.audioBufferCache.get(url)!;
-    this.initContext();
-    if (!this.ctx) return null;
+  private async prefetchRawAudio(url: string): Promise<void> {
+    if (this.rawSampleCache.has(url) || this.audioBufferCache.has(url)) return;
     try {
       const res = await fetch(url);
-      if (!res.ok) return null;
+      if (!res.ok) return;
       const arrayBuf = await res.arrayBuffer();
-      const decoded = await this.ctx.decodeAudioData(arrayBuf);
+      this.rawSampleCache.set(url, arrayBuf);
+      if (this.ctx) {
+        void this.decodeCachedSample(url);
+      }
+    } catch {
+      // Graceful procedural synthesis fallback
+    }
+  }
+
+  private async decodeCachedSample(url: string): Promise<AudioBuffer | null> {
+    if (this.audioBufferCache.has(url)) return this.audioBufferCache.get(url)!;
+    if (!this.ctx || this.decodingSamples.has(url)) return null;
+    const raw = this.rawSampleCache.get(url);
+    if (!raw) return null;
+
+    this.decodingSamples.add(url);
+    try {
+      const decoded = await this.ctx.decodeAudioData(raw.slice(0));
       let finalBuffer = decoded;
 
       // Downmix multi-channel audio to mono for pin-point HRTF panning and phase clarity
@@ -56,13 +82,25 @@ export class ProceduralAudio {
       }
 
       this.audioBufferCache.set(url, finalBuffer);
+      this.rawSampleCache.delete(url);
       return finalBuffer;
     } catch {
       return null;
+    } finally {
+      this.decodingSamples.delete(url);
     }
   }
 
-  private playCachedBuffer(url: string, volume = 0.5): boolean {
+  public async preloadAudio(url: string): Promise<AudioBuffer | null> {
+    if (this.audioBufferCache.has(url)) return this.audioBufferCache.get(url)!;
+    await this.prefetchRawAudio(url);
+    if (this.ctx) {
+      return this.decodeCachedSample(url);
+    }
+    return null;
+  }
+
+  private playCachedBuffer(url: string, volume = 0.5, destination?: AudioNode): boolean {
     const buf = this.audioBufferCache.get(url);
     if (!buf || !this.ctx || !this.masterGain) return false;
     const src = this.ctx.createBufferSource();
@@ -70,7 +108,7 @@ export class ProceduralAudio {
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(volume, this.ctx.currentTime);
     src.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(destination || this.masterGain);
     src.onended = () => {
       try {
         src.disconnect();
@@ -127,6 +165,11 @@ export class ProceduralAudio {
       for (let i = 0; i < noiseLength; i++) {
         noiseData[i] = Math.random() * 2 - 1;
       }
+
+      // Decode any prefetched MP3 samples now that AudioContext is initialized after user interaction
+      for (const url of this.rawSampleCache.keys()) {
+        void this.decodeCachedSample(url);
+      }
     }
     if (this.ctx.state === 'suspended') {
       this.ctx.resume();
@@ -157,8 +200,7 @@ export class ProceduralAudio {
     if (!this.ctx) return;
 
     const p = camera.position;
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
+    camera.getWorldDirection(_listenerForward);
     const up = camera.up;
 
     const listener = this.ctx.listener;
@@ -166,19 +208,17 @@ export class ProceduralAudio {
       listener.positionX.setValueAtTime(p.x, this.ctx.currentTime);
       listener.positionY.setValueAtTime(p.y, this.ctx.currentTime);
       listener.positionZ.setValueAtTime(p.z, this.ctx.currentTime);
-      listener.forwardX.setValueAtTime(forward.x, this.ctx.currentTime);
-      listener.forwardY.setValueAtTime(forward.y, this.ctx.currentTime);
-      listener.forwardZ.setValueAtTime(forward.z, this.ctx.currentTime);
+      listener.forwardX.setValueAtTime(_listenerForward.x, this.ctx.currentTime);
+      listener.forwardY.setValueAtTime(_listenerForward.y, this.ctx.currentTime);
+      listener.forwardZ.setValueAtTime(_listenerForward.z, this.ctx.currentTime);
       listener.upX.setValueAtTime(up.x, this.ctx.currentTime);
       listener.upY.setValueAtTime(up.y, this.ctx.currentTime);
       listener.upZ.setValueAtTime(up.z, this.ctx.currentTime);
     } else {
-      // Legacy fallback
       listener.setPosition(p.x, p.y, p.z);
-      listener.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+      listener.setOrientation(_listenerForward.x, _listenerForward.y, _listenerForward.z, up.x, up.y, up.z);
     }
 
-    // Zero-timer voice reaper
     const now = this.ctx.currentTime;
     for (let i = this.activeSpatialVoices.length - 1; i >= 0; i--) {
       const v = this.activeSpatialVoices[i];
@@ -193,22 +233,19 @@ export class ProceduralAudio {
     }
   }
 
-  /**
-   * Calculates wall occlusion between source and listener
-   */
   private getWallOcclusionFilter(
     sourcePos: THREE.Vector3,
     listenerPos: THREE.Vector3,
     blocks: MapBlockCollider[]
   ): { cutoffHz: number; gainReduction: number } {
-    const dir = new THREE.Vector3().subVectors(listenerPos, sourcePos);
-    const dist = dir.length();
+    _occDir.subVectors(listenerPos, sourcePos);
+    const dist = _occDir.length();
     if (dist < 0.1) return { cutoffHz: 20000, gainReduction: 1.0 };
-    dir.normalize();
+    _occDir.divideScalar(dist);
 
     const ray = {
       origin: { x: sourcePos.x, y: sourcePos.y, z: sourcePos.z },
-      direction: { x: dir.x, y: dir.y, z: dir.z },
+      direction: { x: _occDir.x, y: _occDir.y, z: _occDir.z },
     };
 
     let walls = 0;
@@ -304,14 +341,20 @@ export class ProceduralAudio {
     this.initContext();
     if (!this.ctx) return;
 
+    const destinationNode = worldPos
+      ? this.createSpatialRoute(worldPos, listenerPos, blocks).input
+      : this.masterGain!;
+
+    // Use studio-synthesized ElevenLabs MP3 sample when loaded (routed through spatial/occlusion chain)
+    const sample = WEAPON_SAMPLE_MAP[weaponType];
+    if (sample && this.playCachedBuffer(sample.url, sample.volume, destinationNode)) {
+      return;
+    }
+
     const t = this.ctx.currentTime;
     const isSuppressed = weaponType === 'vanguard-m4';
     const isAWP = weaponType === 'sovereign-awp';
     const isDeagle = weaponType === 'desert-eagle';
-
-    const destinationNode = worldPos
-      ? this.createSpatialRoute(worldPos, listenerPos, blocks).input
-      : this.masterGain!;
 
     // 1. Sub-bass punch oscillator
     const osc = this.ctx.createOscillator();
@@ -434,6 +477,19 @@ export class ProceduralAudio {
     }
   }
 
+  private registerReloadNode(osc: OscillatorNode, gain: GainNode): void {
+    const entry = { osc, gain };
+    this.activeReloadNodes.push(entry);
+    osc.onended = () => {
+      const idx = this.activeReloadNodes.indexOf(entry);
+      if (idx !== -1) this.activeReloadNodes.splice(idx, 1);
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch {}
+    };
+  }
+
   public playMagOut(): void {
     this.initContext();
     if (!this.ctx) return;
@@ -447,9 +503,9 @@ export class ProceduralAudio {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
     osc.connect(gain);
     gain.connect(this.masterGain!);
+    this.registerReloadNode(osc, gain);
     osc.start(t);
     osc.stop(t + 0.09);
-    this.activeReloadNodes.push({ osc, gain });
   }
 
   public playMagIn(delaySeconds = 0): void {
@@ -465,9 +521,9 @@ export class ProceduralAudio {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
     osc.connect(gain);
     gain.connect(this.masterGain!);
+    this.registerReloadNode(osc, gain);
     osc.start(t);
     osc.stop(t + 0.14);
-    this.activeReloadNodes.push({ osc, gain });
   }
 
   public playBoltRack(delaySeconds = 0): void {
@@ -483,9 +539,9 @@ export class ProceduralAudio {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
     osc.connect(gain);
     gain.connect(this.masterGain!);
+    this.registerReloadNode(osc, gain);
     osc.start(t);
     osc.stop(t + 0.12);
-    this.activeReloadNodes.push({ osc, gain });
   }
 
   public playBodyHitCrunch(worldPos?: THREE.Vector3, listenerPos?: THREE.Vector3, blocks: MapBlockCollider[] = []): void {

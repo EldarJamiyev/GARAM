@@ -1041,7 +1041,8 @@ export class WeaponViewmodel {
       currentMag.rotation.z = 0;
     }
 
-    // 3D Hooke's Law spring-damper for mouse sway
+    // Unconditionally stable sub-stepped 3D Hooke's Law spring-damper (immune to low-FPS dt spikes)
+    const safeDt = Math.max(0.0001, Math.min(dt, 0.05));
     const k = 150;
     const c = 18;
 
@@ -1053,29 +1054,44 @@ export class WeaponViewmodel {
     this.targetRot.z = strafeRoll + reloadRoll + inspectRoll;
 
     // Decay recoil kicks
-    this.recoilPitch += (0 - this.recoilPitch) * (1 - Math.exp(-22 * dt));
-    this.recoilZ += (0 - this.recoilZ) * (1 - Math.exp(-24 * dt));
+    this.recoilPitch += (0 - this.recoilPitch) * (1 - Math.exp(-22 * safeDt));
+    this.recoilZ += (0 - this.recoilZ) * (1 - Math.exp(-24 * safeDt));
 
     this.targetPos.x = 0.13;
     this.targetPos.y = -0.16 + walkBob + reloadY + drawY;
     this.targetPos.z = -0.34 + this.recoilZ + meleeZ;
 
-    // Spring position update
-    const fX = -k * (this.currentPos.x - this.targetPos.x) - c * this.velPos.x;
-    const fY = -k * (this.currentPos.y - this.targetPos.y) - c * this.velPos.y;
-    const fZ = -k * (this.currentPos.z - this.targetPos.z) - c * this.velPos.z;
+    // Sub-step spring integration in <= 1/120s chunks so spectral radius is strictly < 1
+    const subSteps = Math.max(1, Math.ceil(safeDt / (1 / 120)));
+    const stepDt = safeDt / subSteps;
+    for (let i = 0; i < subSteps; i++) {
+      const fX = -k * (this.currentPos.x - this.targetPos.x) - c * this.velPos.x;
+      const fY = -k * (this.currentPos.y - this.targetPos.y) - c * this.velPos.y;
+      const fZ = -k * (this.currentPos.z - this.targetPos.z) - c * this.velPos.z;
 
-    this.velPos.x += fX * dt;
-    this.velPos.y += fY * dt;
-    this.velPos.z += fZ * dt;
+      this.velPos.x += fX * stepDt;
+      this.velPos.y += fY * stepDt;
+      this.velPos.z += fZ * stepDt;
 
-    this.currentPos.addScaledVector(this.velPos, dt);
+      this.currentPos.x += this.velPos.x * stepDt;
+      this.currentPos.y += this.velPos.y * stepDt;
+      this.currentPos.z += this.velPos.z * stepDt;
+    }
+
+    if (
+      !Number.isFinite(this.currentPos.x) ||
+      !Number.isFinite(this.currentPos.y) ||
+      !Number.isFinite(this.currentPos.z)
+    ) {
+      this.currentPos.copy(this.targetPos);
+      this.velPos.set(0, 0, 0);
+    }
     this.mesh.position.copy(this.currentPos);
 
     // Rotation interpolation
-    this.currentRot.x += (this.targetRot.x - this.currentRot.x) * (1 - Math.exp(-18 * dt));
-    this.currentRot.y += (this.targetRot.y - this.currentRot.y) * (1 - Math.exp(-18 * dt));
-    this.currentRot.z += (this.targetRot.z - this.currentRot.z) * (1 - Math.exp(-18 * dt));
+    this.currentRot.x += (this.targetRot.x - this.currentRot.x) * (1 - Math.exp(-18 * safeDt));
+    this.currentRot.y += (this.targetRot.y - this.currentRot.y) * (1 - Math.exp(-18 * safeDt));
+    this.currentRot.z += (this.targetRot.z - this.currentRot.z) * (1 - Math.exp(-18 * safeDt));
     this.mesh.rotation.copy(this.currentRot);
   }
 

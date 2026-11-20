@@ -1,16 +1,14 @@
 import * as THREE from 'three';
 import {
   KinematicPlayerController,
-  MapBlockCollider,
-  AABBCollider,
   SPAWN_POINTS,
-  WEAPONS,
+  SpatialGrid,
   getCalloutName,
 } from '@garam/shared';
 import { SceneManager } from './render/SceneManager.js';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
 import { ProceduralAudio } from './audio/ProceduralAudio.js';
-import { buildTacticalCitadelMap, BotEntity } from './maps/DeCitadelMap.js';
+import { buildTacticalCitadelMap } from './maps/DeCitadelMap.js';
 import { InventoryManager } from './combat/InventoryManager.js';
 import { WeaponController } from './combat/WeaponController.js';
 import { EffectsManager } from './combat/EffectsManager.js';
@@ -33,6 +31,7 @@ import { NetworkClient } from './net/NetworkClient.js';
 import { PerfMonitor } from './core/PerfMonitor.js';
 import {
   GameContext,
+  buildUtilityCallbacks,
   buildBotAICallbacks,
   buildWeaponControllerCallbacks,
   buildRoundCallbacks,
@@ -40,396 +39,271 @@ import {
   buildInputManagerCallbacks,
   buildBuyMenuCallbacks,
   buildLobbyCallbacks,
+  stepMatchFrame,
 } from './core/GameEventWire.js';
 
-const _euler = new THREE.Euler(0, 0, 0, 'YXZ');
-const _forward = new THREE.Vector3();
+const _playerFeet = new THREE.Vector3();
 
 export class GaramGame {
-  private canvas: HTMLCanvasElement;
-  private renderer: THREE.WebGLRenderer;
-  private sceneManager: SceneManager;
-  private worldScene: THREE.Scene;
-  private worldCamera: THREE.PerspectiveCamera;
-  private viewmodelScene: THREE.Scene;
-  private viewmodelCamera: THREE.PerspectiveCamera;
-  private viewmodel: WeaponViewmodel;
-
-  private audio: ProceduralAudio;
-  private effects: EffectsManager;
-  private utilityManager: UtilityManager;
-  private droppedWeapons: DroppedWeaponManager;
-  private radar: RadarRenderer;
-  private customizer: CustomizerUI;
-  private networkClient: NetworkClient;
-  private perfMonitor: PerfMonitor;
-  private combatReport: CombatReportManager;
-  private spectator: SpectatorManager;
-
-  private player: KinematicPlayerController;
-  private inventory: InventoryManager;
-  private economy: EconomyManager;
-  private playerManager: PlayerManager;
-  private hud: HUDManager;
-  private weaponController: WeaponController;
-  private roundManager: RoundManager;
-  private inputManager: InputManager;
-  private botAI: BotAISystem;
-  private lobbyUI: LobbyUI;
-  private buyMenuUI: BuyMenuUI;
-
-  private bots: BotEntity[] = [];
-  private blocks: MapBlockCollider[] = [];
-  private colliders: AABBCollider[] = [];
-
-  // Runtime State Wrapped for Wire Access
-  private hasMatchStarted = { value: false };
-  private isFiring = { value: false };
-  private pendingFireTrigger = { value: false };
-  private isInteracting = { value: false };
-  private cameraPunchPitch = 0;
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly sceneManager: SceneManager;
+  private readonly perfMonitor: PerfMonitor;
+  private readonly ctx: GameContext;
 
   private lastTime = performance.now();
   private accumulator = 0;
   private readonly FIXED_DT = 1 / 128;
   private distanceTraveled = 0;
   private lastStepDist = 0;
+  private readonly boundLoop: (now: number) => void;
+  private readonly boundResize: () => void;
 
   constructor() {
-    this.canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
+    const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
     this.renderer = new THREE.WebGLRenderer({
-      canvas: this.canvas,
+      canvas,
       antialias: true,
       powerPreference: 'high-performance',
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.autoClear = false;
 
     this.sceneManager = new SceneManager(this.renderer);
-    this.worldScene = this.sceneManager.worldScene;
-    this.worldCamera = this.sceneManager.worldCamera;
-    this.viewmodelScene = this.sceneManager.viewmodelScene;
-    this.viewmodelCamera = this.sceneManager.viewmodelCamera;
+    this.renderer.setPixelRatio(this.sceneManager.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = !this.sceneManager.isSoftwareGl;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    this.viewmodel = new WeaponViewmodel();
-    this.viewmodelScene.add(this.viewmodel.mesh);
+    const viewmodel = new WeaponViewmodel();
+    this.sceneManager.viewmodelScene.add(viewmodel.mesh);
 
-    this.audio = new ProceduralAudio();
-    this.audio.setMasterVolume(settingsStore.settings.masterVolume);
-    this.hud = new HUDManager();
-    this.effects = new EffectsManager(this.worldScene, this.worldCamera);
-    this.droppedWeapons = new DroppedWeaponManager(this.worldScene);
-    this.radar = new RadarRenderer();
+    const audio = new ProceduralAudio();
+    audio.setMasterVolume(settingsStore.settings.masterVolume);
+    const hud = new HUDManager();
+    const effects = new EffectsManager(this.sceneManager.worldScene, this.sceneManager.worldCamera);
+    const droppedWeapons = new DroppedWeaponManager(this.sceneManager.worldScene);
+    const radar = new RadarRenderer();
     this.perfMonitor = new PerfMonitor(this.renderer);
-    this.combatReport = new CombatReportManager();
-    this.spectator = new SpectatorManager();
+    const combatReport = new CombatReportManager();
+    const spectator = new SpectatorManager();
+    const inventory = new InventoryManager();
+    const economy = new EconomyManager();
 
-    this.utilityManager = new UtilityManager(this.worldScene, this.audio, {
-      onFlashPlayer: (dur) => this.hud.triggerFlashEffect(dur),
-      onPlayerDamage: (dmg) => this.playerManager.damagePlayer(dmg, null, this.worldCamera.position, this.inputManager?.input?.yaw || 0, this.bots),
-      onKillfeed: (text) => this.hud.addKillfeed(text),
-    });
+    const baseSpawn =
+      settingsStore.settings.faction === 'Syndicate'
+        ? SPAWN_POINTS.OBSIDIAN_T
+        : SPAWN_POINTS.VANGUARD_CT;
+    const spawnPos = { x: baseSpawn.x, y: baseSpawn.y, z: baseSpawn.z };
+    const player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
-    this.inventory = new InventoryManager();
-    this.economy = new EconomyManager();
+    const mapData = buildTacticalCitadelMap(this.sceneManager.worldScene);
+    const spatialGrid = new SpatialGrid(mapData.blocks, 10);
 
-    const spawnPos = settingsStore.settings.faction === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
-    this.player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
+    let ctxRef!: GameContext;
+    const utilityManager = new UtilityManager(
+      this.sceneManager.worldScene,
+      audio,
+      buildUtilityCallbacks(new Proxy({} as GameContext, { get: (_, prop) => Reflect.get(ctxRef, prop) }))
+    );
 
-    this.playerManager = new PlayerManager(
-      this.player,
-      this.inventory,
-      this.economy,
-      this.droppedWeapons,
-      this.utilityManager,
-      this.audio,
-      this.hud,
-      this.combatReport,
-      this.spectator,
+    const playerManager = new PlayerManager(
+      player,
+      inventory,
+      economy,
+      droppedWeapons,
+      utilityManager,
+      audio,
+      hud,
+      combatReport,
+      spectator,
       { onSyncActiveWeapon: () => this.syncActiveWeapon() }
     );
 
-    const mapData = buildTacticalCitadelMap(this.worldScene);
-    this.bots = mapData.bots;
-    this.blocks = mapData.blocks;
-    this.colliders = mapData.colliders;
-
-    const ctx: GameContext = {
-      canvas: this.canvas,
-      worldCamera: this.worldCamera,
-      viewmodelCamera: this.viewmodelCamera,
-      worldScene: this.worldScene,
-      audio: this.audio,
-      hud: this.hud,
-      effects: this.effects,
-      droppedWeapons: this.droppedWeapons,
-      utilityManager: this.utilityManager,
-      inventory: this.inventory,
-      economy: this.economy,
-      player: this.player,
-      playerManager: this.playerManager,
-      combatReport: this.combatReport,
-      spectator: this.spectator,
-      weaponController: null as any,
-      roundManager: null as any,
-      inputManager: null as any,
-      botAI: null as any,
-      customizer: null as any,
-      buyMenuUI: null as any,
-      networkClient: null as any,
-      bots: this.bots,
-      blocks: this.blocks,
-      colliders: this.colliders,
+    ctxRef = {
+      canvas,
+      worldCamera: this.sceneManager.worldCamera,
+      viewmodelCamera: this.sceneManager.viewmodelCamera,
+      worldScene: this.sceneManager.worldScene,
+      audio,
+      hud,
+      effects,
+      droppedWeapons,
+      utilityManager,
+      radar,
+      inventory,
+      economy,
+      player,
+      playerManager,
+      combatReport,
+      spectator,
+      viewmodel,
+      spatialGrid,
+      bots: mapData.bots,
+      blocks: mapData.blocks,
+      colliders: mapData.colliders,
       spawnPos,
-      hasMatchStarted: this.hasMatchStarted,
-      isFiring: this.isFiring,
-      pendingFireTrigger: this.pendingFireTrigger,
-      isInteracting: this.isInteracting,
-      viewmodel: this.viewmodel,
+      hasMatchStarted: { value: false },
+      isFiring: { value: false },
+      pendingFireTrigger: { value: false },
+      isInteracting: { value: false },
+      cameraPunchPitch: { value: 0 },
       syncActiveWeapon: () => this.syncActiveWeapon(),
     };
+    this.ctx = ctxRef;
 
-    this.botAI = new BotAISystem(buildBotAICallbacks(ctx), settingsStore.settings.botDifficulty);
-    ctx.botAI = this.botAI;
+    ctxRef.botAI = new BotAISystem(buildBotAICallbacks(ctxRef), settingsStore.settings.botDifficulty);
+    ctxRef.weaponController = new WeaponController(
+      inventory,
+      viewmodel,
+      effects,
+      audio,
+      buildWeaponControllerCallbacks(ctxRef)
+    );
+    ctxRef.customizer = new CustomizerUI(buildCustomizerCallbacks(ctxRef));
+    ctxRef.roundManager = new RoundManager(this.sceneManager.worldScene, audio, buildRoundCallbacks(ctxRef));
 
-    this.weaponController = new WeaponController(this.inventory, this.viewmodel, this.effects, this.audio, buildWeaponControllerCallbacks(ctx));
-    ctx.weaponController = this.weaponController;
+    const blocker = document.getElementById('blocker') as HTMLElement;
+    ctxRef.inputManager = new InputManager(canvas, blocker, buildInputManagerCallbacks(ctxRef));
+    ctxRef.buyMenuUI = new BuyMenuUI(economy, inventory, audio, hud, buildBuyMenuCallbacks(ctxRef));
 
-    this.customizer = new CustomizerUI(buildCustomizerCallbacks(ctx));
-    ctx.customizer = this.customizer;
+    const lobbyCallbacks = buildLobbyCallbacks(ctxRef);
+    new LobbyUI(lobbyCallbacks);
 
-    this.roundManager = new RoundManager(this.worldScene, this.audio, buildRoundCallbacks(ctx));
-    ctx.roundManager = this.roundManager;
-
-    const blocker = document.getElementById('blocker')!;
-    this.inputManager = new InputManager(this.canvas, blocker, buildInputManagerCallbacks(ctx));
-    ctx.inputManager = this.inputManager;
-
-    this.buyMenuUI = new BuyMenuUI(this.economy, this.inventory, this.audio, this.hud, buildBuyMenuCallbacks(ctx));
-    ctx.buyMenuUI = this.buyMenuUI;
-
-    this.lobbyUI = new LobbyUI(buildLobbyCallbacks(ctx));
-
-    this.networkClient = new NetworkClient(this.worldScene, this.hud, this.colliders, {
-      onKillfeed: (text) => this.hud.addKillfeed(text),
-      onScoresUpdated: (ct, t) => this.hud.updateScores(ct, t),
+    const networkClient = new NetworkClient(this.sceneManager.worldScene, hud, mapData.colliders, {
+      onKillfeed: (text) => hud.addKillfeed(text),
+      onScoresUpdated: (ct, t) => hud.updateScores(ct, t),
     });
-    ctx.networkClient = this.networkClient;
+    networkClient.bindLocalPlayer(player);
+    ctxRef.networkClient = networkClient;
 
-    this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
+    ctxRef.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
+    this.sceneManager.worldCamera.fov = settingsStore.settings.fov;
+    this.sceneManager.worldCamera.updateProjectionMatrix();
     this.syncActiveWeapon();
 
-    window.addEventListener('resize', this.onResize.bind(this));
-    requestAnimationFrame(this.loop.bind(this));
+    this.boundResize = this.onResize.bind(this);
+    this.boundLoop = this.loop.bind(this);
+    window.addEventListener('resize', this.boundResize);
+
+    if (new URLSearchParams(window.location.search).get('autostart') === '1') {
+      lobbyCallbacks.onDeploy();
+    }
+    requestAnimationFrame(this.boundLoop);
   }
 
   private syncActiveWeapon(): void {
-    this.audio.cancelReloadAudio();
-    this.viewmodel.isReloading = false;
-    const active = this.inventory.getActiveWeapon();
-    if (this.weaponController.zoomStage > 0 && active.id !== 'sovereign-awp') {
-      this.weaponController.zoomStage = 0;
-      this.worldCamera.fov = settingsStore.settings.fov;
-      this.worldCamera.updateProjectionMatrix();
-      this.hud.setScopeOverlay(false);
-      this.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
+    this.ctx.audio.cancelReloadAudio();
+    this.ctx.viewmodel.isReloading = false;
+    const active = this.ctx.inventory.getActiveWeapon();
+    if (this.ctx.weaponController && this.ctx.weaponController.zoomStage > 0 && active.id !== 'sovereign-awp') {
+      this.ctx.weaponController.zoomStage = 0;
+      this.sceneManager.worldCamera.fov = settingsStore.settings.fov;
+      this.sceneManager.worldCamera.updateProjectionMatrix();
+      this.ctx.hud.setScopeOverlay(false);
+      this.ctx.inputManager?.setSensitivity(settingsStore.settings.mouseSensitivity);
     }
-    if (active.id === 'garam-karambit') {
-      this.audio.playKnifeDraw();
-    }
-    this.viewmodel.setWeapon(active.id);
+    if (active.id === 'garam-karambit') this.ctx.audio.playKnifeDraw();
+    this.ctx.viewmodel.setWeapon(active.id);
   }
 
   private onResize(): void {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    this.worldCamera.aspect = w / h;
-    this.worldCamera.updateProjectionMatrix();
-    this.viewmodelCamera.aspect = w / h;
-    this.viewmodelCamera.updateProjectionMatrix();
+    this.sceneManager.worldCamera.aspect = w / h;
+    this.sceneManager.worldCamera.updateProjectionMatrix();
+    this.sceneManager.viewmodelCamera.aspect = w / h;
+    this.sceneManager.viewmodelCamera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
   }
 
   private loop(now: number): void {
-    requestAnimationFrame(this.loop.bind(this));
+    requestAnimationFrame(this.boundLoop);
 
-    const frameDelta = Math.min((now - this.lastTime) / 1000, 0.1);
+    const frameDelta = Math.max(0.0001, Math.min((now - this.lastTime) / 1000, 0.05));
     this.lastTime = now;
+    const worldCamera = this.sceneManager.worldCamera;
+    const { ctx } = this;
 
-    if (!this.hasMatchStarted.value) {
-      this.effects.update(frameDelta);
-      this.sceneManager.update(frameDelta, this.worldCamera.position);
+    if (!ctx.hasMatchStarted.value) {
+      ctx.effects.update(frameDelta);
+      this.sceneManager.update(frameDelta, worldCamera.position);
       this.renderer.clear();
-      this.renderer.render(this.worldScene, this.worldCamera);
+      this.renderer.render(this.sceneManager.worldScene, worldCamera);
       return;
     }
 
+    const inputMgr = ctx.inputManager;
+    const net = ctx.networkClient;
+    const rm = ctx.roundManager;
+    if (!inputMgr || !net || !rm) return;
+
     this.accumulator += frameDelta;
-    const activeWp = this.inventory.getActiveWeapon();
-    const activeSlotState = this.inventory.getActiveSlotState();
+    const activeWp = ctx.inventory.getActiveWeapon();
+    const isFreezeTime = rm.phase === 'FREEZE_TIME';
 
     // 128Hz Fixed Kinematics Accumulator
     while (this.accumulator >= this.FIXED_DT) {
-      if (!this.spectator.isSpectating) {
-        this.inputManager.update(this.FIXED_DT, this.player.state.isGrounded);
-        this.player.update(this.inputManager.input, this.FIXED_DT, activeWp.movementSpeed, this.colliders);
-        if (this.networkClient.isConnected) {
-          this.networkClient.sendInput(this.inputManager.input, this.FIXED_DT, activeWp.movementSpeed, this.player, activeWp.id);
+      if (!ctx.spectator.isSpectating) {
+        inputMgr.update(this.FIXED_DT, ctx.player.state.isGrounded);
+        if (!isFreezeTime) {
+          ctx.player.update(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.colliders);
+        }
+        if (net.isConnected) {
+          net.sendInput(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.player, activeWp.id);
         }
       }
       this.accumulator -= this.FIXED_DT;
     }
 
-    if (this.networkClient.isConnected) {
-      this.networkClient.update(frameDelta);
-    }
+    if (net.isConnected) net.update(frameDelta);
 
-    const hozSpeed = this.player.getHorizontalSpeed();
-    if (!this.spectator.isSpectating && this.player.state.isGrounded && hozSpeed > 0.8 && !this.inputManager.input.walk) {
+    const alpha = Math.min(1, Math.max(0, this.accumulator / this.FIXED_DT));
+    const interp = ctx.player.getInterpolatedPosition(alpha);
+    _playerFeet.set(interp.x, interp.y, interp.z);
+
+    const hozSpeed = ctx.player.getHorizontalSpeed();
+    if (!ctx.spectator.isSpectating && ctx.player.state.isGrounded && hozSpeed > 0.8 && !inputMgr.input.walk) {
       this.distanceTraveled += hozSpeed * frameDelta;
       if (this.distanceTraveled - this.lastStepDist > 2.2) {
-        this.audio.playFootstep('CONCRETE');
+        ctx.audio.playFootstep('CONCRETE');
+        ctx.botAI?.onSoundEvent({
+          type: 'footstep',
+          pos: _playerFeet,
+          radius: 22,
+          team: settingsStore.settings.faction,
+          timestamp: Date.now(),
+        });
         this.lastStepDist = this.distanceTraveled;
       }
     }
 
-    this.audio.updateListener(this.worldCamera);
-    const currentZone = getCalloutName(this.player.state.x, this.player.state.y, this.player.state.z);
-    const isIndoor = currentZone === 'B TUNNELS' || currentZone === 'A CONNECTOR' || currentZone === 'B CONNECTOR';
-    this.audio.setIndoorZone(isIndoor);
-
-    const invUpdate = this.inventory.update(frameDelta);
-    if (invUpdate.reloadCompleted) {
-      this.viewmodel.isReloading = false;
-      this.hud.updateReloadProgress(false, 0);
-    }
-    if (this.inventory.isReloading) {
-      const progress = 1 - (this.inventory.reloadRemaining / this.inventory.reloadDuration);
-      this.viewmodel.reloadProgress = progress;
-      this.hud.updateReloadProgress(true, progress);
-    }
-
-    this.weaponController.update(frameDelta, hozSpeed, this.inputManager.input.crouch);
-    this.effects.update(frameDelta);
-    this.sceneManager.update(frameDelta, this.worldCamera.position);
-
-    this.droppedWeapons.update(frameDelta, this.colliders, this.worldCamera.position, (dropped) => {
-      const def = WEAPONS[dropped.weaponId];
-      if (def && !this.inventory.slots[def.slot]) {
-        return this.playerManager.equipDroppedWeapon(dropped);
-      }
-      return false;
+    this.sceneManager.update(frameDelta, worldCamera.position);
+    stepMatchFrame(ctx, {
+      frameDelta,
+      hozSpeed,
+      distanceTraveled: this.distanceTraveled,
+      isFreezeTime,
+      playerFeet: _playerFeet,
+      interpX: interp.x,
+      interpEyeY: interp.eyeY,
+      interpZ: interp.z,
+      currentZone: getCalloutName(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z),
     });
 
-    this.cameraPunchPitch += (0 - this.cameraPunchPitch) * (1 - Math.exp(-18 * frameDelta));
-
-    const isPlayerCarrier = this.inventory.slots[5] !== null;
-    this.roundManager.update(frameDelta, this.worldCamera.position, this.isInteracting.value, isPlayerCarrier, this.economy.hasDefuseKit, this.bots);
-
-    this.utilityManager.update(frameDelta, this.colliders, this.blocks, this.worldCamera.position, this.worldCamera, this.bots);
-    const smokeOccluders = this.utilityManager.getActiveSmokeOccluders();
-
-    if (!this.customizer.freezeBots) {
-      this.botAI.update(
-        this.bots,
-        frameDelta,
-        this.colliders,
-        this.blocks,
-        this.worldCamera.position,
-        this.worldCamera.position,
-        smokeOccluders,
-        this.roundManager.isBombPlanted,
-        this.roundManager.bombPlantSite,
-        this.playerManager.playerHealth,
-        this.economy.armor
-      );
-    }
-
-    this.radar.update(this.worldCamera.position, this.inputManager.input.yaw, this.blocks, this.bots, smokeOccluders, this.roundManager.bombPosition, this.roundManager.isBombPlanted);
-
-    if (this.spectator.isSpectating) {
-      this.spectator.update(frameDelta, this.worldCamera, this.bots);
-    } else {
-      const alpha = Math.min(1, Math.max(0, this.accumulator / this.FIXED_DT));
-      const interp = this.player.getInterpolatedPosition(alpha);
-      this.worldCamera.position.set(interp.x, interp.eyeY, interp.z);
-
-      const effectivePitch = this.inputManager.input.pitch + this.cameraPunchPitch + this.weaponController.aimPunchPitch;
-      const effectiveYaw = this.inputManager.input.yaw + this.weaponController.aimPunchYaw;
-      _euler.set(effectivePitch, effectiveYaw, 0, 'YXZ');
-      this.worldCamera.quaternion.setFromEuler(_euler);
-    }
-    this.worldCamera.updateMatrixWorld(true);
-
-    const shouldFire = (this.pendingFireTrigger.value || (this.isFiring.value && activeWp.fireMode === 'auto')) &&
-      this.inputManager.isLocked && !this.spectator.isSpectating;
-    if (shouldFire) {
-      this.pendingFireTrigger.value = false;
-      if (this.customizer.infiniteAmmo) {
-        activeSlotState.currentAmmo = activeWp.magCapacity;
-      }
-      this.weaponController.handlePrimaryFire(
-        this.worldCamera,
-        hozSpeed,
-        this.player.state.isGrounded,
-        this.inputManager.input.crouch,
-        this.inputManager.input.yaw,
-        this.inputManager.input.pitch,
-        this.blocks,
-        this.bots
-      );
-    }
-
-    const walkBob = Math.sin(this.distanceTraveled * 4) * 0.008 * (hozSpeed / 5.45);
-    let strafeRoll = 0;
-    if (this.inputManager.input.left) strafeRoll = 0.025;
-    if (this.inputManager.input.right) strafeRoll = -0.025;
-
-    this.viewmodel.update(frameDelta, this.inputManager.mouseDeltaX, this.inputManager.mouseDeltaY, walkBob, strafeRoll);
-    this.inputManager.mouseDeltaX = 0;
-    this.inputManager.mouseDeltaY = 0;
-
-    const isPinpoint = hozSpeed <= 0.38 && this.player.state.isGrounded;
-    this.hud.updatePlayerStats(
-      this.playerManager.playerHealth,
-      this.economy.armor,
-      this.economy.cash,
-      hozSpeed,
-      isPinpoint,
-      activeWp.name,
-      activeSlotState.currentAmmo,
-      activeSlotState.reserveAmmo,
-      this.inventory.activeSlot
-    );
-
-    this.hud.updateCrosshair(
-      hozSpeed,
-      this.weaponController.consecutiveShots,
-      isPinpoint,
-      this.weaponController.aimPunchYaw,
-      this.weaponController.aimPunchPitch,
-      settingsStore.settings.followRecoil
-    );
-
-    this.hud.updateCallout(currentZone);
-    this.networkClient.updateBandwidthTelemetry();
+    net.updateBandwidthTelemetry();
     this.perfMonitor.recordFrame(
       frameDelta * 1000,
-      this.networkClient.isConnected ? this.networkClient.ping : -1,
-      this.networkClient.rxKbps,
-      this.networkClient.txKbps
+      net.isConnected ? net.ping : -1,
+      net.rxKbps,
+      net.txKbps
     );
 
     this.renderer.clear();
-    this.renderer.render(this.worldScene, this.worldCamera);
+    this.renderer.render(this.sceneManager.worldScene, worldCamera);
     this.renderer.clearDepth();
-    if (!this.spectator.isSpectating) {
-      this.renderer.render(this.viewmodelScene, this.viewmodelCamera);
+    if (!ctx.spectator.isSpectating) {
+      this.renderer.render(this.sceneManager.viewmodelScene, this.sceneManager.viewmodelCamera);
     }
   }
 }
@@ -437,3 +311,5 @@ export class GaramGame {
 window.addEventListener('DOMContentLoaded', () => {
   new GaramGame();
 });
+
+

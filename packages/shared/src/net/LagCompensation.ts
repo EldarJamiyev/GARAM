@@ -10,12 +10,20 @@ export interface SnapshotTarget {
   armor: number;
   hasHelmet: boolean;
   isDead: boolean;
+  isCrouched?: boolean;
+  yaw?: number;
 }
 
 export interface TickHistorySnapshot {
   tick: number;
   timestamp: number; // Server wall clock time in ms
   targets: SnapshotTarget[];
+}
+
+function lerpAngle(a: number, b: number, alpha: number): number {
+  let diff = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
+  if (diff < -Math.PI) diff += Math.PI * 2;
+  return a + diff * alpha;
 }
 
 export class LagCompensation {
@@ -41,7 +49,7 @@ export class LagCompensation {
    * Rewinds target hitboxes to the exact client perspective timestamp,
    * dynamically bounded by half-RTT (pingMs * 0.5) + interpolation buffer (46.875ms) + jitter margin (16ms),
    * clamped strictly to [64ms, 120ms],
-   * with smooth linear interpolation between historical snapshots.
+   * with smooth linear interpolation between historical snapshots and posture/yaw fidelity.
    */
   public getRewoundTargets(serverNow: number, targetServerTime: number, pingMs?: number): TargetCollider[] {
     if (this.history.length === 0) return [];
@@ -84,13 +92,15 @@ export class LagCompensation {
 
     const rewound: TargetCollider[] = [];
 
-    // Map targets with interpolated coordinates
+    // Map targets with interpolated coordinates, crouch state, and yaw
     for (const olderTarget of older.targets) {
       const newerTarget = newer.targets.find(t => t.id === olderTarget.id) || olderTarget;
 
       const interpX = olderTarget.x + (newerTarget.x - olderTarget.x) * alpha;
       const interpY = olderTarget.y + (newerTarget.y - olderTarget.y) * alpha;
       const interpZ = olderTarget.z + (newerTarget.z - olderTarget.z) * alpha;
+      const interpYaw = lerpAngle(olderTarget.yaw ?? 0, newerTarget.yaw ?? 0, alpha);
+      const isCrouched = alpha >= 0.5 ? Boolean(newerTarget.isCrouched) : Boolean(olderTarget.isCrouched);
 
       rewound.push({
         id: olderTarget.id,
@@ -100,6 +110,8 @@ export class LagCompensation {
         armor: olderTarget.armor,
         hasHelmet: olderTarget.hasHelmet,
         isDead: olderTarget.isDead,
+        isCrouched,
+        yaw: interpYaw,
       });
     }
 

@@ -35,6 +35,9 @@ function segmentHitsBlock(
     const z = p1.z + t * (p2.z - p1.z);
 
     if (y + 1.8 <= b.minY || y >= b.maxY) continue;
+    // Walkable stair risers (0.35m step + 0.40m horizontal capsule lookahead along stair slope)
+    if (b.id.startsWith('a_stairs_') && b.maxY - y <= 0.65) continue;
+    if (b.maxY - y <= 0.45) continue;
 
     const minX = b.minX - radius;
     const maxX = b.maxX + radius;
@@ -181,6 +184,52 @@ describe('TacticalNavGraph & A* Pathfinding', () => {
       const p2 = path[i + 1];
       const hits = segmentHitsBlock(p1, p2, midWallEast, 0.38);
       expect(hits, `Path segment ${i} to ${i+1} hits mid_wall_east`).toBe(false);
+    }
+  });
+
+  it('guarantees zero AABB penetration between A Heaven stairs and back wall / landing', () => {
+    const stairs = DE_CITADEL_BLOCKS.filter(b => b.id.startsWith('a_stairs_'));
+    const backWall = DE_CITADEL_BLOCKS.find(b => b.id === 'site_a_back_wall');
+    const landing = DE_CITADEL_BLOCKS.find(b => b.id === 'a_heaven_landing');
+    expect(stairs.length).toBeGreaterThanOrEqual(8);
+    expect(backWall).toBeDefined();
+    expect(landing).toBeDefined();
+
+    const overlaps3D = (a: MapBlockCollider, b: MapBlockCollider): boolean => {
+      const eps = 1e-4;
+      return (
+        a.minX < b.maxX - eps &&
+        a.maxX > b.minX + eps &&
+        a.minY < b.maxY - eps &&
+        a.maxY > b.minY + eps &&
+        a.minZ < b.maxZ - eps &&
+        a.maxZ > b.minZ + eps
+      );
+    };
+
+    for (const step of stairs) {
+      expect(overlaps3D(step, backWall!), `${step.id} overlaps site_a_back_wall`).toBe(false);
+      expect(overlaps3D(step, landing!), `${step.id} overlaps a_heaven_landing`).toBe(false);
+    }
+  });
+
+  it('guarantees 100% of elevated NavNodes rest on solid walkable map block surfaces', () => {
+    const elevatedNodes = Object.entries(DE_CITADEL_NAV_GRAPH).filter(([, n]) => n.pos.y > 0.1);
+    expect(elevatedNodes.length).toBeGreaterThan(0);
+
+    for (const [id, node] of elevatedNodes) {
+      const supportingBlock = DE_CITADEL_BLOCKS.find(
+        b =>
+          node.pos.x >= b.minX &&
+          node.pos.x <= b.maxX &&
+          node.pos.z >= b.minZ &&
+          node.pos.z <= b.maxZ &&
+          Math.abs(b.maxY - node.pos.y) <= 0.15
+      );
+      expect(
+        supportingBlock,
+        `Elevated NavNode '${id}' at (${node.pos.x}, ${node.pos.y}, ${node.pos.z}) is floating in mid-air`
+      ).toBeDefined();
     }
   });
 });

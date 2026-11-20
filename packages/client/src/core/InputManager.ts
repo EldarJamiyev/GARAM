@@ -1,6 +1,6 @@
 import { PlayerInput } from '@garam/shared';
 
-export type GameUIState = 'PLAYING' | 'BUY_MENU' | 'SCOREBOARD' | 'PAUSED';
+export type GameUIState = 'PLAYING' | 'BUY_MENU' | 'SCOREBOARD' | 'SETTINGS' | 'PAUSED';
 
 export interface InputCallbacks {
   onFireDown: () => void;
@@ -107,12 +107,14 @@ export class InputManager {
         this.lockAcquiredFrames = 2; // Filter first 2 frames after lock acquisition
         this.blocker.style.display = 'none';
         if (overlay) overlay.style.display = 'block';
+        document.body.dataset.state = 'playing';
       } else {
         this.resetMovementInputs();
         if (overlay) overlay.style.display = 'none';
         if (this.uiState === 'PLAYING') {
           this.uiState = 'PAUSED';
           this.blocker.style.display = 'flex';
+          document.body.dataset.state = 'paused';
         }
       }
     });
@@ -148,9 +150,21 @@ export class InputManager {
       this.input.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.input.pitch));
     });
 
+    const isEditableElement = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+    };
+
     window.addEventListener('keydown', (e) => {
+      // Never intercept typing inside callsign, server URL, or customizer form fields
+      if (isEditableElement(e.target) && e.code !== 'Escape') {
+        return;
+      }
+
       // F2 Sandbox Customizer
       if (e.code === 'F2') {
+        if (e.repeat) return;
         e.preventDefault();
         this.callbacks.onToggleCustomizer?.();
         return;
@@ -158,21 +172,25 @@ export class InputManager {
 
       // Practice Dev Toggle
       if (e.code === 'KeyP') {
+        if (e.repeat) return;
         this.callbacks.onPracticeToggle();
         return;
       }
 
       // Buy Menu (B Key)
       if (e.code === 'KeyB') {
+        if (e.repeat) return;
         this.callbacks.onToggleBuyMenu();
         return;
       }
 
       // If Buy Menu is open (both state AND visible DOM), Digit 1-8 buy items directly
       const buyMenuEl = document.getElementById('buy-menu');
-      const isBuyMenuOpen = (this.uiState === 'BUY_MENU' || (buyMenuEl && getComputedStyle(buyMenuEl).display === 'block'));
+      const isBuyMenuOpen =
+        this.uiState === 'BUY_MENU' ||
+        (buyMenuEl !== null && getComputedStyle(buyMenuEl).display === 'block');
       if (isBuyMenuOpen) {
-        if (e.code.startsWith('Digit')) {
+        if (e.code.startsWith('Digit') && !e.repeat) {
           const num = parseInt(e.code.replace('Digit', ''), 10);
           if (num >= 1 && num <= 8 && this.callbacks.onBuyItem) {
             this.callbacks.onBuyItem(num);
@@ -183,7 +201,13 @@ export class InputManager {
 
       // Escape key handles closing modals cleanly
       if (e.code === 'Escape') {
-        if (this.uiState === 'BUY_MENU' || (buyMenuEl && getComputedStyle(buyMenuEl).display === 'block')) {
+        if (e.repeat) return;
+        const custEl = document.getElementById('customizer-modal');
+        if (custEl && getComputedStyle(custEl).display !== 'none') {
+          this.callbacks.onToggleCustomizer?.();
+          return;
+        }
+        if (isBuyMenuOpen) {
           this.callbacks.onToggleBuyMenu();
           return;
         }
@@ -198,16 +222,20 @@ export class InputManager {
       }
 
       if (e.code === 'KeyE') {
-        this.isInteracting = true;
-        this.callbacks.onInteractDown();
+        if (!e.repeat) {
+          this.isInteracting = true;
+          this.callbacks.onInteractDown();
+        }
         return;
       }
 
       // Space key with 100ms Jump Buffer
       if (e.code === 'Space') {
-        this.spaceKeyHeld = true;
-        this.input.jump = true;
-        this.jumpBufferRemaining = 0.10; // 100ms buffer
+        if (!e.repeat) {
+          this.spaceKeyHeld = true;
+          this.input.jump = true;
+          this.jumpBufferRemaining = 0.10; // 100ms buffer
+        }
         return;
       }
 
@@ -232,15 +260,19 @@ export class InputManager {
         return;
       }
 
+      if (e.code === 'ControlLeft' || e.code === 'ControlRight') {
+        this.input.crouch = true;
+        return;
+      }
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        this.input.walk = true;
+        return;
+      }
+
+      // Suppress auto-repeat on discrete weapon/utility actions
+      if (e.repeat) return;
+
       switch (e.code) {
-        case 'ControlLeft':
-        case 'ControlRight':
-          this.input.crouch = true;
-          break;
-        case 'ShiftLeft':
-        case 'ShiftRight':
-          this.input.walk = true;
-          break;
         case 'KeyR': this.callbacks.onReload(); break;
         case 'KeyQ': this.callbacks.onQuickSwitch(); break;
         case 'KeyF': this.callbacks.onInspectWeapon?.(); break;
@@ -358,9 +390,12 @@ export class InputManager {
   public requestPointerLock(): void {
     if (this.isLocked) return;
 
+    const canvasWithOpts = this.canvas as HTMLCanvasElement & {
+      requestPointerLock: (options?: { unadjustedMovement?: boolean }) => Promise<void> | void;
+    };
+
     try {
-      const opts = { unadjustedMovement: true };
-      const promise = (this.canvas.requestPointerLock as any)(opts);
+      const promise = canvasWithOpts.requestPointerLock({ unadjustedMovement: true });
       if (promise && typeof promise.catch === 'function') {
         promise.catch(() => {
           try {
@@ -368,7 +403,9 @@ export class InputManager {
             if (fallback && typeof fallback.catch === 'function') {
               fallback.catch(() => {});
             }
-          } catch {}
+          } catch {
+            // Pointer lock unavailable (e.g. headless browser)
+          }
         });
       }
     } catch {
@@ -377,7 +414,9 @@ export class InputManager {
         if (fallback && typeof fallback.catch === 'function') {
           fallback.catch(() => {});
         }
-      } catch {}
+      } catch {
+        // Pointer lock unavailable
+      }
     }
   }
 

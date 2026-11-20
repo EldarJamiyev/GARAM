@@ -105,12 +105,32 @@ describe('Shared MatchSimulation & Grandmaster BotBrain Suite', () => {
     const defuse2 = sim.stepDefuse(2.6, true);
     expect(defuse2.defused).toBe(true);
 
-    // End round
+    // End round (Round 1 pistol defuse loss: CS2 MR12 pistol min $1,900 + $800 post-plant bonus = $2,700)
     const end = sim.endRound('Vanguard', 'Pulse Core Defused');
     expect(end.winner).toBe('Vanguard');
     expect(end.ctScore).toBe(1);
     expect(end.tScore).toBe(0);
     expect(end.ctPayout).toBe(ECONOMY.winCashBomb);
-    expect(end.tPayout).toBe(ECONOMY.lossBonusBase + ECONOMY.lossBonusStep); // Loss streak 1: $1,900
+    expect(end.tPayout).toBe(ECONOMY.lossBonusBase + ECONOMY.lossBonusStep + ECONOMY.tLossBonusPostPlant);
+    expect(sim.roundsToWin).toBe(13); // MR12
+  });
+
+  it('enforces CS2 loss-streak ladder ($1,400 -> $1,900 -> $2,400) and decrements streak by 1 on win', () => {
+    const sim = new MatchSimulation();
+    sim.round = 2; // Gun round (non-pistol)
+    // 1st consecutive loss (streak 0) -> $1,400
+    const r1 = sim.endRound('Vanguard', 'Elimination');
+    expect(r1.tPayout).toBe(1400);
+    // 2nd consecutive loss (streak 1) -> $1,900
+    const r2 = sim.endRound('Vanguard', 'Elimination');
+    expect(r2.tPayout).toBe(1900);
+    // 3rd consecutive loss (streak 2) -> $2,400
+    const r3 = sim.endRound('Vanguard', 'Elimination');
+    expect(r3.tPayout).toBe(2400);
+    // Syndicate wins -> streak decrements by 1 (3 -> 2), next loss pays $2,400
+    sim.endRound('Syndicate', 'Elimination');
+    expect(sim.tLossStreak).toBe(2);
+    const r5 = sim.endRound('Vanguard', 'Elimination');
+    expect(r5.tPayout).toBe(2400);
   });
 });

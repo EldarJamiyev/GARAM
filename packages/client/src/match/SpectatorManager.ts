@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { BotEntity } from '../maps/DeCitadelMap.js';
+import { settingsStore } from '../core/SettingsStore.js';
+
+const _forward = new THREE.Vector3();
+const _camPos = new THREE.Vector3();
 
 export class SpectatorManager {
   public isSpectating = false;
@@ -7,6 +11,7 @@ export class SpectatorManager {
   private bannerEl: HTMLElement | null = null;
   private deathCamTimer = 0;
   private deathCamTarget: THREE.Vector3 | null = null;
+  private lastBannerKey = '';
 
   constructor() {
     this.createBannerDom();
@@ -38,15 +43,21 @@ export class SpectatorManager {
     this.bannerEl = el;
   }
 
+  private getLivingAllies(bots: BotEntity[]): BotEntity[] {
+    const localTeam = settingsStore.settings.faction;
+    return bots.filter((b) => b.team === localTeam && !b.isDead);
+  }
+
   public startDeathCam(killerPos: THREE.Vector3 | null): void {
     this.isSpectating = true;
-    this.deathCamTimer = 1.2; // 1.2s dramatic death cam
+    this.deathCamTimer = 1.2;
     this.deathCamTarget = killerPos ? killerPos.clone() : null;
     this.spectateIndex = 0;
+    this.lastBannerKey = '';
   }
 
   public cycleTeammate(direction: 1 | -1, bots: BotEntity[]): void {
-    const livingAllies = bots.filter(b => b.team === 'Vanguard' && !b.isDead);
+    const livingAllies = this.getLivingAllies(bots);
     if (livingAllies.length === 0) return;
 
     this.spectateIndex = (this.spectateIndex + direction + livingAllies.length) % livingAllies.length;
@@ -54,17 +65,13 @@ export class SpectatorManager {
   }
 
   public getActiveSpectatedBot(bots: BotEntity[]): BotEntity | null {
-    const livingAllies = bots.filter(b => b.team === 'Vanguard' && !b.isDead);
+    const livingAllies = this.getLivingAllies(bots);
     if (livingAllies.length === 0) return null;
     this.spectateIndex = Math.min(this.spectateIndex, livingAllies.length - 1);
     return livingAllies[this.spectateIndex];
   }
 
-  public update(
-    dt: number,
-    camera: THREE.PerspectiveCamera,
-    bots: BotEntity[]
-  ): void {
+  public update(dt: number, camera: THREE.PerspectiveCamera, bots: BotEntity[]): void {
     if (!this.isSpectating) return;
 
     if (this.deathCamTimer > 0) {
@@ -75,7 +82,7 @@ export class SpectatorManager {
       return;
     }
 
-    const livingAllies = bots.filter(b => b.team === 'Vanguard' && !b.isDead);
+    const livingAllies = this.getLivingAllies(bots);
     if (livingAllies.length === 0) {
       this.stop();
       return;
@@ -84,10 +91,9 @@ export class SpectatorManager {
     const targetBot = livingAllies[this.spectateIndex % livingAllies.length];
     if (targetBot) {
       const pos = targetBot.mesh.position;
-      // Over-the-shoulder follow camera
-      const forward = new THREE.Vector3(0, 0, 1).applyEuler(targetBot.mesh.rotation);
-      const camPos = pos.clone().add(new THREE.Vector3(0, 1.85, 0)).sub(forward.multiplyScalar(2.2));
-      camera.position.lerp(camPos, Math.min(1.0, 18 * dt));
+      _forward.set(0, 0, 1).applyEuler(targetBot.mesh.rotation);
+      _camPos.set(pos.x, pos.y + 1.85, pos.z).addScaledVector(_forward, -2.2);
+      camera.position.lerp(_camPos, Math.min(1.0, 18 * dt));
       camera.lookAt(pos.x, pos.y + 1.6, pos.z);
       this.updateBanner(targetBot);
     }
@@ -95,10 +101,15 @@ export class SpectatorManager {
 
   private updateBanner(bot: BotEntity): void {
     if (!this.bannerEl) return;
+    const key = `${bot.id}:${Math.round(bot.health)}`;
+    if (key === this.lastBannerKey) return;
+    this.lastBannerKey = key;
+
+    const accent = bot.team === 'Syndicate' ? '#f59e0b' : '#3b9eff';
     this.bannerEl.style.display = 'block';
     this.bannerEl.innerHTML = `
-      <span style="color: #3b9eff;">SPECTATING:</span> ${bot.name.toUpperCase()} • 
-      <span style="color: #00ff88;">${bot.health} HP</span> • GARAM-47 &nbsp;|&nbsp; 
+      <span style="color: ${accent};">SPECTATING:</span> ${bot.name.toUpperCase()} •
+      <span style="color: #00ff88;">${Math.round(bot.health)} HP</span> • GARAM-47 &nbsp;|&nbsp;
       <span style="color: #8e959e; font-size: 11px;">[M1 / M2] CYCLE TEAMMATE</span>
     `;
   }
@@ -107,6 +118,7 @@ export class SpectatorManager {
     this.isSpectating = false;
     this.deathCamTimer = 0;
     this.deathCamTarget = null;
+    this.lastBannerKey = '';
     if (this.bannerEl) {
       this.bannerEl.style.display = 'none';
     }

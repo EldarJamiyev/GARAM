@@ -685,4 +685,76 @@ describe('RaycastEngine & Ballistics', () => {
     expect(len60).toBeCloseTo(1.0, 5);
     expect(dir60.y).toBeGreaterThan(0.8);
   });
+
+  it('blocks line of sight when observer or target is standing inside an active smoke volume', () => {
+    const smoke: SmokeOccluder = {
+      center: { x: 0, y: 1.5, z: 0 },
+      radius: 4.8,
+    };
+    const eyeInside = { x: 0.5, y: 1.6, z: 0.5 };
+    const eyeOutside = { x: 0.5, y: 1.6, z: 12.0 };
+
+    expect(hasLineOfSight(eyeInside, eyeOutside, [], [smoke])).toBe(false);
+    expect(hasLineOfSight(eyeOutside, eyeInside, [], [smoke])).toBe(false);
+  });
+
+  it('blocks line of sight through opaque penetrable low wood crates (WALLHACK prevention)', () => {
+    const lowCrate: MapBlockCollider = {
+      id: 'opaque_wood_crate',
+      name: 'Site Crate',
+      x: 0,
+      y: 0,
+      z: 5,
+      w: 2.0,
+      h: 2.0,
+      d: 1.6,
+      minX: -1.0,
+      maxX: 1.0,
+      minY: 0,
+      maxY: 2.0,
+      minZ: 4.2,
+      maxZ: 5.8,
+      material: 'WOOD_THIN',
+    };
+
+    const eyeA = { x: 0, y: 1.5, z: 0 };
+    const eyeB = { x: 0, y: 1.5, z: 10 };
+    expect(hasLineOfSight(eyeA, eyeB, [lowCrate], [])).toBe(false);
+  });
+
+  it('enforces Karambit 1.0x headDamageMultiplier (55 HP head slash, not 220 HP)', () => {
+    const target: TargetCollider = {
+      id: 'melee_head_target',
+      name: 'Close Enemy',
+      team: 'Syndicate',
+      center: { x: 0, y: 0, z: 1.5 },
+      armor: 0,
+      hasHelmet: false,
+      isDead: false,
+    };
+
+    const knife = WEAPONS['garam-karambit'];
+    const ray: Ray = {
+      origin: { x: 0, y: 1.635, z: 0 },
+      direction: { x: 0, y: 0, z: 1 },
+    };
+
+    const hits = executeTacticalRaycast(
+      ray,
+      knife.damage,
+      knife.armorPenetration,
+      knife.penetrationPower,
+      2.4,
+      [],
+      [target],
+      knife.damageDropoffPer10m,
+      undefined,
+      1.0
+    );
+
+    const hit = hits.find(h => h.targetId === 'melee_head_target');
+    expect(hit).toBeDefined();
+    expect(hit!.hitZone).toBe('HEAD');
+    expect(hit!.awardedDamage).toBe(knife.damage);
+  });
 });

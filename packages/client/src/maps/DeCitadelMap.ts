@@ -6,11 +6,7 @@ import {
   TACTICAL_BOTS,
   BOMBSITES,
   Vec3,
-  resolveHorizontalAABB,
   AABBCollider,
-  KINEMATICS,
-  hasLineOfSight,
-  SmokeOccluder
 } from '@garam/shared';
 import { OperatorRig } from '../render/OperatorRig.js';
 
@@ -198,16 +194,7 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
 } {
   const { concreteTex, wallTex, crateTex, hazardTex, containerBlueTex } = createProceduralTextures();
 
-  // Sky Dome Gradient
-  const skyGeo = new THREE.SphereGeometry(300, 32, 16);
-  const skyMat = new THREE.MeshBasicMaterial({
-    color: 0x82b2d6,
-    side: THREE.BackSide,
-  });
-  const sky = new THREE.Mesh(skyGeo, skyMat);
-  scene.add(sky);
-
-  // 120m x 120m PBR Concrete Floor
+  // 120m x 120m PBR Concrete Floor (SceneManager provides the 450m atmospheric shader sky dome)
   const floorGeo = new THREE.PlaneGeometry(124, 124);
   const floorMat = new THREE.MeshStandardMaterial({
     map: concreteTex,
@@ -309,13 +296,7 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   catwalkCross2.translate(-26.5, 2.2, -30.0);
   hazardGeos.push(catwalkCross2);
 
-  const jerseyB1 = new THREE.BoxGeometry(3.6, 0.95, 0.48);
-  jerseyB1.translate(28.0, 0.475, -27.5);
-  wallGeos.push(jerseyB1);
-
-  const jerseyB2 = new THREE.BoxGeometry(3.6, 0.95, 0.48);
-  jerseyB2.translate(-22.0, 0.475, -12.0);
-  wallGeos.push(jerseyB2);
+  // Note: jersey_b1 & jersey_b2 are authoritative solid blocks in DE_CITADEL_BLOCKS (merged above)
 
   const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, castShadow: boolean) => {
     if (geos.length === 0) return;
@@ -498,149 +479,4 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       B: new THREE.Vector3(BOMBSITES.B.center.x, BOMBSITES.B.center.y, BOMBSITES.B.center.z),
     },
   };
-}
-
-/**
- * Update bot movement and team combat with mandatory wall collision and line of sight checks
- */
-export function updateBotSystem(
-  bots: BotEntity[],
-  dt: number,
-  colliders: AABBCollider[],
-  blocks: MapBlockCollider[],
-  playerPos: THREE.Vector3,
-  playerEye: THREE.Vector3,
-  onBotShootPlayer: (bot: BotEntity, dmg: number) => void,
-  onBotShootBot: (shooter: BotEntity, victim: BotEntity, dmg: number) => void,
-  smokeOccluders: SmokeOccluder[] = []
-): void {
-  const now = performance.now();
-
-  for (const bot of bots) {
-    if (bot.isDead) {
-      bot.rig?.update(dt, {
-        isMoving: false,
-        speed: 0,
-        isDead: true,
-        healthRatio: 0,
-        team: bot.team,
-        name: bot.name,
-      });
-      continue;
-    }
-
-    // 1. Patrol movement with strict AABB wall collision
-    const target = bot.patrolTarget;
-    const toTarget = new THREE.Vector3().subVectors(target, bot.mesh.position);
-    toTarget.y = 0;
-    const distToTarget = toTarget.length();
-    let isMoving = false;
-    let actualSpeed = 0;
-
-    if (distToTarget < 1.2) {
-      bot.waypointIndex = (bot.waypointIndex + 1) % bot.patrolWaypoints.length;
-      bot.patrolTarget = bot.patrolWaypoints[bot.waypointIndex];
-    } else {
-      toTarget.normalize();
-      const patrolSpeed = 3.2;
-      const vx = toTarget.x * patrolSpeed;
-      const vz = toTarget.z * patrolSpeed;
-
-      // Apply resolveHorizontalAABB to bot movement so bots NEVER walk through walls or crates!
-      const resolved = resolveHorizontalAABB(
-        bot.mesh.position.x,
-        bot.mesh.position.y,
-        bot.mesh.position.z,
-        vx,
-        vz,
-        dt,
-        KINEMATICS.CAPSULE_RADIUS,
-        KINEMATICS.CAPSULE_HEIGHT_STAND,
-        colliders,
-        true,
-        KINEMATICS.STEP_HEIGHT
-      );
-
-      bot.mesh.position.set(resolved.x, resolved.y, resolved.z);
-      bot.mesh.lookAt(target.x, bot.mesh.position.y, target.z);
-      isMoving = true;
-      actualSpeed = patrolSpeed;
-    }
-
-    // Update humanoid operator rig animations (walk cycle, health bar, nameplate billboard)
-    bot.rig?.update(dt, {
-      isMoving,
-      speed: actualSpeed,
-      isDead: false,
-      healthRatio: Math.max(0, bot.health / bot.maxHealth),
-      team: bot.team,
-      name: bot.name,
-    });
-
-    // 2. Team Combat: Syndicate vs Player & Vanguard Allies with strict Line of Sight
-    const botEye = bot.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
-
-    if (bot.team === 'Syndicate') {
-      // Check target Player
-      const distToPlayer = bot.mesh.position.distanceTo(playerPos);
-      if (distToPlayer <= 36) {
-        const losPlayer = hasLineOfSight(botEye, playerEye, blocks, smokeOccluders);
-
-        if (losPlayer) {
-          bot.mesh.lookAt(playerPos.x, bot.mesh.position.y, playerPos.z);
-          if (now - bot.lastShotTime > 920) {
-            bot.lastShotTime = now;
-            if (Math.random() < 0.32) {
-              onBotShootPlayer(bot, 24);
-            }
-          }
-          continue;
-        }
-      }
-
-      // Check target Vanguard AI allies
-      for (const ally of bots) {
-        if (ally.team === 'Vanguard' && !ally.isDead) {
-          const distToAlly = bot.mesh.position.distanceTo(ally.mesh.position);
-          if (distToAlly <= 30) {
-            const allyEye = ally.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
-            const losAlly = hasLineOfSight(botEye, allyEye, blocks, smokeOccluders);
-
-            if (losAlly) {
-              bot.mesh.lookAt(ally.mesh.position.x, bot.mesh.position.y, ally.mesh.position.z);
-              if (now - bot.lastShotTime > 950) {
-                bot.lastShotTime = now;
-                if (Math.random() < 0.35) {
-                  onBotShootBot(bot, ally, 26);
-                }
-              }
-              break;
-            }
-          }
-        }
-      }
-    } else if (bot.team === 'Vanguard') {
-      // Vanguard AI ally fights Syndicate enemies
-      for (const enemy of bots) {
-        if (enemy.team === 'Syndicate' && !enemy.isDead) {
-          const distToEnemy = bot.mesh.position.distanceTo(enemy.mesh.position);
-          if (distToEnemy <= 30) {
-            const enemyEye = enemy.mesh.position.clone().add(new THREE.Vector3(0, 1.68, 0));
-            const losEnemy = hasLineOfSight(botEye, enemyEye, blocks, smokeOccluders);
-
-            if (losEnemy) {
-              bot.mesh.lookAt(enemy.mesh.position.x, bot.mesh.position.y, enemy.mesh.position.z);
-              if (now - bot.lastShotTime > 950) {
-                bot.lastShotTime = now;
-                if (Math.random() < 0.35) {
-                  onBotShootBot(bot, enemy, 26);
-                }
-              }
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
 }

@@ -4,11 +4,30 @@ import { InventoryManager, SlotNumber } from '../combat/InventoryManager.js';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { HUDManager } from './HUDManager.js';
 import { WEAPONS, ECONOMY } from '@garam/shared';
+import type { UtilityType } from '../utility/UtilityManager.js';
+
+export interface BuyMenuStateSnapshot {
+  phase: string;
+  phaseTimer: number;
+  playerPos: THREE.Vector3;
+}
 
 export interface BuyMenuUICallbacks {
   onTogglePointerLock: (lock: boolean) => void;
   onWeaponEquipped: (slot: SlotNumber) => void;
+  getBuyState?: () => BuyMenuStateSnapshot;
+  onOnlineBuy?: (itemId: string) => boolean;
 }
+
+const UTILITY_PRICES: Record<UtilityType, {
+  price: number;
+  label: string;
+}> = {
+  'smoke-grenade': { price: 300, label: 'Tactical Smoke Grenade' },
+  'flashbang': { price: 200, label: 'Tactical Flashbang' },
+  'he-grenade': { price: 300, label: 'HE Fragmentation Grenade' },
+  'molotov': { price: 400, label: 'Incendiary Molotov' },
+};
 
 export class BuyMenuUI {
   private economy: EconomyManager;
@@ -34,15 +53,25 @@ export class BuyMenuUI {
     this.bindEvents();
   }
 
-  public toggle(forceState?: boolean, phase = 'ROUND_LIVE', phaseTimer = 0, playerPos?: THREE.Vector3): void {
+  public toggle(
+    forceState?: boolean,
+    phase?: string,
+    phaseTimer?: number,
+    playerPos?: THREE.Vector3
+  ): void {
     const buyMenu = document.getElementById('buy-menu');
     if (!buyMenu) return;
 
     this.isOpen = forceState !== undefined ? forceState : buyMenu.style.display !== 'block';
 
     if (this.isOpen) {
-      const check = playerPos
-        ? this.economy.canBuy(phase as any, phaseTimer, playerPos)
+      const live = this.callbacks.getBuyState?.();
+      const activePhase = phase ?? live?.phase ?? 'ROUND_LIVE';
+      const activeTimer = phaseTimer ?? live?.phaseTimer ?? 0;
+      const activePos = playerPos ?? live?.playerPos;
+
+      const check = activePos
+        ? this.economy.canBuy(activePhase, activeTimer, activePos)
         : { canBuy: true };
 
       const statusEl = document.getElementById('buy-zone-status');
@@ -52,6 +81,7 @@ export class BuyMenuUI {
       }
 
       buyMenu.style.display = 'block';
+      document.body.dataset.state = 'buy_menu';
       this.callbacks.onTogglePointerLock(false);
     } else {
       buyMenu.style.display = 'none';
@@ -59,7 +89,12 @@ export class BuyMenuUI {
     }
   }
 
-  public handleBuyByKey(key: number, phase = 'ROUND_LIVE', phaseTimer = 0, playerPos?: THREE.Vector3): void {
+  public handleBuyByKey(
+    key: number,
+    phase?: string,
+    phaseTimer?: number,
+    playerPos?: THREE.Vector3
+  ): void {
     const keyMap: Record<number, string> = {
       1: 'garam-47',
       2: 'vanguard-m4',
@@ -76,14 +111,27 @@ export class BuyMenuUI {
     }
   }
 
-  public executePurchase(item: string, phase = 'ROUND_LIVE', phaseTimer = 0, playerPos?: THREE.Vector3): void {
-    if (playerPos) {
-      const check = this.economy.canBuy(phase as any, phaseTimer, playerPos);
+  public executePurchase(
+    item: string,
+    phase?: string,
+    phaseTimer?: number,
+    playerPos?: THREE.Vector3
+  ): void {
+    const live = this.callbacks.getBuyState?.();
+    const activePhase = phase ?? live?.phase ?? 'ROUND_LIVE';
+    const activeTimer = phaseTimer ?? live?.phaseTimer ?? 0;
+    const activePos = playerPos ?? live?.playerPos;
+
+    if (activePos) {
+      const check = this.economy.canBuy(activePhase, activeTimer, activePos);
       if (!check.canBuy) {
         this.triggerRejectionCue(check.reason || 'OUTSIDE BUY ZONE');
         return;
       }
     }
+
+    // Forward authoritative buy request when connected to a multiplayer room
+    this.callbacks.onOnlineBuy?.(item);
 
     if (item === 'kevlar') {
       if (this.economy.armor >= 100) {
@@ -132,14 +180,21 @@ export class BuyMenuUI {
       return;
     }
 
-    if (item === 'smoke-grenade') {
-      if (this.economy.spendCash(300)) {
+    if (item in UTILITY_PRICES) {
+      const utilType = item as UtilityType;
+      const utilInfo = UTILITY_PRICES[utilType];
+      if (!this.economy.practiceInfiniteUtility && this.economy.hasUtility(utilType)) {
+        this.triggerRejectionCue('UTILITY ALREADY OWNED');
+        return;
+      }
+      if (this.economy.spendCash(utilInfo.price)) {
+        this.economy.addUtility(utilType);
         this.inventory.slots[4] = {
-          weaponId: 'smoke-grenade',
+          weaponId: utilType,
           currentAmmo: 1,
           reserveAmmo: 0,
         };
-        this.hud.addKillfeed('Purchased Tactical Smoke Grenade ($300)');
+        this.hud.addKillfeed(`Purchased ${utilInfo.label} ($${utilInfo.price})`);
         this.audio.playReload();
       } else {
         this.triggerRejectionCue('INSUFFICIENT FUNDS');
@@ -199,7 +254,7 @@ export class BuyMenuUI {
     if (practiceBtn) {
       practiceBtn.addEventListener('click', () => {
         this.economy.devPracticeMoney();
-        this.hud.addKillfeed('🛠️ Practice Mode: $16,000 Cash Granted');
+        this.hud.addKillfeed('Practice Mode: $16,000 Cash + Infinite Utility Granted');
       });
     }
 
@@ -208,9 +263,11 @@ export class BuyMenuUI {
       card.addEventListener('click', () => {
         const item = card.getAttribute('data-buy');
         if (item) {
-          this.executePurchase(item);
+          const live = this.callbacks.getBuyState?.();
+          this.executePurchase(item, live?.phase, live?.phaseTimer, live?.playerPos);
         }
       });
     });
   }
 }
+

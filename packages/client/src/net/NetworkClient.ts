@@ -3,16 +3,16 @@ import {
   ClientPacket,
   ServerPacket,
   NetOperatorState,
+  NetRosterEntry,
   PlayerInput,
   KinematicPlayerController,
   AABBCollider,
-  WEAPONS,
-  BinaryCodec
+  BinaryCodec,
 } from '@garam/shared';
 import { OperatorRig } from '../render/OperatorRig.js';
 import { HUDManager } from '../ui/HUDManager.js';
 
-interface UnackInput {
+export interface UnackInput {
   seq: number;
   input: PlayerInput;
   dt: number;
@@ -20,6 +20,78 @@ interface UnackInput {
   x: number;
   y: number;
   z: number;
+}
+
+export interface ReconciliationResult {
+  corrected: boolean;
+  errorMagnitude: number;
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
+  remainingInputs: UnackInput[];
+}
+
+/**
+ * Pure deterministic client-side prediction reconciliation.
+ * Discards server-acknowledged inputs, replays unacknowledged frames from the authoritative
+ * server state, and computes the smooth visual offset if divergence exceeds 0.04m.
+ */
+export function reconcilePredictedState(
+  localPlayer: KinematicPlayerController,
+  serverState: Pick<NetOperatorState, 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz' | 'isCrouching'>,
+  lastAckSeq: number,
+  unackInputs: UnackInput[],
+  colliders: AABBCollider[]
+): ReconciliationResult {
+  const remaining = unackInputs.filter((u) => u.seq > lastAckSeq);
+
+  const prevX = localPlayer.state.x;
+  const prevY = localPlayer.state.y;
+  const prevZ = localPlayer.state.z;
+
+  // Replay from authoritative server state through remaining unacknowledged inputs
+  const replay = new KinematicPlayerController(serverState.x, serverState.y, serverState.z);
+  replay.state.vx = serverState.vx;
+  replay.state.vy = serverState.vy;
+  replay.state.vz = serverState.vz;
+  replay.state.isCrouching = serverState.isCrouching;
+  replay.state.yaw = localPlayer.state.yaw;
+  replay.state.pitch = localPlayer.state.pitch;
+
+  for (const frame of remaining) {
+    replay.update(frame.input, frame.dt, frame.weaponSpeed, colliders);
+  }
+
+  const dx = replay.state.x - prevX;
+  const dy = replay.state.y - prevY;
+  const dz = replay.state.z - prevZ;
+  const errorMagnitude = Math.hypot(dx, dy, dz);
+
+  if (errorMagnitude > 0.04) {
+    localPlayer.state.x = replay.state.x;
+    localPlayer.state.y = replay.state.y;
+    localPlayer.state.z = replay.state.z;
+    localPlayer.state.vx = replay.state.vx;
+    localPlayer.state.vy = replay.state.vy;
+    localPlayer.state.vz = replay.state.vz;
+    return {
+      corrected: true,
+      errorMagnitude,
+      offsetX: prevX - replay.state.x,
+      offsetY: prevY - replay.state.y,
+      offsetZ: prevZ - replay.state.z,
+      remainingInputs: remaining,
+    };
+  }
+
+  return {
+    corrected: false,
+    errorMagnitude,
+    offsetX: 0,
+    offsetY: 0,
+    offsetZ: 0,
+    remainingInputs: remaining,
+  };
 }
 
 interface RemotePlayer {
@@ -39,9 +111,10 @@ export class NetworkClient {
   private ws: WebSocket | null = null;
   public isConnected = false;
   public localPlayerId = '';
+  public localEntitySlot = -1;
   public ping = 15;
-  public serverClockOffset = 0; // Estimated (serverTime - localClientTime)
-  public readonly INTERPOLATION_DELAY_MS = 46.875; // 3 ticks at 64Hz (CS2 tournament interpolation buffer)
+  public serverClockOffset = 0;
+  public readonly INTERPOLATION_DELAY_MS = 46.875; // 3 ticks at 64Hz
   public rxKbps = 0;
   public txKbps = 0;
   private rxBytesAccum = 0;
@@ -51,6 +124,12 @@ export class NetworkClient {
   private seq = 0;
   private unackInputs: UnackInput[] = [];
   private remotePlayers = new Map<string, RemotePlayer>();
+  private rosterBySlot = new Map<number, NetRosterEntry>();
+  private localPlayerRef: KinematicPlayerController | null = null;
+  private pingTimerHandle: number | null = null;
+
+  // Exponentially smoothed reconciliation camera offset (80ms decay)
+  public predictionErrorOffset = new THREE.Vector3();
 
   private scene: THREE.Scene;
   private hud: HUDManager;
@@ -74,10 +153,22 @@ export class NetworkClient {
     this.onScoresUpdated = callbacks?.onScoresUpdated;
   }
 
-  public connect(url = 'ws://localhost:2567', callsign = 'Eldar Garamov', faction: 'Vanguard' | 'Syndicate' = 'Vanguard'): void {
+  public bindLocalPlayer(controller: KinematicPlayerController): void {
+    this.localPlayerRef = controller;
+  }
+
+  public connect(
+    url = 'ws://localhost:2567',
+    callsign = 'Operator',
+    faction: 'Vanguard' | 'Syndicate' = 'Vanguard'
+  ): void {
     if (this.ws) {
       this.ws.close();
       this.ws = null;
+    }
+    if (this.pingTimerHandle !== null) {
+      window.clearTimeout(this.pingTimerHandle);
+      this.pingTimerHandle = null;
     }
 
     try {
@@ -92,14 +183,12 @@ export class NetworkClient {
           statusBadge.style.color = '#00ff88';
         }
 
-        // Send Join Packet
         this.send({
           type: 'join',
           callsign,
           faction,
         });
 
-        // Start ping loop
         this.startPingLoop();
       };
 
@@ -131,12 +220,18 @@ export class NetworkClient {
             this.handleServerPacket(packet);
           }
         } catch {
-          // Ignore
+          // Ignore malformed server payload
         }
       };
 
       this.ws.onclose = () => {
         this.isConnected = false;
+        this.localEntitySlot = -1;
+        this.rosterBySlot.clear();
+        if (this.pingTimerHandle !== null) {
+          window.clearTimeout(this.pingTimerHandle);
+          this.pingTimerHandle = null;
+        }
         const statusBadge = document.getElementById('server-status-badge');
         if (statusBadge) {
           statusBadge.innerText = '● OFFLINE';
@@ -159,11 +254,17 @@ export class NetworkClient {
   }
 
   public disconnect(): void {
+    if (this.pingTimerHandle !== null) {
+      window.clearTimeout(this.pingTimerHandle);
+      this.pingTimerHandle = null;
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
     this.isConnected = false;
+    this.localEntitySlot = -1;
+    this.rosterBySlot.clear();
     this.clearRemoteRigs();
   }
 
@@ -174,11 +275,11 @@ export class NetworkClient {
     localPlayer: KinematicPlayerController,
     activeWeaponId: string
   ): void {
-    if (!this.isConnected || !this.ws) return;
+    if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
+    this.localPlayerRef = localPlayer;
     this.seq++;
 
-    // Record for client-side prediction and server reconciliation
     this.unackInputs.push({
       seq: this.seq,
       input: { ...input },
@@ -193,15 +294,29 @@ export class NetworkClient {
       this.unackInputs.shift();
     }
 
-    // Fast-path zero-copy 22-byte binary user input frame
     const binInput = BinaryCodec.encodeInput({
       seq: this.seq,
-      timestamp: Date.now(),
+      timestamp: Math.floor(performance.now()),
       input,
       weaponId: activeWeaponId,
     });
     this.ws.send(binInput);
     this.txBytesAccum += 22;
+  }
+
+  public sendBuy(item: string): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'buy', item });
+  }
+
+  public sendReload(): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'reload' });
+  }
+
+  public sendPlantDefuse(action: 'plant' | 'defuse' | 'cancel'): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'plant_defuse', action });
   }
 
   public updateBandwidthTelemetry(): void {
@@ -247,6 +362,20 @@ export class NetworkClient {
   private handleServerPacket(packet: ServerPacket): void {
     if (packet.type === 'welcome') {
       this.localPlayerId = packet.playerId;
+      this.localEntitySlot = packet.entitySlot;
+      return;
+    }
+
+    if (packet.type === 'roster_sync') {
+      this.rosterBySlot.clear();
+      for (const entry of packet.entries) {
+        this.rosterBySlot.set(entry.slot, entry);
+      }
+      return;
+    }
+
+    if (packet.type === 'ping_challenge') {
+      this.send({ type: 'pong_challenge', nonce: packet.nonce });
       return;
     }
 
@@ -255,8 +384,7 @@ export class NetworkClient {
       const rtt = Math.max(1, now - packet.clientTimestamp);
       this.ping = rtt;
       const oneWayLatency = rtt / 2;
-      const sampleOffset = (packet.serverTimestamp + oneWayLatency) - now;
-      // Exponential smoothing filter on clock offset
+      const sampleOffset = packet.serverTimestamp + oneWayLatency - now;
       this.serverClockOffset += (sampleOffset - this.serverClockOffset) * 0.25;
       return;
     }
@@ -285,31 +413,52 @@ export class NetworkClient {
       this.onScoresUpdated?.(packet.ctScore, packet.tScore);
       this.hud.updateRoundTimer(packet.roundTime, packet.bomb.isPlanted);
 
-      // Reconcile local player and discard acknowledged inputs
-      this.unackInputs = this.unackInputs.filter(u => u.seq > packet.lastAckSeq);
-
-      // Update remote players
       const presentIds = new Set<string>();
 
       for (const p of packet.players) {
-        if (p.id === this.localPlayerId) {
-          // Server reconciliation test
-          // In practice, if divergence > 0.04m, snap and replay unack inputs
+        const rosterEntry = p.entitySlot !== undefined ? this.rosterBySlot.get(p.entitySlot) : undefined;
+        const resolvedId = rosterEntry ? rosterEntry.id : p.id;
+        const resolvedName = rosterEntry ? rosterEntry.name : p.name;
+        const resolvedTeam = rosterEntry ? rosterEntry.team : p.team;
+
+        // Authoritative local player identification (immune to binary slot_<n> aliasing!)
+        const isLocalPlayer =
+          resolvedId === this.localPlayerId ||
+          (p.entitySlot !== undefined && this.localEntitySlot >= 0 && p.entitySlot === this.localEntitySlot);
+
+        if (isLocalPlayer) {
+          if (this.localPlayerRef) {
+            const result = reconcilePredictedState(
+              this.localPlayerRef,
+              p,
+              packet.lastAckSeq,
+              this.unackInputs,
+              this.colliders
+            );
+            this.unackInputs = result.remainingInputs;
+            if (result.corrected) {
+              this.predictionErrorOffset.x += result.offsetX;
+              this.predictionErrorOffset.y += result.offsetY;
+              this.predictionErrorOffset.z += result.offsetZ;
+            }
+          } else {
+            this.unackInputs = this.unackInputs.filter((u) => u.seq > packet.lastAckSeq);
+          }
           continue;
         }
 
-        presentIds.add(p.id);
-        let remote = this.remotePlayers.get(p.id);
+        presentIds.add(resolvedId);
+        let remote = this.remotePlayers.get(resolvedId);
 
         if (!remote) {
-          const rig = new OperatorRig(p.team, p.name);
+          const rig = new OperatorRig(resolvedTeam, resolvedName);
           rig.root.position.set(p.x, p.y, p.z);
           this.scene.add(rig.root);
 
           remote = {
-            id: p.id,
-            name: p.name,
-            team: p.team,
+            id: resolvedId,
+            name: resolvedName,
+            team: resolvedTeam,
             rig,
             targetPos: new THREE.Vector3(p.x, p.y, p.z),
             targetYaw: p.yaw,
@@ -318,20 +467,22 @@ export class NetworkClient {
             isDead: p.isDead,
             health: p.health,
           };
-          this.remotePlayers.set(p.id, remote);
+          this.remotePlayers.set(resolvedId, remote);
         }
 
-        // Update target interpolation state
+        remote.name = resolvedName;
+        remote.team = resolvedTeam;
         remote.targetPos.set(p.x, p.y, p.z);
         remote.targetYaw = p.yaw;
         remote.isDead = p.isDead;
         remote.health = p.health;
       }
 
-      // Remove stale players
+      // Remove & GPU-dispose stale remote players
       this.remotePlayers.forEach((rem, id) => {
         if (!presentIds.has(id)) {
           this.scene.remove(rem.rig.root);
+          rem.rig.dispose();
           this.remotePlayers.delete(id);
         }
       });
@@ -339,12 +490,28 @@ export class NetworkClient {
   }
 
   public update(dt: number): void {
+    // Exponentially decay visual prediction reconciliation error over ~80ms
+    if (this.predictionErrorOffset.lengthSq() > 1e-6) {
+      const decay = Math.exp(-dt / 0.08);
+      this.predictionErrorOffset.multiplyScalar(decay);
+      if (this.predictionErrorOffset.lengthSq() < 1e-6) {
+        this.predictionErrorOffset.set(0, 0, 0);
+      }
+    }
+
     if (!this.isConnected) return;
 
-    // Smoothly interpolate remote operator rigs towards latest server state
+    const alpha = 1 - Math.exp(-22 * dt);
+
     this.remotePlayers.forEach((rem) => {
-      rem.currentPos.lerp(rem.targetPos, 1 - Math.exp(-22 * dt));
-      rem.currentYaw += (rem.targetYaw - rem.currentYaw) * (1 - Math.exp(-22 * dt));
+      rem.currentPos.lerp(rem.targetPos, alpha);
+
+      // Shortest-arc circular yaw interpolation (eliminates 360° spin across +/- PI)
+      const yawDelta = Math.atan2(
+        Math.sin(rem.targetYaw - rem.currentYaw),
+        Math.cos(rem.targetYaw - rem.currentYaw)
+      );
+      rem.currentYaw += yawDelta * alpha;
 
       rem.rig.root.position.copy(rem.currentPos);
       rem.rig.root.rotation.y = rem.currentYaw;
@@ -365,14 +532,15 @@ export class NetworkClient {
     const loop = () => {
       if (!this.isConnected || !this.ws) return;
       this.send({ type: 'ping', timestamp: Date.now() });
-      setTimeout(loop, 2000);
+      this.pingTimerHandle = window.setTimeout(loop, 2000);
     };
-    setTimeout(loop, 1000);
+    this.pingTimerHandle = window.setTimeout(loop, 1000);
   }
 
   private clearRemoteRigs(): void {
     this.remotePlayers.forEach((rem) => {
       this.scene.remove(rem.rig.root);
+      rem.rig.dispose();
     });
     this.remotePlayers.clear();
   }

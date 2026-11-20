@@ -112,4 +112,50 @@ describe('LagCompensation Hitbox Rewind Engine', () => {
     expect(targets[0].center.x).toBeGreaterThan(5);
     expect(targets[0].center.x).toBeLessThan(15);
   });
+
+  it('preserves isCrouched posture and shortest-arc yaw interpolation across +-PI during rewind', () => {
+    const lagComp = new LagCompensation();
+    const t0 = 2000;
+    const t1 = 2040;
+
+    lagComp.recordSnapshot(1, t0, [
+      {
+        id: 'crouch_yaw_target',
+        name: 'Crouched Operator',
+        team: 'Syndicate',
+        x: 0,
+        y: 0,
+        z: 10,
+        armor: 100,
+        hasHelmet: true,
+        isDead: false,
+        isCrouched: true,
+        yaw: Math.PI - 0.1,
+      },
+    ]);
+    lagComp.recordSnapshot(2, t1, [
+      {
+        id: 'crouch_yaw_target',
+        name: 'Crouched Operator',
+        team: 'Syndicate',
+        x: 2,
+        y: 0,
+        z: 10,
+        armor: 100,
+        hasHelmet: true,
+        isDead: false,
+        isCrouched: false,
+        yaw: -Math.PI + 0.1,
+      },
+    ]);
+
+    // At t = 2010 (alpha = 0.25 -> closer to t0 crouch=true, yaw near +PI)
+    const early = lagComp.getRewoundTargets(t1, 2010);
+    expect(early[0].isCrouched).toBe(true);
+    expect(Math.abs(early[0].yaw!)).toBeGreaterThan(Math.PI - 0.15);
+
+    // At t = 2020 (alpha = 0.5 -> shortest arc between +PI-0.1 and -PI+0.1 passes through +-PI, NOT 0!)
+    const mid = lagComp.getRewoundTargets(t1, 2020);
+    expect(Math.abs(Math.abs(mid[0].yaw!) - Math.PI)).toBeLessThan(0.05);
+  });
 });
