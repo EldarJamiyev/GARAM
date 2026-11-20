@@ -1,5 +1,13 @@
 import * as THREE from 'three';
 import { AABBCollider, WEAPONS } from '@garam/shared';
+import { AssetManager } from '../render/AssetManager.js';
+
+const WEAPON_GLB_MAP: Record<string, { path: string; length: number }> = {
+  'garam-47': { path: '/models/garam47.glb', length: 0.88 },
+  'vanguard-m4': { path: '/models/m4a1s.glb', length: 0.92 },
+  'sovereign-awp': { path: '/models/awp.glb', length: 1.15 },
+  'desert-eagle': { path: '/models/deagle.glb', length: 0.28 },
+};
 
 export interface DroppedWeaponEntity {
   id: string;
@@ -159,9 +167,10 @@ export class DroppedWeaponManager {
     const assets = getSharedDropAssets();
     const group = new THREE.Group();
 
+    const proxyGroup = new THREE.Group();
     if (isBomb) {
       const bombBox = new THREE.Mesh(assets.bombGeo, assets.bombMat);
-      group.add(bombBox);
+      proxyGroup.add(bombBox);
     } else {
       const def = WEAPONS[weaponId];
       const isRifle = def?.category === 'rifle' || def?.category === 'sniper';
@@ -169,12 +178,13 @@ export class DroppedWeaponManager {
         isRifle ? assets.rifleGeo : assets.pistolGeo,
         def?.category === 'sniper' ? assets.sniperMat : assets.gunMat
       );
-      group.add(body);
+      proxyGroup.add(body);
 
       const mag = new THREE.Mesh(assets.magGeo, assets.magMat);
       mag.position.set(0, -0.08, -0.05);
-      group.add(mag);
+      proxyGroup.add(mag);
     }
+    group.add(proxyGroup);
 
     const glowRing = new THREE.Mesh(assets.ringGeo, isBomb ? assets.bombRingMat : assets.gunRingMat);
     glowRing.rotation.x = -Math.PI / 2;
@@ -183,6 +193,23 @@ export class DroppedWeaponManager {
 
     group.position.copy(pos);
     this.scene.add(group);
+
+    // Asynchronously mount real CS2 GLB weapon or C4 model
+    const spec = isBomb ? { path: '/models/c4.glb', length: 0.30 } : WEAPON_GLB_MAP[weaponId];
+    if (spec) {
+      void AssetManager.getInstance()
+        .loadModel(spec.path, {
+          targetLength: spec.length,
+          centerPivot: true,
+          rotationEuler: isBomb ? [0, 0, 0] : [0, 0, Math.PI / 2],
+          envMapIntensity: 1.6,
+        })
+        .then((glb) => {
+          if (!glb || !group.parent) return;
+          proxyGroup.visible = false;
+          group.add(glb);
+        });
+    }
 
     const tossVel = forward.clone().normalize().multiplyScalar(4.5);
     tossVel.y = 2.4; // Toss upward arc

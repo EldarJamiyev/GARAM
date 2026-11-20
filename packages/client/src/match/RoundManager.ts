@@ -3,6 +3,7 @@ import { ECONOMY, BOMBSITES, MatchSimulation } from '@garam/shared';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
 import { settingsStore } from '../core/SettingsStore.js';
+import { AssetManager } from '../render/AssetManager.js';
 
 export type RoundPhase = 'FREEZE_TIME' | 'ROUND_LIVE' | 'BOMB_ARMED' | 'ROUND_END' | 'MATCH_OVER';
 
@@ -65,13 +66,16 @@ export class RoundManager {
     if (!this.bombMesh) return;
     this.scene.remove(this.bombMesh);
     this.bombMesh.traverse((obj) => {
+      if (obj.userData.isSharedGlb) return;
       if ((obj as THREE.Mesh).isMesh) {
         const mesh = obj as THREE.Mesh;
-        mesh.geometry?.dispose();
-        if (Array.isArray(mesh.material)) {
-          mesh.material.forEach((m) => m.dispose());
-        } else {
-          mesh.material?.dispose();
+        if (!mesh.userData.isSharedGlb) {
+          mesh.geometry?.dispose();
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach((m) => m.dispose());
+          } else {
+            mesh.material?.dispose();
+          }
         }
       }
     });
@@ -254,21 +258,38 @@ export class RoundManager {
 
     this.disposeBombMesh();
 
-    this.bombMesh = new THREE.Group();
+    const bombGroup = new THREE.Group();
+    this.bombMesh = bombGroup;
     const coreGeo = new THREE.BoxGeometry(0.35, 0.16, 0.22);
     const coreMat = new THREE.MeshStandardMaterial({ color: 0x181a1d, roughness: 0.3, metalness: 0.9 });
     const coreBody = new THREE.Mesh(coreGeo, coreMat);
     coreBody.position.y = 0.08;
-    this.bombMesh.add(coreBody);
+    bombGroup.add(coreBody);
 
-    const ledGeo = new THREE.SphereGeometry(0.04, 12, 12);
+    const ledGeo = new THREE.SphereGeometry(0.032, 12, 12);
     const ledMat = new THREE.MeshBasicMaterial({ color: 0xff1122 });
     const led = new THREE.Mesh(ledGeo, ledMat);
-    led.position.set(0, 0.17, 0);
-    this.bombMesh.add(led);
+    led.position.set(0, 0.14, 0);
+    bombGroup.add(led);
 
-    this.bombMesh.position.copy(groundedPos);
-    this.scene.add(this.bombMesh);
+    bombGroup.position.copy(groundedPos);
+    this.scene.add(bombGroup);
+
+    // Asynchronously mount CS2 C4 Explosive GLB
+    void AssetManager.getInstance()
+      .loadModel('/models/c4.glb', {
+        targetLength: 0.32,
+        centerAtFeet: true,
+        envMapIntensity: 1.5,
+      })
+      .then((c4Model) => {
+        if (!c4Model || this.bombMesh !== bombGroup) return;
+        c4Model.traverse((child) => {
+          child.userData.isSharedGlb = true;
+        });
+        coreBody.visible = false;
+        bombGroup.add(c4Model);
+      });
 
     this.callbacks.onPhaseChanged(this.phase, this.roundNumber);
   }

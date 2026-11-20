@@ -11,11 +11,11 @@ export class WeaponViewmodel {
   private flashTimer = 0;
   private currentWeaponId = 'garam-47';
 
-  // Cached Weapon Groups & Animated Parts
+  // Cached Weapon Groups & Animated Parts (supports both procedural Meshes and GLB Bones)
   private weaponMeshes: Map<string, THREE.Group> = new Map();
-  private slideMeshes: Map<string, THREE.Mesh> = new Map();
-  private boltMeshes: Map<string, THREE.Mesh> = new Map();
-  private magMeshes: Map<string, THREE.Mesh> = new Map();
+  private slideMeshes: Map<string, THREE.Object3D> = new Map();
+  private boltMeshes: Map<string, THREE.Object3D> = new Map();
+  private magMeshes: Map<string, THREE.Object3D> = new Map();
   private karambitSpinPivot: THREE.Group | null = null;
   private bladeTrailMesh: THREE.Mesh | null = null;
 
@@ -38,9 +38,12 @@ export class WeaponViewmodel {
   public reloadProgress = 0;
   public isEmptyReload = false;
 
-  // Spring physics states (centered tactical framing)
-  private targetPos = new THREE.Vector3(0.13, -0.16, -0.32);
-  private currentPos = new THREE.Vector3(0.13, -0.16, -0.32);
+  // Track weapons whose high-fidelity CS2 GLB is mounted (hides boxy procedural hands cleanly)
+  private glbLoadedWeapons: Set<string> = new Set();
+
+  // Spring physics states (classic CS2 right-hand tactical framing)
+  private targetPos = new THREE.Vector3(0.14, -0.13, -0.32);
+  private currentPos = new THREE.Vector3(0.14, -0.13, -0.32);
   private velPos = new THREE.Vector3();
 
   private targetRot = new THREE.Euler(0, 0, 0);
@@ -188,57 +191,127 @@ export class WeaponViewmodel {
 
   private async loadExternalModels(): Promise<void> {
     const assetManager = AssetManager.getInstance();
-    const modelSpecs: { weaponId: string; path: string; targetLength: number }[] = [
-      { weaponId: 'garam-47', path: '/models/garam47.glb', targetLength: 0.88 },
-      { weaponId: 'vanguard-m4', path: '/models/m4a1s.glb', targetLength: 0.84 },
-      { weaponId: 'sovereign-awp', path: '/models/awp.glb', targetLength: 1.22 },
-      { weaponId: 'desert-eagle', path: '/models/deagle.glb', targetLength: 0.27 },
-      { weaponId: 'garam-karambit', path: '/models/karambit.glb', targetLength: 0.22 },
+    const modelSpecs: {
+      weaponId: string;
+      path: string;
+      targetLength: number;
+      rotationEuler: [number, number, number];
+      offset: [number, number, number];
+      rotAdjust?: [number, number, number];
+    }[] = [
+      {
+        weaponId: 'garam-47',
+        path: '/models/garam47.glb',
+        targetLength: 0.86,
+        rotationEuler: [0, Math.PI, 0],
+        offset: [0.02, 0.01, -0.12],
+        rotAdjust: [0.03, 0.07, -0.02],
+      },
+      {
+        weaponId: 'vanguard-m4',
+        path: '/models/m4a1s.glb',
+        targetLength: 0.92,
+        rotationEuler: [0, Math.PI, 0],
+        offset: [0.02, 0.01, -0.14],
+        rotAdjust: [0.03, 0.07, -0.02],
+      },
+      {
+        weaponId: 'sovereign-awp',
+        path: '/models/awp.glb',
+        targetLength: 1.10,
+        rotationEuler: [0, Math.PI, 0],
+        offset: [0.03, 0.01, -0.22],
+        rotAdjust: [0.02, 0.08, -0.02],
+      },
+      {
+        weaponId: 'desert-eagle',
+        path: '/models/deagle.glb',
+        targetLength: 0.30,
+        rotationEuler: [0, Math.PI, 0],
+        offset: [0.00, 0.02, -0.06],
+        rotAdjust: [0.04, 0.08, -0.04],
+      },
+      {
+        weaponId: 'garam-karambit',
+        path: '/models/karambit.glb',
+        targetLength: 0.26,
+        rotationEuler: [-0.25, -Math.PI * 0.42, 0.35],
+        offset: [-0.01, 0.11, -0.06],
+      },
     ];
 
     for (const spec of modelSpecs) {
       try {
         const loadedModel = await assetManager.loadModel(spec.path, {
           targetLength: spec.targetLength,
-          envMapIntensity: 1.8,
+          centerPivot: true,
+          rotationEuler: spec.rotationEuler,
+          envMapIntensity: 1.85,
+          castShadow: false,
+          receiveShadow: false,
         });
 
         if (loadedModel) {
-          // Hook sub-nodes for mechanical animations if present in the GLB hierarchy
+          loadedModel.position.set(spec.offset[0], spec.offset[1], spec.offset[2]);
+          if (spec.rotAdjust) {
+            loadedModel.rotation.set(spec.rotAdjust[0], spec.rotAdjust[1], spec.rotAdjust[2]);
+          }
+
+          // Hook real CS2 skeletal weapon sub-nodes (slide, bolt, clip/mag) preserving rest offsets
           loadedModel.traverse((node) => {
             const nameLower = node.name.toLowerCase();
             if (nameLower.includes('slide')) {
-              this.slideMeshes.set(spec.weaponId, node as THREE.Mesh);
-            } else if (nameLower.includes('bolt')) {
-              this.boltMeshes.set(spec.weaponId, node as THREE.Mesh);
-            } else if (nameLower.includes('mag')) {
+              node.userData.baseX = node.position.x;
               node.userData.baseY = node.position.y;
               node.userData.baseZ = node.position.z;
-              this.magMeshes.set(spec.weaponId, node as THREE.Mesh);
+              this.slideMeshes.set(spec.weaponId, node);
+            } else if (nameLower.includes('bolt_action') || (nameLower.includes('bolt') && !nameLower.includes('rail'))) {
+              node.userData.baseX = node.position.x;
+              node.userData.baseY = node.position.y;
+              node.userData.baseZ = node.position.z;
+              this.boltMeshes.set(spec.weaponId, node);
+            } else if (nameLower.includes('clip') || nameLower.includes('mag')) {
+              node.userData.baseX = node.position.x;
+              node.userData.baseY = node.position.y;
+              node.userData.baseZ = node.position.z;
+              this.magMeshes.set(spec.weaponId, node);
             }
           });
 
-          if (spec.weaponId === 'garam-karambit' && this.karambitSpinPivot) {
+          const proceduralGroup = this.weaponMeshes.get(spec.weaponId);
+          if (spec.weaponId === 'garam-karambit' && this.karambitSpinPivot && proceduralGroup) {
+            proceduralGroup.position.set(0, 0, 0);
+            proceduralGroup.rotation.set(0, 0, 0);
             this.karambitSpinPivot.children.forEach((c) => {
-              c.visible = false;
+              if (c !== this.bladeTrailMesh) c.visible = false;
             });
             loadedModel.name = `${spec.weaponId}-glb-mesh`;
             this.karambitSpinPivot.add(loadedModel);
-          } else {
-            const proceduralGroup = this.weaponMeshes.get(spec.weaponId);
-            if (proceduralGroup) {
-              proceduralGroup.children.forEach((c) => {
-                c.visible = false;
-              });
-              loadedModel.name = `${spec.weaponId}-glb-mesh`;
-              proceduralGroup.add(loadedModel);
-            }
+          } else if (proceduralGroup) {
+            proceduralGroup.position.set(0, 0, 0);
+            proceduralGroup.rotation.set(0, 0, 0);
+            proceduralGroup.children.forEach((c) => {
+              c.visible = false;
+            });
+            loadedModel.name = `${spec.weaponId}-glb-mesh`;
+            proceduralGroup.add(loadedModel);
+          }
+
+          this.glbLoadedWeapons.add(spec.weaponId);
+          if (spec.weaponId === this.currentWeaponId) {
+            this.syncArmVisibility();
           }
         }
-      } catch (err) {
+      } catch {
         console.warn(`[WeaponViewmodel] Failed to bind GLB model for ${spec.weaponId}, retaining procedural fallback.`);
       }
     }
+  }
+
+  private syncArmVisibility(): void {
+    const hasGlb = this.glbLoadedWeapons.has(this.currentWeaponId);
+    this.rightArm.visible = !hasGlb;
+    this.leftArm.visible = !hasGlb;
   }
 
   public setWeapon(weaponId: string): void {
@@ -255,30 +328,44 @@ export class WeaponViewmodel {
     this.isInspecting = false;
     this.drawProgress = 0.0; // Trigger draw animation
 
-    // Adjust left & right arms depending on weapon type
+    // Calibrate muzzle flash position & procedural fallback arm framing per weapon
     if (weaponId === 'desert-eagle') {
-      // 2-handed Weaver pistol grip firmly supporting .50 AE frame
-      this.rightArm.position.set(0.02, -0.07, -0.04);
+      this.muzzleFlashLight.position.set(0.01, 0.05, -0.24);
+      this.muzzleFlashMesh.position.set(0.01, 0.05, -0.24);
+      this.rightArm.position.set(0.04, -0.09, -0.05);
       this.rightArm.rotation.set(0.24, -0.06, 0.10);
-      this.leftArm.visible = true;
-      this.leftArm.position.set(-0.03, -0.08, -0.05);
-      this.leftArm.rotation.set(0.26, 0.40, -0.16);
+      this.leftArm.position.set(-0.02, -0.10, -0.06);
+      this.leftArm.rotation.set(0.26, 0.42, -0.16);
     } else if (weaponId === 'garam-karambit') {
-      // Reverse tactical knife grip: right arm holds handle with index finger through gold retention ring
-      this.rightArm.position.set(0.06, -0.06, -0.06);
+      this.rightArm.position.set(0.06, -0.07, -0.06);
       this.rightArm.rotation.set(0.32, -0.22, 0.26);
-      // Left arm in open tactical martial guard stance on the left side of screen
-      this.leftArm.visible = true;
       this.leftArm.position.set(-0.16, -0.13, -0.16);
       this.leftArm.rotation.set(-0.16, 0.46, -0.26);
-    } else {
-      // 2-handed rifle support with visible gloved left hand holding handguard
-      this.rightArm.position.set(0.03, -0.07, 0.04);
+    } else if (weaponId === 'sovereign-awp') {
+      this.muzzleFlashLight.position.set(-0.02, 0.03, -0.78);
+      this.muzzleFlashMesh.position.set(-0.02, 0.03, -0.78);
+      this.rightArm.position.set(0.04, -0.09, 0.06);
       this.rightArm.rotation.set(0.18, -0.08, 0.08);
-      this.leftArm.visible = true;
-      this.leftArm.position.set(-0.05, -0.05, -0.20);
-      this.leftArm.rotation.set(-0.12, 0.40, -0.10);
+      this.leftArm.position.set(-0.05, -0.08, -0.22);
+      this.leftArm.rotation.set(-0.10, 0.44, -0.12);
+    } else if (weaponId === 'vanguard-m4') {
+      this.muzzleFlashLight.position.set(-0.01, 0.03, -0.64);
+      this.muzzleFlashMesh.position.set(-0.01, 0.03, -0.64);
+      this.rightArm.position.set(0.04, -0.09, 0.05);
+      this.rightArm.rotation.set(0.18, -0.08, 0.08);
+      this.leftArm.position.set(-0.04, -0.08, -0.18);
+      this.leftArm.rotation.set(-0.10, 0.42, -0.10);
+    } else {
+      // Garam-47 (CS2 AK-47)
+      this.muzzleFlashLight.position.set(-0.01, 0.03, -0.58);
+      this.muzzleFlashMesh.position.set(-0.01, 0.03, -0.58);
+      this.rightArm.position.set(0.04, -0.09, 0.05);
+      this.rightArm.rotation.set(0.18, -0.08, 0.08);
+      this.leftArm.position.set(-0.04, -0.08, -0.18);
+      this.leftArm.rotation.set(-0.10, 0.42, -0.10);
     }
+
+    this.syncArmVisibility();
   }
 
   // 1. ELDAR'S CUSTOM DESERT EAGLE (.50 AE) - TRIANGULAR SHROUD & SERRATED SLIDE
@@ -932,18 +1019,20 @@ export class WeaponViewmodel {
       }
     }
 
-    // Slide blowback recovery
+    // Slide blowback recovery (relative to node's rest position)
     const slide = this.slideMeshes.get(this.currentWeaponId);
     if (slide) {
       this.slideKick += (0 - this.slideKick) * (1 - Math.exp(-32 * dt));
-      slide.position.z = -0.05 + this.slideKick;
+      const baseZ = typeof slide.userData.baseZ === 'number' ? slide.userData.baseZ : -0.05;
+      slide.position.z = baseZ + this.slideKick;
     }
 
-    // Bolt handle recovery
+    // Bolt handle recovery (relative to node's rest position)
     const bolt = this.boltMeshes.get(this.currentWeaponId);
     if (bolt) {
       this.boltKick += (0 - this.boltKick) * (1 - Math.exp(-14 * dt));
-      bolt.position.z = 0.08 + this.boltKick;
+      const baseZ = typeof bolt.userData.baseZ === 'number' ? bolt.userData.baseZ : 0.08;
+      bolt.position.z = baseZ + this.boltKick;
     }
 
     // Melee animations: M1 Alternating Slash vs M2 Heavy Hook-Stab
@@ -1057,9 +1146,9 @@ export class WeaponViewmodel {
     this.recoilPitch += (0 - this.recoilPitch) * (1 - Math.exp(-22 * safeDt));
     this.recoilZ += (0 - this.recoilZ) * (1 - Math.exp(-24 * safeDt));
 
-    this.targetPos.x = 0.13;
-    this.targetPos.y = -0.16 + walkBob + reloadY + drawY;
-    this.targetPos.z = -0.34 + this.recoilZ + meleeZ;
+    this.targetPos.x = 0.14;
+    this.targetPos.y = -0.13 + walkBob + reloadY + drawY;
+    this.targetPos.z = -0.32 + this.recoilZ + meleeZ;
 
     // Sub-step spring integration in <= 1/120s chunks so spectral radius is strictly < 1
     const subSteps = Math.max(1, Math.ceil(safeDt / (1 / 120)));

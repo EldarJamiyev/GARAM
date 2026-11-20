@@ -223,8 +223,6 @@ export class GaramGame {
   }
 
   private loop(now: number): void {
-    requestAnimationFrame(this.boundLoop);
-
     const frameDelta = Math.max(0.0001, Math.min((now - this.lastTime) / 1000, 0.05));
     this.lastTime = now;
     const worldCamera = this.sceneManager.worldCamera;
@@ -235,13 +233,12 @@ export class GaramGame {
       this.sceneManager.update(frameDelta, worldCamera.position);
       this.renderer.clear();
       this.renderer.render(this.sceneManager.worldScene, worldCamera);
+      this.sceneManager.scheduleNextFrame(this.boundLoop);
       return;
     }
 
-    const inputMgr = ctx.inputManager;
-    const net = ctx.networkClient;
-    const rm = ctx.roundManager;
-    if (!inputMgr || !net || !rm) return;
+    const { inputManager: inputMgr, networkClient: net, roundManager: rm } = ctx;
+    if (!inputMgr || !net || !rm) { this.sceneManager.scheduleNextFrame(this.boundLoop); return; }
 
     this.accumulator += frameDelta;
     const activeWp = ctx.inventory.getActiveWeapon();
@@ -310,6 +307,7 @@ export class GaramGame {
     if (!ctx.spectator.isSpectating) {
       this.renderer.render(this.sceneManager.viewmodelScene, this.sceneManager.viewmodelCamera);
     }
+    this.sceneManager.scheduleNextFrame(this.boundLoop);
   }
 }
 

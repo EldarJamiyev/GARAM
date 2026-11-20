@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { AssetManager } from './AssetManager.js';
 
 export class SceneManager {
   public worldScene: THREE.Scene;
@@ -12,9 +13,11 @@ export class SceneManager {
   public horizonMesh: THREE.InstancedMesh;
   public envMap: THREE.Texture;
   private envRenderTarget: THREE.WebGLRenderTarget | null = null;
+  private renderer: THREE.WebGLRenderer;
   public isSoftwareGl = false;
 
   constructor(renderer: THREE.WebGLRenderer) {
+    this.renderer = renderer;
     // Detect software WebGL (SwiftShader / llvmpipe) to prevent shadow-pass stalls
     const gl = renderer.getContext();
     const dbgInfo = gl.getExtension('WEBGL_debug_renderer_info');
@@ -28,13 +31,18 @@ export class SceneManager {
       renderer.shadowMap.enabled = false;
     }
 
-    // 1. World Scene & Camera
+    AssetManager.getInstance().setMaxAnisotropy(
+      this.isSoftwareGl ? 4 : renderer.capabilities.getMaxAnisotropy()
+    );
+
+    // 1. World Scene & Camera with subtle sunlit-horizon atmospheric perspective
     this.worldScene = new THREE.Scene();
+    this.worldScene.fog = new THREE.FogExp2(0xc4d8ec, 0.0036);
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 600);
 
-    // 2. Viewmodel Scene & Camera (Dual-pass at 68 deg FOV)
+    // 2. Viewmodel Scene & Camera (Dual-pass at 68 deg FOV, near 0.005m)
     this.viewmodelScene = new THREE.Scene();
-    this.viewmodelCamera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.01, 10);
+    this.viewmodelCamera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.005, 10);
 
     // 3. PMREM Image-Based Lighting (IBL)
     this.envRenderTarget = this.generateProceduralPMREM(renderer);
@@ -45,19 +53,19 @@ export class SceneManager {
       this.loadHdrEnvironment(renderer);
     }
 
-    // 4. Calibrated Sun & Ambient Lighting
-    this.hemiLight = new THREE.HemisphereLight(0xddeeff, 0x444b54, 0.85);
+    // 4. Calibrated Sun, Cool Fill & Ambient Lighting (High-contrast CS2 visibility)
+    this.hemiLight = new THREE.HemisphereLight(0xd4e7ff, 0x4b4842, 0.92);
     this.worldScene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff3e0, 1.45);
+    this.sunLight = new THREE.DirectionalLight(0xfff1dc, 1.55);
     this.sunLight.position.set(55, 80, 40);
     this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.width = 2048;
     this.sunLight.shadow.mapSize.height = 2048;
     this.sunLight.shadow.camera.near = 1.0;
     this.sunLight.shadow.camera.far = 220;
-    this.sunLight.shadow.bias = -0.00012;
-    this.sunLight.shadow.normalBias = 0.02;
+    this.sunLight.shadow.bias = -0.00015;
+    this.sunLight.shadow.normalBias = 0.025;
 
     const d = 68;
     this.sunLight.shadow.camera.left = -d;
@@ -66,16 +74,21 @@ export class SceneManager {
     this.sunLight.shadow.camera.bottom = -d;
     this.worldScene.add(this.sunLight);
 
-    // Viewmodel crisp 3-point lighting rig (Key + Rim + Hemisphere Fill)
-    const vmHemi = new THREE.HemisphereLight(0xddeeff, 0x444b54, 1.05);
+    // Opposite cool sky bounce fill so shadowed sides of CS2 operators retain crisp detail
+    const fillLight = new THREE.DirectionalLight(0x9ac4ee, 0.5);
+    fillLight.position.set(-48, 36, -42);
+    this.worldScene.add(fillLight);
+
+    // Viewmodel crisp 3-point studio lighting rig (Warm Key + Cool Rim + Hemisphere Fill)
+    const vmHemi = new THREE.HemisphereLight(0xe4f0ff, 0x454a52, 1.15);
     this.viewmodelScene.add(vmHemi);
 
-    const vmKey = new THREE.DirectionalLight(0xfffaed, 1.45);
+    const vmKey = new THREE.DirectionalLight(0xfff5e4, 1.65);
     vmKey.position.set(2.5, 4.5, 3.0);
     this.viewmodelScene.add(vmKey);
 
-    const vmRim = new THREE.DirectionalLight(0x88ccff, 0.95);
-    vmRim.position.set(-3.5, 2.5, -2.5);
+    const vmRim = new THREE.DirectionalLight(0x88c8ff, 1.05);
+    vmRim.position.set(-3.2, 2.2, -2.5);
     this.viewmodelScene.add(vmRim);
 
     // 5. Atmospheric Gradient Sky Dome with Sun Disc
@@ -272,6 +285,30 @@ export class SceneManager {
   public update(_dt: number, cameraPos: THREE.Vector3): void {
     this.skyMesh.position.copy(cameraPos);
     this.horizonMesh.position.set(cameraPos.x, 0, cameraPos.z);
+  }
+
+  public scheduleNextFrame(cb: (now: number) => void): void {
+    if (!this.isSoftwareGl) {
+      requestAnimationFrame(cb);
+      return;
+    }
+    const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    if (typeof gl.fenceSync === 'function') {
+      const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      gl.flush();
+      const poll = () => {
+        const state = sync ? gl.getSyncParameter(sync, gl.SYNC_STATUS) : gl.SIGNALED;
+        if (state === gl.UNSIGNALED) {
+          window.setTimeout(poll, 8);
+        } else {
+          if (sync) gl.deleteSync(sync);
+          window.setTimeout(() => cb(performance.now()), 80);
+        }
+      };
+      window.setTimeout(poll, 8);
+    } else {
+      window.setTimeout(() => cb(performance.now()), 80);
+    }
   }
 
   public dispose(): void {

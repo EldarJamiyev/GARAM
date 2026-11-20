@@ -163,7 +163,7 @@ export function createProceduralTextures(maxAnisotropy = 8) {
   hazardTex.repeat.set(4, 1);
   hazardTex.anisotropy = maxAnisotropy;
 
-  // 5. Corrugated Shipping Container
+  // 5. Corrugated Shipping Container (with paired relief bump map)
   const canvasCorrugated = document.createElement('canvas');
   canvasCorrugated.width = 256;
   canvasCorrugated.height = 256;
@@ -172,9 +172,9 @@ export function createProceduralTextures(maxAnisotropy = 8) {
   ctxCorr.fillStyle = '#26425e';
   ctxCorr.fillRect(0, 0, 256, 256);
   for (let x = 0; x < 256; x += 16) {
-    ctxCorr.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    ctxCorr.fillStyle = 'rgba(255, 255, 255, 0.16)';
     ctxCorr.fillRect(x, 0, 4, 256);
-    ctxCorr.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctxCorr.fillStyle = 'rgba(0, 0, 0, 0.32)';
     ctxCorr.fillRect(x + 8, 0, 8, 256);
   }
   const containerBlueTex = new THREE.CanvasTexture(canvasCorrugated);
@@ -183,7 +183,32 @@ export function createProceduralTextures(maxAnisotropy = 8) {
   containerBlueTex.wrapT = THREE.RepeatWrapping;
   containerBlueTex.anisotropy = maxAnisotropy;
 
-  return { concreteTex, wallTex, crateTex, hazardTex, containerBlueTex };
+  // 6. Paired PBR Bump/Roughness Maps (Linear NoColorSpace for accurate micro-relief)
+  const makeGrayTex = (srcCanvas: HTMLCanvasElement, repeatX: number, repeatY: number): THREE.CanvasTexture => {
+    const tex = new THREE.CanvasTexture(srcCanvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(repeatX, repeatY);
+    tex.anisotropy = maxAnisotropy;
+    return tex;
+  };
+
+  const concreteBump = makeGrayTex(canvasConcrete, 24, 24);
+  const wallBump = makeGrayTex(canvasWall, 4, 2);
+  const crateBump = makeGrayTex(canvasCrate, 1, 1);
+  const corrBump = makeGrayTex(canvasCorrugated, 1, 1);
+
+  return {
+    concreteTex,
+    concreteBump,
+    wallTex,
+    wallBump,
+    crateTex,
+    crateBump,
+    hazardTex,
+    containerBlueTex,
+    corrBump,
+  };
 }
 
 export function buildTacticalCitadelMap(scene: THREE.Scene): {
@@ -192,14 +217,27 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   colliders: AABBCollider[];
   bombsites: { A: THREE.Vector3; B: THREE.Vector3 };
 } {
-  const { concreteTex, wallTex, crateTex, hazardTex, containerBlueTex } = createProceduralTextures();
+  const {
+    concreteTex,
+    concreteBump,
+    wallTex,
+    wallBump,
+    crateTex,
+    crateBump,
+    hazardTex,
+    containerBlueTex,
+    corrBump,
+  } = createProceduralTextures();
 
   // 120m x 120m PBR Concrete Floor (SceneManager provides the 450m atmospheric shader sky dome)
   const floorGeo = new THREE.PlaneGeometry(124, 124);
   const floorMat = new THREE.MeshStandardMaterial({
     map: concreteTex,
-    roughness: 0.75,
-    metalness: 0.1,
+    bumpMap: concreteBump,
+    bumpScale: 0.035,
+    roughnessMap: concreteBump,
+    roughness: 0.84,
+    metalness: 0.08,
   });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
@@ -210,11 +248,42 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   const blocks = DE_CITADEL_BLOCKS;
   const colliders: AABBCollider[] = [];
 
-  const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.72, metalness: 0.12 });
-  const crateMat = new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.82, metalness: 0.05 });
-  const hazardMat = new THREE.MeshStandardMaterial({ map: hazardTex, roughness: 0.45, metalness: 0.25 });
-  const containerBlueMat = new THREE.MeshStandardMaterial({ map: containerBlueTex, roughness: 0.45, metalness: 0.7 });
-  const containerRedMat = new THREE.MeshStandardMaterial({ color: 0x8a2828, roughness: 0.45, metalness: 0.7 });
+  const wallMat = new THREE.MeshStandardMaterial({
+    map: wallTex,
+    bumpMap: wallBump,
+    bumpScale: 0.045,
+    roughnessMap: wallBump,
+    roughness: 0.82,
+    metalness: 0.1,
+  });
+  const crateMat = new THREE.MeshStandardMaterial({
+    map: crateTex,
+    bumpMap: crateBump,
+    bumpScale: 0.05,
+    roughness: 0.86,
+    metalness: 0.05,
+  });
+  const hazardMat = new THREE.MeshStandardMaterial({
+    map: hazardTex,
+    roughness: 0.42,
+    metalness: 0.32,
+  });
+  const containerBlueMat = new THREE.MeshStandardMaterial({
+    map: containerBlueTex,
+    bumpMap: corrBump,
+    bumpScale: 0.06,
+    roughness: 0.38,
+    metalness: 0.72,
+    envMapIntensity: 1.4,
+  });
+  const containerRedMat = new THREE.MeshStandardMaterial({
+    color: 0x8e2c2a,
+    bumpMap: corrBump,
+    bumpScale: 0.06,
+    roughness: 0.4,
+    metalness: 0.7,
+    envMapIntensity: 1.4,
+  });
 
   // Contact AO floor gradient for wall & crate bases
   const aoCanvas = document.createElement('canvas');

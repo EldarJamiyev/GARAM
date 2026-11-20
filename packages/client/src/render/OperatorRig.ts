@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { settingsStore } from '../core/SettingsStore.js';
+import { AssetManager } from './AssetManager.js';
 
 const _headWorld = new THREE.Vector3();
 const _chestWorld = new THREE.Vector3();
 const _stomWorld = new THREE.Vector3();
+const _qDelta = new THREE.Quaternion();
+const _euler = new THREE.Euler();
 
 export interface OperatorVisualState {
   isMoving: boolean;
@@ -18,7 +21,35 @@ export interface OperatorVisualState {
   velocity?: { x: number; z: number };
 }
 
-// Shared Geometries across all 10 operators to eliminate duplicate GPU buffer allocations
+interface SkeletalBoneBinding {
+  bone: THREE.Object3D;
+  baseQuat: THREE.Quaternion;
+  parentRestQuat: THREE.Quaternion;
+  invParentRestQuat: THREE.Quaternion;
+  basePos: THREE.Vector3;
+}
+
+interface OperatorSkeletonRig {
+  root: THREE.Object3D;
+  baseRootY: number;
+  pelvis?: SkeletalBoneBinding;
+  spine0?: SkeletalBoneBinding;
+  spine1?: SkeletalBoneBinding;
+  spine2?: SkeletalBoneBinding;
+  neck?: SkeletalBoneBinding;
+  head?: SkeletalBoneBinding;
+  armUpperL?: SkeletalBoneBinding;
+  armLowerL?: SkeletalBoneBinding;
+  armUpperR?: SkeletalBoneBinding;
+  armLowerR?: SkeletalBoneBinding;
+  handR?: SkeletalBoneBinding;
+  legUpperL?: SkeletalBoneBinding;
+  legLowerL?: SkeletalBoneBinding;
+  legUpperR?: SkeletalBoneBinding;
+  legLowerR?: SkeletalBoneBinding;
+}
+
+// Shared Geometries across fallback procedural rigs (zero duplicate GPU buffer allocations)
 const geoSpine = new THREE.BoxGeometry(0.38, 0.45, 0.26);
 const geoVest = new THREE.BoxGeometry(0.44, 0.48, 0.32);
 const geoPouch = new THREE.BoxGeometry(0.09, 0.16, 0.08);
@@ -36,14 +67,12 @@ const geoReceiver = new THREE.BoxGeometry(0.06, 0.09, 0.42);
 const geoBarrel = new THREE.CylinderGeometry(0.015, 0.015, 0.38, 8);
 geoBarrel.rotateX(Math.PI / 2);
 const geoMag = new THREE.BoxGeometry(0.045, 0.14, 0.09);
-const geoStock = new THREE.BoxGeometry(0.05, 0.09, 0.18);
-const geoSight = new THREE.BoxGeometry(0.03, 0.04, 0.12);
 
 const geoHeadCollider = new THREE.SphereGeometry(0.22, 6, 6);
 const geoBodyCollider = new THREE.CylinderGeometry(0.36, 0.36, 1.25, 6);
 const matInvisibleCollider = new THREE.MeshBasicMaterial({ visible: false });
 
-const geoShadow = new THREE.PlaneGeometry(0.95, 0.95);
+const geoShadow = new THREE.PlaneGeometry(1.05, 1.05);
 geoShadow.rotateX(-Math.PI / 2);
 
 let sharedShadowTexture: THREE.CanvasTexture | null = null;
@@ -54,8 +83,8 @@ function getSharedShadowTexture(): THREE.CanvasTexture {
     shadowCanvas.height = 128;
     const sCtx = shadowCanvas.getContext('2d')!;
     const sGrad = sCtx.createRadialGradient(64, 64, 4, 64, 64, 64);
-    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
-    sGrad.addColorStop(0.45, 'rgba(0, 0, 0, 0.40)');
+    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.72)');
+    sGrad.addColorStop(0.45, 'rgba(0, 0, 0, 0.38)');
     sGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
     sCtx.fillStyle = sGrad;
     sCtx.fillRect(0, 0, 128, 128);
@@ -71,7 +100,8 @@ export class OperatorRig {
   public bodyCollider: THREE.Mesh;
   private wireframeGroup: THREE.Group;
 
-  // Segmented Limbs
+  // Procedural Fallback Group & Limbs
+  private proceduralGroup: THREE.Group;
   private leftLeg: THREE.Group;
   private rightLeg: THREE.Group;
   private torso: THREE.Group;
@@ -80,6 +110,11 @@ export class OperatorRig {
   private rightArm: THREE.Group;
   private weaponMesh: THREE.Group;
   private contactShadow: THREE.Mesh;
+
+  // High-Fidelity CS2 GLB Operator Rig & World Rifle
+  private glbRig: OperatorSkeletonRig | null = null;
+  private glbWeaponHolder: THREE.Group | null = null;
+  private isDisposed = false;
 
   // UI Billboard
   private uiBillboard: THREE.Sprite;
@@ -98,14 +133,16 @@ export class OperatorRig {
 
   constructor(team: 'Vanguard' | 'Syndicate', name: string) {
     this.root = new THREE.Group();
+    this.proceduralGroup = new THREE.Group();
+    this.root.add(this.proceduralGroup);
 
     const isVanguard = team === 'Vanguard';
-    const suitColor = isVanguard ? 0x1b2026 : 0x3d352b; // Dark navy/graphite vs Mercenary Tan
+    const suitColor = isVanguard ? 0x1b2026 : 0x3d352b;
     const vestColor = isVanguard ? 0x0f1317 : 0x24201a;
-    const accentColor = isVanguard ? 0x3b9eff : 0xffaa00; // Cyan vs Amber
+    const accentColor = isVanguard ? 0x3b9eff : 0xffaa00;
     const visorGlow = isVanguard ? 0xd91438 : 0xffaa00;
 
-    // 1. Torso & Ballistic Vest
+    // 1. Procedural Fallback Torso & Ballistic Vest
     this.torso = new THREE.Group();
     this.torso.position.y = 0.88;
 
@@ -114,37 +151,31 @@ export class OperatorRig {
       roughness: 0.72,
       metalness: 0.15,
     });
-
     const vestMat = new THREE.MeshStandardMaterial({
       color: vestColor,
       roughness: 0.65,
       metalness: 0.25,
     });
-
     const accentMat = new THREE.MeshStandardMaterial({
       color: accentColor,
       roughness: 0.4,
       metalness: 0.4,
     });
 
-    // Lower spine
     const spine = new THREE.Mesh(geoSpine, jacketMat);
     spine.position.y = 0.22;
     this.torso.add(spine);
 
-    // Heavy Ballistic Vest + Molle Pouches
     const vest = new THREE.Mesh(geoVest, vestMat);
     vest.position.set(0, 0.28, 0.01);
     this.torso.add(vest);
 
-    // Front magazine pouches
     for (let i = -1; i <= 1; i++) {
       const pouch = new THREE.Mesh(geoPouch, accentMat);
       pouch.position.set(i * 0.11, 0.22, 0.18);
       this.torso.add(pouch);
     }
 
-    // Shoulder Pauldrons / Team Insignia
     const leftPad = new THREE.Mesh(geoPad, accentMat);
     leftPad.position.set(-0.26, 0.42, 0);
     this.torso.add(leftPad);
@@ -152,29 +183,26 @@ export class OperatorRig {
     const rightPad = new THREE.Mesh(geoPad, accentMat);
     rightPad.position.set(0.26, 0.42, 0);
     this.torso.add(rightPad);
+    this.proceduralGroup.add(this.torso);
 
-    this.root.add(this.torso);
-
-    // 2. Articulated Legs
+    // 2. Procedural Fallback Legs
     this.leftLeg = this.buildLeg(suitColor, vestColor);
     this.leftLeg.position.set(-0.13, 0.85, 0);
-    this.root.add(this.leftLeg);
+    this.proceduralGroup.add(this.leftLeg);
 
     this.rightLeg = this.buildLeg(suitColor, vestColor);
     this.rightLeg.position.set(0.13, 0.85, 0);
-    this.root.add(this.rightLeg);
+    this.proceduralGroup.add(this.rightLeg);
 
-    // 3. Articulated Head & FAST Ballistic Helmet
+    // 3. Procedural Fallback Head
     this.head = new THREE.Group();
     this.head.position.y = 1.45;
 
-    // Head base (balaclava)
     const headMat = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: 0.8 });
     const headBase = new THREE.Mesh(geoHeadBase, headMat);
     headBase.position.y = 0.16;
     this.head.add(headBase);
 
-    // FAST Tactical Helmet
     const helmetMat = new THREE.MeshStandardMaterial({
       color: vestColor,
       roughness: 0.5,
@@ -184,12 +212,10 @@ export class OperatorRig {
     helmet.position.set(0, 0.20, -0.01);
     this.head.add(helmet);
 
-    // NVG Mount & Ear Protection
     const nvgMount = new THREE.Mesh(geoNvgMount, accentMat);
     nvgMount.position.set(0, 0.24, 0.17);
     this.head.add(nvgMount);
 
-    // Team Visor Glass (Glowing)
     const visorMat = new THREE.MeshStandardMaterial({
       color: visorGlow,
       emissive: visorGlow,
@@ -201,16 +227,13 @@ export class OperatorRig {
     visor.position.set(0, 0.16, 0.13);
     visor.castShadow = false;
     this.head.add(visor);
+    this.proceduralGroup.add(this.head);
 
-    this.root.add(this.head);
-
-    // 4. Articulated Arms holding 3D Weapon
+    // 4. Procedural Fallback Arms & Rifle
     this.rightArm = new THREE.Group();
     this.rightArm.position.set(0.24, 1.34, 0);
-
-    const armMesh = new THREE.Mesh(geoArm, jacketMat);
-    this.rightArm.add(armMesh);
-    this.root.add(this.rightArm);
+    this.rightArm.add(new THREE.Mesh(geoArm, jacketMat));
+    this.proceduralGroup.add(this.rightArm);
 
     this.leftArm = new THREE.Group();
     this.leftArm.position.set(-0.24, 1.34, 0);
@@ -218,12 +241,11 @@ export class OperatorRig {
     leftArmMesh.rotation.y = -0.3;
     leftArmMesh.position.set(0.12, -0.06, 0.22);
     this.leftArm.add(leftArmMesh);
-    this.root.add(this.leftArm);
+    this.proceduralGroup.add(this.leftArm);
 
-    // 3D Rifle in hand
     this.weaponMesh = this.buildRifleMesh(accentColor);
     this.weaponMesh.position.set(0.14, 1.18, 0.32);
-    this.root.add(this.weaponMesh);
+    this.proceduralGroup.add(this.weaponMesh);
 
     // 5. Invisible Hitbox Colliders for RaycastEngine
     this.headCollider = new THREE.Mesh(geoHeadCollider, matInvisibleCollider);
@@ -236,7 +258,7 @@ export class OperatorRig {
     this.bodyCollider.castShadow = false;
     this.root.add(this.bodyCollider);
 
-    // 6. Grounded Contact Shadow Disc (Radial Soft Gradient, Shared Texture)
+    // 6. Grounded Contact Shadow Disc
     const shadowMat = new THREE.MeshBasicMaterial({
       map: getSharedShadowTexture(),
       transparent: true,
@@ -288,7 +310,6 @@ export class OperatorRig {
     this.uiBillboard.castShadow = false;
     this.root.add(this.uiBillboard);
 
-    // Track per-instance materials/geometries for clean GPU disposal on disconnect
     this.ownedMaterials.push(
       jacketMat,
       vestMat,
@@ -309,6 +330,162 @@ export class OperatorRig {
     );
 
     this.updateBillboard(1.0, team, name);
+
+    // Asynchronously load full CS2 skeletal GLB operator + world rifle
+    this.loadCharacterGLB(team);
+  }
+
+  private async loadCharacterGLB(team: 'Vanguard' | 'Syndicate'): Promise<void> {
+    const assetManager = AssetManager.getInstance();
+    const modelPath =
+      team === 'Vanguard' ? '/models/operator_vanguard.glb' : '/models/operator_syndicate.glb';
+    const weaponPath = team === 'Vanguard' ? '/models/m4a1s.glb' : '/models/garam47.glb';
+
+    const [agentModel, rifleModel] = await Promise.all([
+      assetManager.loadModel(modelPath, {
+        targetHeight: 1.82,
+        centerAtFeet: true,
+        envMapIntensity: 1.35,
+        castShadow: true,
+        receiveShadow: true,
+      }),
+      assetManager.loadModel(weaponPath, {
+        targetLength: team === 'Vanguard' ? 0.92 : 0.88,
+        centerPivot: true,
+        envMapIntensity: 1.6,
+        castShadow: true,
+        receiveShadow: true,
+      }),
+    ]);
+
+    if (this.isDisposed || !agentModel) return;
+
+    // Compute rest parent world quaternions while agentModel is detached at identity (pure character-local space)
+    agentModel.updateMatrixWorld(true);
+    const rig: OperatorSkeletonRig = { root: agentModel, baseRootY: agentModel.position.y };
+    const bindBone = (node: THREE.Object3D): SkeletalBoneBinding => {
+      const parentRestQuat = new THREE.Quaternion();
+      if (node.parent) {
+        node.parent.getWorldQuaternion(parentRestQuat);
+      }
+      return {
+        bone: node,
+        baseQuat: node.quaternion.clone(),
+        parentRestQuat,
+        invParentRestQuat: parentRestQuat.clone().invert(),
+        basePos: node.position.clone(),
+      };
+    };
+
+    agentModel.traverse((node) => {
+      const n = node.name.toLowerCase();
+      if (n.includes('twist') || n.includes('helper')) return;
+      if (n.startsWith('pelvis')) rig.pelvis = bindBone(node);
+      else if (n.startsWith('spine_0')) rig.spine0 = bindBone(node);
+      else if (n.startsWith('spine_1')) rig.spine1 = bindBone(node);
+      else if (n.startsWith('spine_2')) rig.spine2 = bindBone(node);
+      else if (n.startsWith('neck_0')) rig.neck = bindBone(node);
+      else if (n.startsWith('head_0')) rig.head = bindBone(node);
+      else if (n.startsWith('arm_upper_l')) rig.armUpperL = bindBone(node);
+      else if (n.startsWith('arm_lower_l')) rig.armLowerL = bindBone(node);
+      else if (n.startsWith('arm_upper_r')) rig.armUpperR = bindBone(node);
+      else if (n.startsWith('arm_lower_r')) rig.armLowerR = bindBone(node);
+      else if (n.startsWith('hand_r')) rig.handR = bindBone(node);
+      else if (n.startsWith('leg_upper_l')) rig.legUpperL = bindBone(node);
+      else if (n.startsWith('leg_lower_l')) rig.legLowerL = bindBone(node);
+      else if (n.startsWith('leg_upper_r')) rig.legUpperR = bindBone(node);
+      else if (n.startsWith('leg_lower_r')) rig.legLowerR = bindBone(node);
+    });
+
+    // Mount real CS2 world rifle aligned directly between right pistol-grip hand and left support hand
+    if (rifleModel) {
+      const holder = new THREE.Group();
+      holder.position.set(-0.08, 1.29, 0.34);
+      holder.rotation.set(0.03, 0.22, 0);
+      holder.add(rifleModel);
+      this.glbWeaponHolder = holder;
+      this.root.add(holder);
+    }
+
+    this.glbRig = rig;
+    this.proceduralGroup.visible = false;
+    this.root.add(agentModel);
+
+    // Immediately apply tactical combat rifle stance so agent never renders in A-pose
+    this.applySkeletalPose(0, false, false, 0, 0, 0);
+  }
+
+  /**
+   * Rotates a skeleton bone around Three.js character-local axes (+X Left, +Y Up, +Z Forward)
+   * independent of Source 2 / glTF bone roll conventions.
+   */
+  private applyCharSpaceDelta(binding: SkeletalBoneBinding | undefined, rx: number, ry: number, rz: number): void {
+    if (!binding) return;
+    _euler.set(rx, ry, rz, 'XYZ');
+    _qDelta.setFromEuler(_euler);
+    binding.bone.quaternion
+      .copy(binding.invParentRestQuat)
+      .multiply(_qDelta)
+      .multiply(binding.parentRestQuat)
+      .multiply(binding.baseQuat);
+  }
+
+  private applySkeletalPose(
+    legSwing: number,
+    isMoving: boolean,
+    isCrouching: boolean,
+    aimPitch: number,
+    aimYaw: number,
+    flinchOffset: number
+  ): void {
+    const rig = this.glbRig;
+    if (!rig) return;
+
+    // 1. Root vertical stance drop on crouch & subtle stride bob (true Three.js meter space)
+    const crouchDrop = isCrouching ? -0.34 : 0;
+    const walkBob = isMoving
+      ? Math.abs(Math.sin(this.walkCycle * 2)) * 0.026
+      : Math.sin(performance.now() * 0.003) * 0.006;
+    rig.root.position.y = rig.baseRootY + crouchDrop + walkBob;
+
+    // 2. Spine & Head tracking + flinch (character-local: +X tilts forward/down, +Y turns left)
+    const torsoForwardLean = (isCrouching ? 0.18 : 0.05) - aimPitch * 0.28 - flinchOffset;
+    this.applyCharSpaceDelta(rig.spine1, torsoForwardLean, 0.12, 0);
+    this.applyCharSpaceDelta(rig.spine2, -aimPitch * 0.14, 0.08, 0);
+    this.applyCharSpaceDelta(rig.head, -aimPitch * 0.35 - flinchOffset * 0.7, aimYaw * 0.45 - 0.16, 0);
+
+    // 3. Tactical 2-Handed Rifle Stance (verified character-space kinematics: brings arms tightly out of A-pose)
+    this.applyCharSpaceDelta(rig.armUpperR, -0.18 - aimPitch * 0.25, 0.82, 0.58);
+    this.applyCharSpaceDelta(rig.armLowerR, -0.78, 0.32, -0.22);
+    this.applyCharSpaceDelta(rig.armUpperL, -0.55 - aimPitch * 0.25, -1.32, -0.48);
+    this.applyCharSpaceDelta(rig.armLowerL, -0.42, -0.35, 0.15);
+
+    // 4. Leg Locomotion & Crouch Knee Flex (-X swings thigh forward, +X bends knee backward)
+    if (isMoving) {
+      const lSwing = legSwing;
+      const rSwing = -legSwing;
+      const crouchBias = isCrouching ? 0.45 : 0;
+      this.applyCharSpaceDelta(rig.legUpperL, -lSwing - crouchBias, 0, 0);
+      this.applyCharSpaceDelta(rig.legLowerL, Math.max(0, lSwing) * 0.85 + crouchBias * 1.45, 0, 0);
+      this.applyCharSpaceDelta(rig.legUpperR, -rSwing - crouchBias, 0, 0);
+      this.applyCharSpaceDelta(rig.legLowerR, Math.max(0, rSwing) * 0.85 + crouchBias * 1.45, 0, 0);
+    } else if (isCrouching) {
+      this.applyCharSpaceDelta(rig.legUpperL, -0.62, 0, 0);
+      this.applyCharSpaceDelta(rig.legLowerL, 1.12, 0, 0);
+      this.applyCharSpaceDelta(rig.legUpperR, -0.48, 0, 0);
+      this.applyCharSpaceDelta(rig.legLowerR, 0.92, 0, 0);
+    } else {
+      // Relaxed athletic combat stance
+      this.applyCharSpaceDelta(rig.legUpperL, -0.06, 0.04, 0);
+      this.applyCharSpaceDelta(rig.legLowerL, 0.10, 0, 0);
+      this.applyCharSpaceDelta(rig.legUpperR, 0.05, -0.04, 0);
+      this.applyCharSpaceDelta(rig.legLowerR, 0.08, 0, 0);
+    }
+
+    if (this.glbWeaponHolder) {
+      this.glbWeaponHolder.position.y = (isCrouching ? 0.95 : 1.29) + walkBob;
+      this.glbWeaponHolder.rotation.x = 0.03 - aimPitch * 0.45;
+    }
   }
 
   public setWireframesVisible(visible: boolean): void {
@@ -316,6 +493,20 @@ export class OperatorRig {
   }
 
   public getWorldHitboxes() {
+    if (this.glbRig?.head && this.glbRig?.spine2) {
+      this.glbRig.head.bone.updateWorldMatrix(true, false);
+      this.glbRig.spine2.bone.updateWorldMatrix(true, false);
+      this.glbRig.head.bone.getWorldPosition(_headWorld);
+      this.glbRig.spine2.bone.getWorldPosition(_chestWorld);
+      _stomWorld.copy(_chestWorld);
+      _stomWorld.y -= 0.28;
+      return {
+        head: { x: _headWorld.x, y: _headWorld.y + 0.06, z: _headWorld.z },
+        chest: { x: _chestWorld.x, y: _chestWorld.y, z: _chestWorld.z },
+        stomach: { x: _stomWorld.x, y: _stomWorld.y, z: _stomWorld.z },
+      };
+    }
+
     this.head.updateWorldMatrix(true, false);
     this.torso.updateWorldMatrix(true, false);
     this.head.getWorldPosition(_headWorld);
@@ -332,6 +523,7 @@ export class OperatorRig {
   }
 
   public dispose(): void {
+    this.isDisposed = true;
     this.uiTexture.dispose();
     for (const mat of this.ownedMaterials) {
       mat.dispose();
@@ -341,6 +533,14 @@ export class OperatorRig {
     }
     this.ownedMaterials = [];
     this.ownedGeometries = [];
+    if (this.glbRig) {
+      this.root.remove(this.glbRig.root);
+      this.glbRig = null;
+    }
+    if (this.glbWeaponHolder) {
+      this.root.remove(this.glbWeaponHolder);
+      this.glbWeaponHolder = null;
+    }
   }
 
   public triggerDeath(hitDir?: THREE.Vector3, isHeadshot?: boolean): void {
@@ -353,13 +553,12 @@ export class OperatorRig {
     const leg = new THREE.Group();
     const pantsMat = new THREE.MeshStandardMaterial({ color: suitColor, roughness: 0.8 });
     const bootMat = new THREE.MeshStandardMaterial({ color: bootColor, roughness: 0.6, metalness: 0.2 });
+    this.ownedMaterials.push(pantsMat, bootMat);
 
-    // Thigh + Knee pad
     const thigh = new THREE.Mesh(geoThigh, pantsMat);
     thigh.position.y = -0.22;
     leg.add(thigh);
 
-    // Shin + Combat Boot
     const boot = new THREE.Mesh(geoBoot, bootMat);
     boot.position.set(0, -0.62, 0.02);
     leg.add(boot);
@@ -371,6 +570,7 @@ export class OperatorRig {
     const gun = new THREE.Group();
     const gunMat = new THREE.MeshStandardMaterial({ color: 0x18191c, metalness: 0.8, roughness: 0.3 });
     const accMat = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.4 });
+    this.ownedMaterials.push(gunMat, accMat);
 
     const receiver = new THREE.Mesh(geoReceiver, gunMat);
     gun.add(receiver);
@@ -393,10 +593,9 @@ export class OperatorRig {
 
   public update(dt: number, state: OperatorVisualState): void {
     if (state.isDead) {
-      // Directional death collapse pose with momentum carry
       if (this.deathProgress < 1.0) {
         this.deathProgress = Math.min(1.0, this.deathProgress + dt * 3.5);
-        this.root.rotation.x = -Math.PI / 2 * this.deathProgress;
+        this.root.rotation.x = (-Math.PI / 2) * this.deathProgress;
         this.root.position.y = -0.75 * this.deathProgress;
         if (this.deathKnockback.lengthSq() > 0.01) {
           this.root.position.addScaledVector(this.deathKnockback, dt * (1 - this.deathProgress) * 2.2);
@@ -404,10 +603,10 @@ export class OperatorRig {
       }
       this.uiBillboard.visible = false;
       this.contactShadow.visible = false;
+      if (this.glbWeaponHolder) this.glbWeaponHolder.visible = false;
       return;
     }
 
-    // Reset collapse pose cleanly upon respawn
     if (this.deathProgress > 0) {
       this.deathProgress = 0;
       this.root.rotation.x = 0;
@@ -416,6 +615,7 @@ export class OperatorRig {
 
     this.uiBillboard.visible = true;
     this.contactShadow.visible = true;
+    if (this.glbWeaponHolder) this.glbWeaponHolder.visible = true;
 
     const isCrouching = !!state.isCrouching;
     const targetTorsoY = isCrouching ? 0.46 : 0.88;
@@ -432,31 +632,26 @@ export class OperatorRig {
     this.headCollider.position.y = isCrouching ? 1.05 : 1.66;
     this.bodyCollider.position.y = isCrouching ? 0.55 : 0.95;
 
-    // Directional velocity decomposition for natural stride & banking
-    let vForward = 0;
     let vStrafe = 0;
     if (state.velocity && (Math.abs(state.velocity.x) > 0.01 || Math.abs(state.velocity.z) > 0.01)) {
       const yaw = this.root.rotation.y;
       const cosY = Math.cos(-yaw);
       const sinY = Math.sin(-yaw);
-      vForward = state.velocity.z * cosY + state.velocity.x * sinY;
       vStrafe = state.velocity.x * cosY - state.velocity.z * sinY;
     }
 
-    // 1. Walking & Directional Striding Animation
+    let legSwing = 0;
     if (state.isMoving) {
       this.walkCycle += dt * state.speed * 4.2;
-      const legSwing = Math.sin(this.walkCycle) * (isCrouching ? 0.28 : 0.45);
+      legSwing = Math.sin(this.walkCycle) * (isCrouching ? 0.28 : 0.48);
       this.leftLeg.rotation.x = legSwing;
       this.rightLeg.rotation.x = -legSwing;
       this.leftLeg.rotation.z = Math.max(-0.15, Math.min(0.15, vStrafe * 0.04));
       this.rightLeg.rotation.z = Math.max(-0.15, Math.min(0.15, -vStrafe * 0.04));
 
-      // Slight torso bounce & strafe banking
       this.torso.position.y = targetTorsoY + Math.abs(Math.sin(this.walkCycle * 2)) * 0.03;
       this.root.rotation.z = Math.max(-0.06, Math.min(0.06, -vStrafe * 0.015));
     } else {
-      // Idle breathing & crouch stance
       this.leftLeg.rotation.x = isCrouching ? -0.35 : 0;
       this.rightLeg.rotation.x = isCrouching ? -0.35 : 0;
       this.leftLeg.rotation.z = 0;
@@ -465,29 +660,28 @@ export class OperatorRig {
       this.root.rotation.z = 0;
     }
 
-    // 2. Upper-Body Pitch & Head Aim Tracking
     const aimPitch = state.pitch || 0;
     const aimYaw = state.yawOffset || 0;
-    this.torso.rotation.x = (isCrouching ? 0.12 : 0) + aimPitch * 0.35;
-    this.head.rotation.x = aimPitch * 0.45;
-    this.head.rotation.y = aimYaw * 0.50;
-    this.rightArm.rotation.x = aimPitch * 0.45;
-    this.leftArm.rotation.x = aimPitch * 0.45;
-    this.weaponMesh.rotation.x = aimPitch * 0.45;
-
-    // 3. Flinch Reaction
+    let flinchOffset = 0;
     if (this.flinchTimer > 0) {
       this.flinchTimer -= dt;
-      this.torso.rotation.x += -0.18;
-      this.head.rotation.x += -0.22;
+      flinchOffset = -0.18;
+    }
+
+    if (this.glbRig) {
+      this.applySkeletalPose(legSwing, state.isMoving, isCrouching, aimPitch, aimYaw, flinchOffset);
+    } else {
+      this.torso.rotation.x = (isCrouching ? 0.12 : 0) + aimPitch * 0.35 + flinchOffset;
+      this.head.rotation.x = aimPitch * 0.45 + flinchOffset * 1.2;
+      this.head.rotation.y = aimYaw * 0.50;
+      this.rightArm.rotation.x = aimPitch * 0.45;
+      this.leftArm.rotation.x = aimPitch * 0.45;
+      this.weaponMesh.rotation.x = aimPitch * 0.45;
     }
 
     this.updateBillboard(state.healthRatio, state.team, state.name);
   }
 
-  /**
-   * Renders high-contrast tactical overhead Health Bar + Nameplate
-   */
   private updateBillboard(hpRatio: number, team: 'Vanguard' | 'Syndicate', name: string): void {
     const localTeam = settingsStore.settings.faction;
     const hpPct = Math.max(0, Math.min(100, Math.round(hpRatio * 100)));

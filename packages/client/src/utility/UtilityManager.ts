@@ -8,6 +8,7 @@ import {
 } from '@garam/shared';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
+import { AssetManager } from '../render/AssetManager.js';
 
 export type UtilityType = 'smoke-grenade' | 'flashbang' | 'he-grenade' | 'molotov';
 export type ThrowMode = 'long' | 'medium' | 'short';
@@ -46,7 +47,7 @@ export function stepMolotovBurnAccumulator(
 interface ThrownGrenade {
   id: string;
   type: UtilityType;
-  mesh: THREE.Mesh;
+  mesh: THREE.Object3D;
   position: THREE.Vector3;
   velocity: THREE.Vector3;
   fuseTime: number;
@@ -224,10 +225,26 @@ export class UtilityManager {
       .multiplyScalar(speed)
       .addScaledVector(playerVelocity, 0.7);
 
-    const mesh = new THREE.Mesh(this.sharedGrenadeGeo, this.grenadeMat);
-    mesh.position.copy(eyePos).addScaledVector(viewDir, 0.5);
-    mesh.castShadow = true;
-    this.scene.add(mesh);
+    const grenadeGroup = new THREE.Group();
+    const fallbackMesh = new THREE.Mesh(this.sharedGrenadeGeo, this.grenadeMat);
+    fallbackMesh.castShadow = true;
+    grenadeGroup.add(fallbackMesh);
+    grenadeGroup.position.copy(eyePos).addScaledVector(viewDir, 0.5);
+    this.scene.add(grenadeGroup);
+
+    void AssetManager.getInstance()
+      .loadModel('/models/grenade.glb', {
+        targetLength: 0.14,
+        centerPivot: true,
+        envMapIntensity: 1.5,
+      })
+      .then((glb) => {
+        if (!glb || !grenadeGroup.parent) return;
+        fallbackMesh.visible = false;
+        grenadeGroup.add(glb);
+      });
+
+    const mesh = grenadeGroup;
 
     this.thrownGrenades.push({
       id: Math.random().toString(36).substring(2, 9),
