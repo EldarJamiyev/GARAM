@@ -363,6 +363,149 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       ]);
     });
   });
+
+  describe('BotAISystem End-to-End Anti-Prefire, FOV & Flash Blindness', () => {
+    it('never prefires across any difficulty tier, never spots players behind its back, and immediately re-scales on setDifficulty', async () => {
+      const THREE = await import('three');
+      const { BotAISystem } = await import('../match/BotAISystem.js');
+
+      const makeBot = (yaw: number) => {
+        const mesh = new THREE.Group();
+        mesh.position.set(0, 0, 0);
+        mesh.rotation.set(0, yaw, 0);
+        const dummyCollider = new THREE.Mesh();
+        return {
+          id: 'bot_viper_test',
+          name: 'Syndicate Viper',
+          team: 'Syndicate' as const,
+          mesh,
+          headCollider: dummyCollider,
+          bodyCollider: dummyCollider,
+          patrolTarget: new THREE.Vector3(0, 0, 12),
+          patrolWaypoints: [new THREE.Vector3(0, 0, 12)],
+          waypointIndex: 0,
+          health: 100,
+          maxHealth: 100,
+          armor: 100,
+          hasHelmet: true,
+          isDead: false,
+          vx: 0,
+          vz: 0,
+          lastShotTime: 0,
+          kills: 0,
+          deaths: 0,
+        };
+      };
+
+      // 1. Player standing directly BEHIND bot (-Z while bot faces +Z) -> ZERO shots across 120 frames (2s)
+      let shotsBehind = 0;
+      const aiBehind = new BotAISystem(
+        {
+          onBotShootPlayer: () => {
+            shotsBehind++;
+          },
+          onBotShootBot: () => {},
+        },
+        'Sovereign'
+      );
+      const behindBot = makeBot(0); // facing +Z
+      aiBehind.startNewRound(1, [behindBot]);
+      for (let f = 0; f < 120; f++) {
+        aiBehind.update(
+          [behindBot],
+          1 / 60,
+          [],
+          [],
+          new THREE.Vector3(0, 0, -10),
+          new THREE.Vector3(0, 1.68, -10),
+          [],
+          false,
+          null,
+          100,
+          100,
+          'Vanguard',
+          false
+        );
+      }
+      expect(shotsBehind).toBe(0);
+
+      // 2. Player steps in front of bot -> ZERO prefires during initial reaction window on ALL 4 difficulties
+      const difficulties: Array<{ tier: 'Recruit' | 'Veteran' | 'Elite' | 'Sovereign'; prefireWindowFrames: number }> = [
+        { tier: 'Recruit', prefireWindowFrames: 26 }, // ~433ms
+        { tier: 'Veteran', prefireWindowFrames: 18 }, // ~300ms
+        { tier: 'Elite', prefireWindowFrames: 12 },   // ~200ms
+        { tier: 'Sovereign', prefireWindowFrames: 8 }, // ~133ms
+      ];
+
+      for (const { tier, prefireWindowFrames } of difficulties) {
+        let shots = 0;
+        const ai = new BotAISystem(
+          {
+            onBotShootPlayer: () => {
+              shots++;
+            },
+            onBotShootBot: () => {},
+          },
+          tier
+        );
+        const bot = makeBot(0);
+        ai.startNewRound(1, [bot]);
+        for (let f = 0; f < prefireWindowFrames; f++) {
+          ai.update(
+            [bot],
+            1 / 60,
+            [],
+            [],
+            new THREE.Vector3(0, 0, 14),
+            new THREE.Vector3(0, 1.68, 14),
+            [],
+            false,
+            null,
+            100,
+            100,
+            'Vanguard',
+            false
+          );
+        }
+        expect(shots, `Prefire detected on ${tier} within ${prefireWindowFrames} frames`).toBe(0);
+      }
+
+      // 3. Mid-match setDifficulty('Recruit') immediately suppresses Sovereign bots + flashbang blinds bot
+      let flashedShots = 0;
+      const aiFlash = new BotAISystem(
+        {
+          onBotShootPlayer: () => {
+            flashedShots++;
+          },
+          onBotShootBot: () => {},
+        },
+        'Sovereign'
+      );
+      const flashBot = makeBot(0);
+      aiFlash.startNewRound(1, [flashBot]);
+      aiFlash.setDifficulty('Recruit');
+      aiFlash.onFlashbangExploded(new THREE.Vector3(0, 1.6, 5), [flashBot]);
+      for (let f = 0; f < 60; f++) {
+        aiFlash.update(
+          [flashBot],
+          1 / 60,
+          [],
+          [],
+          new THREE.Vector3(0, 0, 10),
+          new THREE.Vector3(0, 1.68, 10),
+          [],
+          false,
+          null,
+          100,
+          100,
+          'Vanguard',
+          false
+        );
+      }
+      expect(flashedShots).toBe(0);
+    });
+  });
 });
+
 
 

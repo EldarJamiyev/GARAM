@@ -1291,7 +1291,10 @@ export class GameRoom {
   private updateServerBots(): void {
     if (this.matchSim.phase !== 'ROUND_LIVE') return;
 
-    for (const b of this.bots) {
+    const maxYawStep = ((340 * Math.PI) / 180) * this.TICK_DT;
+
+    for (let i = 0; i < this.bots.length; i++) {
+      const b = this.bots[i];
       if (!b.active || b.isDead || b.waypoints.length === 0) continue;
 
       const wp = b.waypoints[b.waypointIndex % b.waypoints.length];
@@ -1304,7 +1307,30 @@ export class GameRoom {
         continue;
       }
 
-      const yaw = Math.atan2(-dx, -dz);
+      const otherPos = [];
+      for (let j = 0; j < this.bots.length; j++) {
+        if (i === j || !this.bots[j].active || this.bots[j].isDead) continue;
+        otherPos.push({
+          x: this.bots[j].controller.state.x,
+          y: this.bots[j].controller.state.y,
+          z: this.bots[j].controller.state.z,
+        });
+      }
+
+      const sep = BotBrain.computeCorridorSeparation(
+        { x: b.controller.state.x, y: b.controller.state.y, z: b.controller.state.z },
+        dx / dist,
+        dz / dist,
+        i,
+        otherPos
+      );
+
+      const desiredYaw = Math.atan2(-sep.dirX, -sep.dirZ);
+      let yawDiff = desiredYaw - b.controller.state.yaw;
+      while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+      while (yawDiff <= -Math.PI) yawDiff += Math.PI * 2;
+      const smoothYaw = b.controller.state.yaw + Math.sign(yawDiff) * Math.min(Math.abs(yawDiff), maxYawStep);
+
       const botInput: PlayerInput = {
         forward: true,
         backward: false,
@@ -1313,14 +1339,14 @@ export class GameRoom {
         jump: false,
         crouch: false,
         walk: false,
-        yaw,
+        yaw: smoothYaw,
         pitch: 0,
       };
 
       b.controller.update(
         botInput,
         this.TICK_DT,
-        KINEMATICS.SPEED_RIFLE * 0.85,
+        KINEMATICS.SPEED_RIFLE * 0.85 * sep.speedMultiplier,
         STATIC_COLLIDERS as AABBCollider[],
         undefined,
         this.spatialGrid

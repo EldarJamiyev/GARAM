@@ -219,16 +219,23 @@ export function resolveBotArchetype(
 function scaleArchetypeToDifficulty(arch: BotArchetype, diff: BotDifficultyTier): BotArchetype {
   const scaled = { ...arch, difficulty: diff };
   if (diff === 'Recruit') {
-    scaled.reactionTimeMs = Math.max(380, arch.reactionTimeMs * 1.8);
-    scaled.slewRateDegPerSec = Math.min(260, arch.slewRateDegPerSec * 0.6);
-    scaled.skill = Math.min(55, arch.skill * 0.65);
+    scaled.reactionTimeMs = Math.max(480, Math.round(arch.reactionTimeMs * 2.0));
+    scaled.slewRateDegPerSec = Math.min(240, Math.round(arch.slewRateDegPerSec * 0.55));
+    scaled.skill = Math.min(48, Math.round(arch.skill * 0.58));
   } else if (diff === 'Veteran') {
-    scaled.reactionTimeMs = arch.reactionTimeMs;
-    scaled.slewRateDegPerSec = arch.slewRateDegPerSec;
+    // Prevent Sovereign/Elite named archetypes (e.g. Viper 145ms / Maverick 140ms) from retaining
+    // inhuman reflexes on Veteran while keeping the procedural fallback (skill 75, reaction 280ms) intact.
+    if (arch.reactionTimeMs < 280) {
+      scaled.reactionTimeMs = Math.round(280 + (arch.reactionTimeMs - 140) * 0.45 + 35);
+    } else {
+      scaled.reactionTimeMs = Math.min(420, arch.reactionTimeMs);
+    }
+    scaled.slewRateDegPerSec = Math.min(420, Math.max(300, arch.slewRateDegPerSec));
+    scaled.skill = Math.min(80, Math.max(64, arch.skill));
   } else if (diff === 'Elite') {
-    scaled.reactionTimeMs = Math.min(arch.reactionTimeMs, 220);
-    scaled.slewRateDegPerSec = Math.max(arch.slewRateDegPerSec, 540);
-    scaled.skill = Math.max(88, arch.skill);
+    scaled.reactionTimeMs = Math.max(210, Math.min(275, arch.reactionTimeMs < 210 ? 210 + Math.round((arch.reactionTimeMs - 140) * 0.4) : arch.reactionTimeMs));
+    scaled.slewRateDegPerSec = Math.min(580, Math.max(480, arch.slewRateDegPerSec));
+    scaled.skill = Math.min(91, Math.max(84, arch.skill));
   } else if (diff === 'Sovereign') {
     scaled.reactionTimeMs = Math.min(arch.reactionTimeMs, 155);
     scaled.slewRateDegPerSec = Math.max(arch.slewRateDegPerSec, 720);

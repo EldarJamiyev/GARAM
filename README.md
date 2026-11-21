@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-134%20Passing-00FF88?style=for-the-badge" alt="134 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-143%20Passing-00FF88?style=for-the-badge" alt="143 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -24,7 +24,7 @@
   1. **Strict 128Hz Kinematic Determinism & Parity:** Pure mathematical kinematics with `STOP_SPEED` Source friction, `SpatialGrid` broadphase acceleration, Circle-AABB Separating Axis Theorem (SAT) wall deflection, overhead ceiling clearance verification, air-strafe speed capping, and clamped smooth stair stepping (`stepOffsetY`). Discrete 1/128s server sub-stepping and full `KinematicSnapshot` reconciliation guarantee zero Euler drift between client prediction and authoritative server.
   2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin, deterministic PRNG spread (`BallisticsSpread`), per-weapon fire cooldowns, 180ms weapon-deploy lockouts, and bomb plant/defuse ownership mutexes are strictly enforced server-side. Includes atomic IP connection caps, smooth token-bucket rate limiting, trusted proxy hop parsing, strict production `Origin` validation, 2KB payload caps, full-RTT `ping_challenge`/`pong_challenge` verification, and recursive prototype-pollution defenses.
   3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All firearms (`garam-47`, `vanguard-m4`, `desert-eagle`, `sovereign-awp`) enforce `sprayPattern[0] = [0.0, 0.0]` with full magazine-length recoil arrays. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy, and scoped Sovereign AWP shots support high-penetration collateral hits (`penetrationPower >= 250`).
-  4. **A\* Tactical Bot Brain & 5v5 Server Bot Takeover:** 100% verified collision-free 32-waypoint tactical navigation graph (>= 0.55m node clearance, >= 0.40m corridor clearance, grounded elevated A Heaven nodes) with dynamic 5v5 human slot takeover, persistent 0.85s wall-tangent sliding evasion, live sound-event awareness, flashbang anti-turn reactions, and smoke-occluded `hasLineOfSight`.
+  4. **Human-Perception Tactical Bot AI (Zero Prefires & Counter-Strafe Footwork):** 100% verified collision-free 32-waypoint tactical navigation graph (>= 0.55m node clearance, >= 0.40m corridor clearance, grounded elevated A Heaven nodes) paired with forward-FOV visual perception, peripheral/distance/surprise reaction latencies, strict crosshair-alignment firing gates (shots fire strictly along actual slewed yaw/pitch with realistic moving-target tracking lag), counter-strafed burst-and-strafe combat footwork, cover retreats on reload/low HP, tactical choke angle-holding with corner-slicing crosshair placement, deadlock-free corridor passing, flashbang blindness & smooth anti-flash turns, live mid-match difficulty re-scaling, and smoke-occluded `hasLineOfSight`.
   5. **Dual-Pass PBR Rendering & Unified CS2 3D Asset Pipeline:** Depth-isolated viewmodel rendering (65° FOV) with warm Mediterranean golden-hour lighting, 96-instance multi-tiered citadel horizon silhouettes, sunlit Mirage-style sandstone/limestone PBR textures with 4-sided grounded contact AO strips, Mid Choke overhead timber pergolas, leak-free PMREM render-target disposal, zero world-geometry clipping, unified CC-BY-4.0 rigged tactical gloved FPS arms (`fps_arms_tactical.glb` driving 28 skeletal `AnimationClip`s via `THREE.AnimationMixer` across **all 5 weapons**—including reverse-grip Karambit CQC slash/stab/inspect and two-handed Weaver-grip Desert Eagle), full CS2 PBR weapon arsenal (`garam47.glb`, `m4a1s.glb`, `awp.glb`, `deagle.glb`, `karambit.glb`), rigged skeletal CT SAS Blue & T Balkan Dragomir operators (`operator_vanguard.glb`, `operator_syndicate.glb`) with 3D world muzzle flashes, world C4 & M67 grenades (`c4.glb`, `grenade.glb`), volumetric instanced 3D bullet tracers (1 draw call), barrel-tracked additive fireball muzzle flashes + rising gunsmoke wisps, pooled instanced impact sparks/dust/blood bursts, layered metallic foley & dual-harmonic titanium headshot dink Web Audio DSP, lazy-loaded `CustomizerUI`, and Vite `manualChunks` bundle splitting.
   6. **Adaptive Clock-Skew Immune Lag Compensation & Batched Binary Netcode:** Authoritative 64-tick server simulation with 64-slot ring-buffer `O(1)` half-RTT hitbox rewind (preserving crouched posture and shortest-arc yaw interpolation), Int16-clamped Binary Protocol v2 (`36 + 29*N` bytes), and 2×128Hz batched binary inputs (`0x03`, 41 bytes) cutting upstream packet rate by 50%.
   7. **Authoritative Utility Physics & MR12 Halftime Rules:** Shared `UtilitySimulation` steps server-side bouncing grenade arcs, LOS-occluded HE blast waves, and smoke-extinguishable 40 DPS Molotov zones alongside automatic MR12 Round 13 halftime side-swap and `$800` pistol-round resets.
@@ -116,16 +116,17 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (134 Passing Tests Across 16 Suites)
+### Test Suite Coverage (143 Passing Tests Across 17 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
 ```
 ```text
- ✓ packages/client/src/__tests__/client-systems.test.ts       (10 tests)
+ ✓ packages/client/src/__tests__/client-systems.test.ts       (11 tests)
  ✓ packages/server/src/__tests__/gameroom.integration.test.ts (8 tests)
  ✓ packages/server/src/__tests__/pvs.test.ts                  (1 test)
  ✓ packages/server/src/__tests__/registry.test.ts             (6 tests)
+ ✓ packages/shared/src/__tests__/botai.test.ts                (8 tests)
  ✓ packages/shared/src/__tests__/botprofiles.test.ts          (3 tests)
  ✓ packages/shared/src/__tests__/kinematics.test.ts           (16 tests)
  ✓ packages/shared/src/__tests__/ballistics.test.ts           (26 tests)
@@ -139,8 +140,8 @@ npm test
  ✓ packages/shared/src/__tests__/economy.test.ts              (5 tests)
  ✓ packages/shared/src/__tests__/docs-sync.test.ts            (3 tests)
 
- Test Files  16 passed (16)
-      Tests  134 passed (134)
+ Test Files  17 passed (17)
+      Tests  143 passed (143)
 ```
 
 ---
