@@ -35,8 +35,8 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localPos: [-0.0347, 0.1871, -0.128],
     localRotEuler: [-1.7183, -0.1314, 3.0204],
     localScale: 1.004,
-    armsScale: 0.34,
-    armsOffset: [0.065, -0.205, -0.19],
+    armsScale: 0.255,
+    armsOffset: [0.082, -0.218, -0.255],
     muzzleLocalPos: [0, 0.025, -0.43],
     requiresPBodyRest: false,
     clips: {
@@ -56,8 +56,8 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localPos: [-0.0705, -0.024, 0.0249],
     localRotEuler: [0.0327, 0.3605, -1.6931],
     localScale: 1.004,
-    armsScale: 0.31,
-    armsOffset: [0.095, -0.235, -0.215],
+    armsScale: 0.275,
+    armsOffset: [0.095, -0.238, -0.235],
     muzzleLocalPos: [0, 0.02, -0.46],
     requiresPBodyRest: true,
     clips: {
@@ -78,8 +78,8 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localPos: [-0.0019, -0.2244, -0.1474],
     localRotEuler: [-0.8092, -0.2297, 3.0691],
     localScale: 1.004,
-    armsScale: 0.28,
-    armsOffset: [0.115, -0.265, -0.33],
+    armsScale: 0.255,
+    armsOffset: [0.115, -0.268, -0.34],
     muzzleLocalPos: [0, 0.025, -0.55],
     requiresPBodyRest: false,
     clips: {

@@ -316,8 +316,8 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         expect(cfg.modelPath.startsWith('/models/')).toBe(true);
         expect(cfg.modelPath).not.toContain('m4a1s_fp.glb');
         expect(['Rif', 'Hand_R']).toContain(cfg.socketBone);
-        expect(cfg.armsScale).toBeGreaterThanOrEqual(0.25);
-        expect(cfg.armsScale).toBeLessThanOrEqual(0.38);
+        expect(cfg.armsScale).toBeGreaterThanOrEqual(0.22);
+        expect(cfg.armsScale).toBeLessThanOrEqual(0.36);
         expect(cfg.armsOffset[2]).toBeLessThan(-0.1);
         expect(resolveWeaponClipName(id, 'idle').length).toBeGreaterThan(3);
         expect(resolveWeaponClipName(id, 'walk').length).toBeGreaterThan(3);
