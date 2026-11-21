@@ -1,10 +1,15 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-interface TracerLine {
-  line: THREE.Line;
-  positions: Float32Array;
+interface TracerInstance {
+  startX: number;
+  startY: number;
+  startZ: number;
+  endX: number;
+  endY: number;
+  endZ: number;
   lifetime: number;
+  maxLifetime: number;
   active: boolean;
 }
 
@@ -13,6 +18,8 @@ const _dummy = new THREE.Object3D();
 const _lookTarget = new THREE.Vector3();
 const _projPos = new THREE.Vector3();
 const _particleColor = new THREE.Color();
+const _tracerMid = new THREE.Vector3();
+const _tracerTarget = new THREE.Vector3();
 
 interface PooledDamagePopup {
   el: HTMLDivElement;
@@ -49,11 +56,12 @@ export class EffectsManager {
   private shellLife: Float32Array;
   private shellBounces: Uint8Array;
 
-  // Pooled Tracers (Max 24, Zero-GC)
-  private tracerPool: TracerLine[] = [];
+  // Pooled Instanced Volumetric Tracers (Max 24 = 1 draw call, Zero-GC)
+  private tracerPool: TracerInstance[] = [];
   private tracerIndex = 0;
   private readonly MAX_TRACERS = 24;
-  private tracerMat: THREE.LineBasicMaterial;
+  private tracerInstancedMesh: THREE.InstancedMesh;
+  private tracerMat: THREE.MeshBasicMaterial;
 
   // Instanced Impact Sparks, Dust Plumes & Blood Mist (96 particles = 1 draw call, zero GC)
   private readonly MAX_PARTICLES = 96;
@@ -205,22 +213,33 @@ export class EffectsManager {
     this.shellLife = new Float32Array(this.MAX_SHELLS);
     this.shellBounces = new Uint8Array(this.MAX_SHELLS);
 
-    // 4. Initialize Tracer Pool (Bright golden supersonic streak, zero runtime allocations)
-    this.tracerMat = new THREE.LineBasicMaterial({
-      color: 0xffe478,
+    // 4. Initialize Volumetric Instanced Tracer Pool (Bright golden supersonic streak, 1 draw call, zero runtime allocations)
+    const tracerGeo = new THREE.BoxGeometry(0.014, 0.014, 1.0);
+    this.tracerMat = new THREE.MeshBasicMaterial({
+      color: 0xffe88a,
       transparent: true,
-      opacity: 0.92,
-      linewidth: 2,
+      opacity: 0.94,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
+    this.tracerInstancedMesh = new THREE.InstancedMesh(tracerGeo, this.tracerMat, this.MAX_TRACERS);
+    this.tracerInstancedMesh.frustumCulled = false;
     for (let i = 0; i < this.MAX_TRACERS; i++) {
-      const positions = new Float32Array(6);
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      const line = new THREE.Line(geo, this.tracerMat);
-      line.visible = false;
-      this.scene.add(line);
-      this.tracerPool.push({ line, positions, lifetime: 0, active: false });
+      this.tracerInstancedMesh.setMatrixAt(i, _dummy.matrix);
+      this.tracerPool.push({
+        startX: 0,
+        startY: 0,
+        startZ: 0,
+        endX: 0,
+        endY: 0,
+        endZ: 0,
+        lifetime: 0,
+        maxLifetime: 0.065,
+        active: false,
+      });
     }
+    this.tracerInstancedMesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.tracerInstancedMesh);
 
     // 5. Initialize Pooled Instanced Impact & Blood Particle System (1 draw call)
     const particleGeo = new THREE.OctahedronGeometry(0.032, 0);
@@ -323,27 +342,44 @@ export class EffectsManager {
   }
 
   public spawnTracer(from: THREE.Vector3, to: THREE.Vector3, weaponId: string, rightVec?: THREE.Vector3): void {
-    if (weaponId === 'vanguard-m4') return; // Suppressed
+    if (weaponId === 'vanguard-m4') return; // Suppressed M4A1-S hides tracers
 
-    const tracer = this.tracerPool[this.tracerIndex];
+    const idx = this.tracerIndex;
+    const tracer = this.tracerPool[idx];
     this.tracerIndex = (this.tracerIndex + 1) % this.MAX_TRACERS;
 
-    const pos = tracer.positions;
     const rx = rightVec ? rightVec.x * 0.16 : 0;
     const ry = rightVec ? rightVec.y * 0.16 : 0;
     const rz = rightVec ? rightVec.z * 0.16 : 0;
-    pos[0] = from.x + rx;
-    pos[1] = from.y - 0.11 + ry;
-    pos[2] = from.z + rz;
-    pos[3] = to.x;
-    pos[4] = to.y;
-    pos[5] = to.z;
-
-    const attr = tracer.line.geometry.attributes.position as THREE.BufferAttribute;
-    attr.needsUpdate = true;
-    tracer.line.visible = true;
-    tracer.lifetime = 0.065;
+    tracer.startX = from.x + rx;
+    tracer.startY = from.y - 0.11 + ry;
+    tracer.startZ = from.z + rz;
+    tracer.endX = to.x;
+    tracer.endY = to.y;
+    tracer.endZ = to.z;
+    tracer.maxLifetime = weaponId === 'sovereign-awp' ? 0.085 : 0.062;
+    tracer.lifetime = tracer.maxLifetime;
     tracer.active = true;
+
+    const dx = tracer.endX - tracer.startX;
+    const dy = tracer.endY - tracer.startY;
+    const dz = tracer.endZ - tracer.startZ;
+    const dist = Math.max(0.25, Math.hypot(dx, dy, dz));
+    const boltLen = Math.min(dist, weaponId === 'sovereign-awp' ? 9.5 : 6.0);
+
+    _tracerMid.set(
+      tracer.startX + dx * 0.35,
+      tracer.startY + dy * 0.35,
+      tracer.startZ + dz * 0.35
+    );
+    _tracerTarget.set(tracer.endX, tracer.endY, tracer.endZ);
+    _dummy.position.copy(_tracerMid);
+    _dummy.lookAt(_tracerTarget);
+    const widthScale = weaponId === 'sovereign-awp' ? 1.55 : 1.0;
+    _dummy.scale.set(widthScale, widthScale, boltLen);
+    _dummy.updateMatrix();
+    this.tracerInstancedMesh.setMatrixAt(idx, _dummy.matrix);
+    this.tracerInstancedMesh.instanceMatrix.needsUpdate = true;
   }
 
   private emitParticle(
@@ -502,16 +538,44 @@ export class EffectsManager {
   }
 
   public update(dt: number): void {
-    // 1. Tick tracers
+    // 1. Tick volumetric instanced tracers along trajectory
+    let tracersUpdated = false;
     for (let i = 0; i < this.MAX_TRACERS; i++) {
       const tracer = this.tracerPool[i];
-      if (tracer.active) {
-        tracer.lifetime -= dt;
-        if (tracer.lifetime <= 0) {
-          tracer.active = false;
-          tracer.line.visible = false;
-        }
+      if (!tracer.active) continue;
+      tracer.lifetime -= dt;
+      if (tracer.lifetime <= 0) {
+        tracer.active = false;
+        _dummy.position.set(0, -500, 0);
+        _dummy.scale.set(0, 0, 0);
+        _dummy.updateMatrix();
+        this.tracerInstancedMesh.setMatrixAt(i, _dummy.matrix);
+        tracersUpdated = true;
+      } else {
+        const progress = 1.0 - tracer.lifetime / Math.max(0.01, tracer.maxLifetime);
+        const dx = tracer.endX - tracer.startX;
+        const dy = tracer.endY - tracer.startY;
+        const dz = tracer.endZ - tracer.startZ;
+        const dist = Math.max(0.25, Math.hypot(dx, dy, dz));
+        const boltLen = Math.min(dist * (1.0 - progress * 0.4), 6.5);
+        const t = Math.min(0.88, 0.25 + progress * 0.65);
+        _tracerMid.set(
+          tracer.startX + dx * t,
+          tracer.startY + dy * t,
+          tracer.startZ + dz * t
+        );
+        _tracerTarget.set(tracer.endX, tracer.endY, tracer.endZ);
+        _dummy.position.copy(_tracerMid);
+        _dummy.lookAt(_tracerTarget);
+        const fade = Math.max(0.25, 1.0 - progress * 0.6);
+        _dummy.scale.set(fade, fade, boltLen);
+        _dummy.updateMatrix();
+        this.tracerInstancedMesh.setMatrixAt(i, _dummy.matrix);
+        tracersUpdated = true;
       }
+    }
+    if (tracersUpdated) {
+      this.tracerInstancedMesh.instanceMatrix.needsUpdate = true;
     }
 
     // 2. Tick instanced shell casings physics
@@ -636,10 +700,8 @@ export class EffectsManager {
     this.particleMesh.geometry.dispose();
     (this.particleMesh.material as THREE.Material).dispose();
 
-    for (const tracer of this.tracerPool) {
-      this.scene.remove(tracer.line);
-      tracer.line.geometry.dispose();
-    }
+    this.scene.remove(this.tracerInstancedMesh);
+    this.tracerInstancedMesh.geometry.dispose();
     this.tracerPool.length = 0;
     this.tracerMat.dispose();
 

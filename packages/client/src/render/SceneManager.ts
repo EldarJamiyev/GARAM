@@ -231,29 +231,31 @@ export class SceneManager {
    * Distant sunlit city silhouette blended naturally into atmospheric horizon haze (1 draw call)
    */
   private buildDistantHorizon(): THREE.InstancedMesh {
-    const numStructures = 48;
+    const numBaseStructures = 48;
+    const totalInstances = numBaseStructures * 2;
     const unitBox = new THREE.BoxGeometry(1, 1, 1);
     const horizonMat = new THREE.MeshStandardMaterial({
-      color: 0xbcb09e,
-      roughness: 0.96,
-      metalness: 0.0,
+      color: 0xffffff,
+      roughness: 0.94,
+      metalness: 0.02,
       fog: true,
     });
 
-    const instanced = new THREE.InstancedMesh(unitBox, horizonMat, numStructures);
+    const instanced = new THREE.InstancedMesh(unitBox, horizonMat, totalInstances);
     instanced.frustumCulled = false;
 
     const dummy = new THREE.Object3D();
+    const tint = new THREE.Color();
+    const palette = [0xc8baa4, 0xbcb09c, 0xd1c2aa, 0xafa18d, 0xc3b39b];
     const radius = 205;
 
-    for (let i = 0; i < numStructures; i++) {
-      // Deterministic pseudo-random Mediterranean skyline silhouette
+    for (let i = 0; i < numBaseStructures; i++) {
       const seed = Math.sin(i * 12.9898) * 43758.5453;
       const r1 = seed - Math.floor(seed);
       const seed2 = Math.sin(i * 78.233) * 19341.1234;
       const r2 = seed2 - Math.floor(seed2);
 
-      const angle = (i / numStructures) * Math.PI * 2;
+      const angle = (i / numBaseStructures) * Math.PI * 2;
       const dist = radius + (r1 - 0.5) * 36;
       const x = Math.cos(angle) * dist;
       const z = Math.sin(angle) * dist;
@@ -272,7 +274,7 @@ export class SceneManager {
         sz = 14 + r2 * 12;
       } else {
         sx = 9 + r2 * 6;
-        sy = 24 + r2 * 12;
+        sy = 26 + r2 * 14;
         sz = 9 + r2 * 6;
       }
 
@@ -280,10 +282,24 @@ export class SceneManager {
       dummy.rotation.set(0, r2 * Math.PI, 0);
       dummy.scale.set(sx, sy, sz);
       dummy.updateMatrix();
-      instanced.setMatrixAt(i, dummy.matrix);
+      instanced.setMatrixAt(i * 2, dummy.matrix);
+      tint.setHex(palette[i % palette.length]);
+      instanced.setColorAt(i * 2, tint);
+
+      // Upper citadel tier / minaret parapet crown
+      const upperSx = sx * (0.42 + r1 * 0.25);
+      const upperSy = 5 + r2 * 11;
+      const upperSz = sz * (0.42 + r2 * 0.25);
+      dummy.position.set(x, sy - 4 + upperSy * 0.5, z);
+      dummy.scale.set(upperSx, upperSy, upperSz);
+      dummy.updateMatrix();
+      instanced.setMatrixAt(i * 2 + 1, dummy.matrix);
+      tint.setHex(palette[(i + 2) % palette.length]);
+      instanced.setColorAt(i * 2 + 1, tint);
     }
 
     instanced.instanceMatrix.needsUpdate = true;
+    if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
     return instanced;
   }
 

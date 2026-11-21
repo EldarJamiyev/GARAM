@@ -626,7 +626,8 @@ export class BotAISystem {
                 }
 
                 bot.rig?.triggerMuzzleFlash();
-                this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, 'garam-47');
+                const botWpId = bot.team === 'Syndicate' ? 'garam-47' : 'vanguard-m4';
+                this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, botWpId);
               }
             }
           }
@@ -749,7 +750,8 @@ export class BotAISystem {
                   }
 
                   bot.rig?.triggerMuzzleFlash();
-                  this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, 'garam-47');
+                  const botWpId = bot.team === 'Syndicate' ? 'garam-47' : 'vanguard-m4';
+                  this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, botWpId);
                 }
               }
               break;

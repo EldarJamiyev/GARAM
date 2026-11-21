@@ -460,8 +460,8 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       }
     }
 
-    // Grounded Contact AO Floor Strips along wall & crate bases
-    if (b.y <= 0.1 && b.h >= 1.5 && b.w <= 50) {
+    // Grounded Contact AO Floor Strips along all 4 wall & crate base edges
+    if (b.y <= 0.1 && b.h >= 1.5 && b.w <= 50 && b.d <= 50) {
       const gFront = new THREE.PlaneGeometry(b.w, 0.48);
       gFront.rotateX(-Math.PI / 2);
       gFront.translate(b.x, 0.014, b.z + b.d / 2 + 0.24);
@@ -471,6 +471,18 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       gBack.rotateX(Math.PI / 2);
       gBack.translate(b.x, 0.014, b.z - b.d / 2 - 0.24);
       aoGeos.push(gBack);
+
+      const gRight = new THREE.PlaneGeometry(b.d, 0.48);
+      gRight.rotateX(-Math.PI / 2);
+      gRight.rotateY(Math.PI / 2);
+      gRight.translate(b.x + b.w / 2 + 0.24, 0.014, b.z);
+      aoGeos.push(gRight);
+
+      const gLeft = new THREE.PlaneGeometry(b.d, 0.48);
+      gLeft.rotateX(-Math.PI / 2);
+      gLeft.rotateY(-Math.PI / 2);
+      gLeft.translate(b.x - b.w / 2 - 0.24, 0.014, b.z);
+      aoGeos.push(gLeft);
     }
   }
 

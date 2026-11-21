@@ -1,5 +1,17 @@
 import * as THREE from 'three';
 import { AssetManager } from '../render/AssetManager.js';
+import {
+  WEAPON_SOCKET_CONFIGS,
+  getWeaponSocketConfig,
+  resolveWeaponClipName,
+  captureBindPose,
+  restoreBindPose,
+  buildKarambitAnimationClips,
+  BoneTransformSnapshot,
+} from './ViewmodelRig.js';
+
+const _muzzleWorld = new THREE.Vector3();
+const _muzzleLocal = new THREE.Vector3();
 
 export class WeaponViewmodel {
   public mesh: THREE.Group;
@@ -17,22 +29,26 @@ export class WeaponViewmodel {
 
   // Cached Weapon Groups & Animated Parts (supports both procedural Meshes and GLB Bones)
   private weaponMeshes: Map<string, THREE.Group> = new Map();
+  private glbWeaponRoots: Map<string, THREE.Object3D> = new Map();
+  private muzzleHelpers: Map<string, THREE.Object3D> = new Map();
   private slideMeshes: Map<string, THREE.Object3D> = new Map();
   private boltMeshes: Map<string, THREE.Object3D> = new Map();
   private magMeshes: Map<string, THREE.Object3D> = new Map();
   private karambitSpinPivot: THREE.Group | null = null;
+  private karambitRingSpinGroup: THREE.Group | null = null;
   private bladeTrailMesh: THREE.Mesh | null = null;
 
-  // Authentic CS2 M4A1-S First-Person Rig AnimationMixer
-  private m4Mixer: THREE.AnimationMixer | null = null;
-  private m4Actions: Map<string, THREE.AnimationAction> = new Map();
-  private m4FpLoaded = false;
-  private m4ShotStopTimer = 0;
+  // Unified Tactical FPS Arms Rig (/models/fps_arms_tactical.glb) for ALL 5 weapons
+  private armsContainer: THREE.Group;
+  private armsRoot: THREE.Object3D | null = null;
+  private armsMixer: THREE.AnimationMixer | null = null;
+  private armsActions: Map<string, THREE.AnimationAction> = new Map();
+  private bindPoseSnapshot: Map<string, BoneTransformSnapshot> = new Map();
+  private rifSocket: THREE.Object3D | null = null;
+  private handRSocket: THREE.Object3D | null = null;
+  private armsLoaded = false;
+  private activeOneShotTimer = 0;
   private wasReloading = false;
-
-  // Rigged Tactical FPS Gloved Hands (fps_hands.glb) for AK-47, AWP, Deagle, Karambit
-  private fpsHandsContainer: THREE.Group;
-  private fpsHandsLoaded = false;
 
   // Animation triggers & timers
   private slideKick = 0;
@@ -56,7 +72,7 @@ export class WeaponViewmodel {
   // Track weapons whose high-fidelity CS2 GLB is mounted
   private glbLoadedWeapons: Set<string> = new Set();
 
-  // Spring physics states (classic CS2 right-hand tactical framing)
+  // Spring physics states
   private targetPos = new THREE.Vector3(0.14, -0.13, -0.32);
   private currentPos = new THREE.Vector3(0.14, -0.13, -0.32);
   private velPos = new THREE.Vector3();
@@ -80,10 +96,14 @@ export class WeaponViewmodel {
     this.leftArm = this.buildTacticalGlove(true);
     this.mesh.add(this.leftArm);
 
-    // 2. Rigged Tactical FPS Hands Container (populated asynchronously from /models/fps_hands.glb)
-    this.fpsHandsContainer = new THREE.Group();
-    this.fpsHandsContainer.visible = false;
-    this.mesh.add(this.fpsHandsContainer);
+    // 2. Unified Rigged Tactical FPS Arms Container (/models/fps_arms_tactical.glb)
+    // Scale 0.5, rotation.y = Math.PI, position (0, -0.215, 0) places Head_Cam at (0, 0, 0)
+    this.armsContainer = new THREE.Group();
+    this.armsContainer.scale.setScalar(0.5);
+    this.armsContainer.rotation.y = Math.PI;
+    this.armsContainer.position.set(0, -0.215, 0);
+    this.armsContainer.visible = false;
+    this.mesh.add(this.armsContainer);
 
     // 3. Muzzle Flash Point Light, Volumetric Radial Fireball & Rising Gunsmoke Wisp
     this.muzzleFlashLight = new THREE.PointLight(0xffb844, 0, 14);
@@ -102,7 +122,7 @@ export class WeaponViewmodel {
     this.gunsmokeMesh.visible = false;
     this.mesh.add(this.gunsmokeMesh);
 
-    // Pre-build and cache all 5 weapon models
+    // Pre-build procedural fallback meshes and asynchronously load unified arms + 5 weapon GLBs
     this.buildAllWeaponMeshes();
     this.setWeapon('garam-47');
     this.mesh.position.copy(this.currentPos);
@@ -129,29 +149,24 @@ export class WeaponViewmodel {
       envMapIntensity: 1.5,
     });
 
-    // Forearm sleeve angled into frame
     const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.054, 0.36, 12), fabricMat);
     sleeve.position.set(0, -0.04, 0.16);
     sleeve.rotation.x = Math.PI / 2.3;
     glove.add(sleeve);
 
-    // Tactical Glove Cuff
     const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.035, 12), cuffMat);
     cuff.position.set(0, -0.02, 0.04);
     cuff.rotation.x = Math.PI / 2.3;
     glove.add(cuff);
 
-    // Palm & Back of Hand
     const palm = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.038, 0.075), fabricMat);
     palm.position.set(0, 0, -0.015);
     glove.add(palm);
 
-    // Carbon-Fiber Armor Knuckle Guard
     const knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.064, 0.014, 0.032), knuckleMat);
     knuckles.position.set(0, 0.02, -0.015);
     glove.add(knuckles);
 
-    // 4 Articulated Fingers (Curled around grip)
     for (let f = 0; f < 4; f++) {
       const fx = (f - 1.5) * 0.015 * (isLeft ? -1 : 1);
       const finger = new THREE.Mesh(new THREE.BoxGeometry(0.013, 0.016, 0.042), fabricMat);
@@ -160,7 +175,6 @@ export class WeaponViewmodel {
       glove.add(finger);
     }
 
-    // Opposable Thumb
     const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.016, 0.04), fabricMat);
     const thumbX = isLeft ? 0.032 : -0.032;
     thumb.position.set(thumbX, 0.01, -0.035);
@@ -181,7 +195,6 @@ export class WeaponViewmodel {
 
     ctx.clearRect(0, 0, 256, 256);
 
-    // Soft outer fiery orange-amber bloom
     const outer = ctx.createRadialGradient(cx, cy, 4, cx, cy, 122);
     outer.addColorStop(0.0, 'rgba(255, 255, 240, 1.0)');
     outer.addColorStop(0.22, 'rgba(255, 224, 128, 0.92)');
@@ -191,7 +204,6 @@ export class WeaponViewmodel {
     ctx.fillStyle = outer;
     ctx.fillRect(0, 0, 256, 256);
 
-    // 6-point jagged supersonic gas jets (authentic CS2 muzzle brake star)
     ctx.save();
     ctx.translate(cx, cy);
     for (let i = 0; i < 6; i++) {
@@ -215,7 +227,6 @@ export class WeaponViewmodel {
     }
     ctx.restore();
 
-    // Incandescent white-hot core
     const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 34);
     core.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
     core.addColorStop(0.65, 'rgba(255, 248, 210, 0.85)');
@@ -243,7 +254,6 @@ export class WeaponViewmodel {
     });
     this.muzzleFlashMat = flashMat;
 
-    // Front star facing camera + two perpendicular axial flame cones
     const front = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.28), flashMat);
     const axialH = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.16), flashMat);
     axialH.rotation.y = Math.PI / 2;
@@ -300,320 +310,234 @@ export class WeaponViewmodel {
     this.weaponContainer.add(deagleGroup);
     this.weaponContainer.add(karambitGroup);
 
-    // Asynchronously load external .glb models via AssetManager with graceful procedural fallback
-    this.loadExternalModels();
+    void this.loadExternalModels();
   }
 
   private async loadExternalModels(): Promise<void> {
     const assetManager = AssetManager.getInstance();
 
-    // 1. Load Authentic Animated CS2 M4A1-S First-Person Rig (gloved CS2 hands + rifle + 5 AnimationClips)
-    let m4FpSuccess = false;
+    // 1. Load Unified Tactical FPS Gloved Arms Rig (22 firearm clips + 6 authored Karambit clips)
     try {
-      const m4Fp = await assetManager.loadModelWithAnimations('/models/m4a1s_fp.glb', {
-        rotationEuler: [0, Math.PI, 0],
-        envMapIntensity: 1.75,
+      const armsRes = await assetManager.loadModelWithAnimations('/models/fps_arms_tactical.glb', {
+        envMapIntensity: 1.65,
         castShadow: false,
         receiveShadow: false,
       });
-      if (m4Fp && m4Fp.animations.length > 0) {
-        const m4Model = m4Fp.model;
-        // Sketchfab_model root has 0.503x scale -> 1.42x brings the M4A1-S + CS2 hands to true CS2 viewmodel proportions
-        m4Model.scale.setScalar(1.42);
-        m4Model.name = 'vanguard-m4-fp-glb';
 
-        const mixer = new THREE.AnimationMixer(m4Model);
-        this.m4Mixer = mixer;
-        this.m4Actions.clear();
-        for (const clip of m4Fp.animations) {
+      if (armsRes && armsRes.animations.length > 0) {
+        const armsModel = armsRes.model;
+        this.armsRoot = armsModel;
+        this.bindPoseSnapshot = captureBindPose(armsModel);
+        this.rifSocket = armsModel.getObjectByName('Rif') || null;
+        this.handRSocket = armsModel.getObjectByName('Hand_R') || null;
+
+        const mixer = new THREE.AnimationMixer(armsModel);
+        this.armsMixer = mixer;
+        this.armsActions.clear();
+
+        const allClips = [
+          ...armsRes.animations,
+          ...buildKarambitAnimationClips(armsRes.animations),
+        ];
+
+        for (const clip of allClips) {
           const action = mixer.clipAction(clip);
-          action.setLoop(THREE.LoopOnce, 1);
-          action.clampWhenFinished = true;
-          this.m4Actions.set(clip.name, action);
+          const isLoop = clip.name.endsWith('_Idle') || clip.name.endsWith('_Walk');
+          if (isLoop) {
+            action.setLoop(THREE.LoopRepeat, Infinity);
+            action.clampWhenFinished = false;
+          } else {
+            action.setLoop(THREE.LoopOnce, 1);
+            action.clampWhenFinished = true;
+          }
+          this.armsActions.set(clip.name, action);
         }
 
-        // Evaluate end of Equip clip immediately so we can measure the true animated hand bone position
-        const equipAction = this.m4Actions.get('Equip');
-        if (equipAction) {
-          equipAction.reset();
-          equipAction.play();
-          equipAction.time = equipAction.getClip().duration;
-          mixer.update(0.001);
-        }
+        this.armsContainer.add(armsModel);
+        this.armsLoaded = true;
+      }
+    } catch {
+      console.warn('[WeaponViewmodel] Failed to load fps_arms_tactical.glb; using procedural glove fallback.');
+    }
 
-        // Dynamically align weapon_hand_r_5 to classic CS2 viewmodel sweet spot (0.01, -0.02, -0.06) inside WeaponViewmodel.mesh
-        m4Model.updateMatrixWorld(true);
-        const handBone = m4Model.getObjectByName('weapon_hand_r_5');
-        if (handBone) {
-          const boneLocal = new THREE.Vector3();
-          handBone.getWorldPosition(boneLocal);
-          m4Model.position.set(0.015 - boneLocal.x, -0.015 - boneLocal.y, -0.05 - boneLocal.z);
-        } else {
-          m4Model.position.set(-0.08, -1.08, 0.22);
-        }
-
-        const proceduralGroup = this.weaponMeshes.get('vanguard-m4');
-        if (proceduralGroup) {
-          proceduralGroup.position.set(0, 0, 0);
-          proceduralGroup.rotation.set(0, 0, 0);
-          proceduralGroup.children.forEach((c) => {
-            c.visible = false;
+    // 2. Load All 5 High-Fidelity CS2 Weapon GLBs in parallel and bind them to their calibrated skeletal socket bones
+    const weaponIds = Object.keys(WEAPON_SOCKET_CONFIGS);
+    await Promise.all(
+      weaponIds.map(async (weaponId) => {
+        const cfg = WEAPON_SOCKET_CONFIGS[weaponId];
+        try {
+          const loadedModel = await assetManager.loadModel(cfg.modelPath, {
+            targetLength: cfg.targetLength,
+            centerPivot: true,
+            rotationEuler: cfg.rotationEuler,
+            envMapIntensity: 1.85,
+            castShadow: false,
+            receiveShadow: false,
           });
-          proceduralGroup.add(m4Model);
-        }
 
-        this.m4FpLoaded = true;
-        this.glbLoadedWeapons.add('vanguard-m4');
-        m4FpSuccess = true;
-        if (this.currentWeaponId === 'vanguard-m4') {
-          this.playM4Clip('Equip', 2.6);
-          this.syncArmVisibility();
-        }
-      }
-    } catch {
-      console.warn('[WeaponViewmodel] Failed to load animated m4a1s_fp.glb; falling back to static m4a1s.glb.');
-    }
+          if (!loadedModel) return;
 
-    // 2. Clone Authentic CS2 Tactical Gloved Hands (from m4a1s_fp.glb with rifle mesh hidden) for AK-47 & AWP
-    try {
-      const cs2Hands = await assetManager.loadModelWithAnimations('/models/m4a1s_fp.glb', {
-        rotationEuler: [0, Math.PI, 0],
-        envMapIntensity: 1.55,
-        castShadow: false,
-        receiveShadow: false,
-      });
-      if (cs2Hands && cs2Hands.animations.length > 0) {
-        const handsRig = cs2Hands.model;
-        handsRig.scale.setScalar(1.32);
-        handsRig.name = 'cs2-gloved-hands-glb';
-
-        // Hide the M4A1-S rifle mesh (Object_10 / m4a1) so ONLY the authentic CS2 gloved arms remain
-        handsRig.traverse((node) => {
-          const n = node.name.toLowerCase();
-          if (n === 'object_10' || n.includes('m4a1') || n.includes('object_128')) {
-            node.visible = false;
-          }
-        });
-
-        // Freeze hands in the authentic CS2 two-handed rifle idle pose (end of Equip clip)
-        const poseMixer = new THREE.AnimationMixer(handsRig);
-        const equipClip = cs2Hands.animations.find((c) => c.name === 'Equip') || cs2Hands.animations[0];
-        if (equipClip) {
-          const act = poseMixer.clipAction(equipClip);
-          act.setLoop(THREE.LoopOnce, 1);
-          act.clampWhenFinished = true;
-          act.reset();
-          act.play();
-          act.time = equipClip.duration;
-          poseMixer.update(0.001);
-        }
-
-        handsRig.updateMatrixWorld(true);
-        const handBone = handsRig.getObjectByName('weapon_hand_r_5');
-        if (handBone) {
-          const boneLocal = new THREE.Vector3();
-          handBone.getWorldPosition(boneLocal);
-          handsRig.position.set(0.01 - boneLocal.x, -0.045 - boneLocal.y, -0.02 - boneLocal.z);
-        }
-
-        this.fpsHandsContainer.add(handsRig);
-        this.fpsHandsLoaded = true;
-        this.syncArmVisibility();
-      }
-    } catch {
-      console.warn('[WeaponViewmodel] Failed to initialize CS2 gloved hands rig.');
-    }
-
-    // 3. Load High-Fidelity CS2 Weapon GLBs (with static m4a1s.glb fallback if m4a1s_fp failed)
-    const modelSpecs: {
-      weaponId: string;
-      path: string;
-      targetLength: number;
-      rotationEuler: [number, number, number];
-      offset: [number, number, number];
-      rotAdjust?: [number, number, number];
-    }[] = [
-      {
-        weaponId: 'garam-47',
-        path: '/models/garam47.glb',
-        targetLength: 0.86,
-        rotationEuler: [0, Math.PI, 0],
-        offset: [0.02, 0.015, -0.14],
-        rotAdjust: [0.02, 0.05, -0.02],
-      },
-      ...(!m4FpSuccess
-        ? [
-            {
-              weaponId: 'vanguard-m4',
-              path: '/models/m4a1s.glb',
-              targetLength: 0.92,
-              rotationEuler: [0, Math.PI, 0] as [number, number, number],
-              offset: [0.02, 0.01, -0.14] as [number, number, number],
-              rotAdjust: [0.03, 0.07, -0.02] as [number, number, number],
-            },
-          ]
-        : []),
-      {
-        weaponId: 'sovereign-awp',
-        path: '/models/awp.glb',
-        targetLength: 1.10,
-        rotationEuler: [0, Math.PI, 0],
-        offset: [0.025, 0.015, -0.22],
-        rotAdjust: [0.02, 0.06, -0.02],
-      },
-      {
-        weaponId: 'desert-eagle',
-        path: '/models/deagle.glb',
-        targetLength: 0.30,
-        rotationEuler: [0, Math.PI, 0],
-        offset: [-0.015, 0.055, -0.07],
-        rotAdjust: [0.04, 0.08, -0.04],
-      },
-      {
-        weaponId: 'garam-karambit',
-        path: '/models/karambit.glb',
-        targetLength: 0.26,
-        rotationEuler: [-0.25, -Math.PI * 0.42, 0.35],
-        offset: [-0.01, 0.11, -0.06],
-      },
-    ];
-
-    for (const spec of modelSpecs) {
-      try {
-        const loadedModel = await assetManager.loadModel(spec.path, {
-          targetLength: spec.targetLength,
-          centerPivot: true,
-          rotationEuler: spec.rotationEuler,
-          envMapIntensity: 1.85,
-          castShadow: false,
-          receiveShadow: false,
-        });
-
-        if (loadedModel) {
-          loadedModel.position.set(spec.offset[0], spec.offset[1], spec.offset[2]);
-          if (spec.rotAdjust) {
-            loadedModel.rotation.set(spec.rotAdjust[0], spec.rotAdjust[1], spec.rotAdjust[2]);
-          }
-
-          // Hook real CS2 skeletal weapon sub-nodes (slide, bolt, clip/mag) preserving rest offsets
+          // Hook animated weapon sub-nodes (slide, bolt, clip/mag) preserving rest offsets
           loadedModel.traverse((node) => {
             const nameLower = node.name.toLowerCase();
             if (nameLower.includes('slide')) {
               node.userData.baseX = node.position.x;
               node.userData.baseY = node.position.y;
               node.userData.baseZ = node.position.z;
-              this.slideMeshes.set(spec.weaponId, node);
-            } else if (nameLower.includes('bolt_action') || (nameLower.includes('bolt') && !nameLower.includes('rail'))) {
+              this.slideMeshes.set(weaponId, node);
+            } else if (
+              nameLower.includes('bolt_action') ||
+              (nameLower.includes('bolt') && !nameLower.includes('rail'))
+            ) {
               node.userData.baseX = node.position.x;
               node.userData.baseY = node.position.y;
               node.userData.baseZ = node.position.z;
-              this.boltMeshes.set(spec.weaponId, node);
+              this.boltMeshes.set(weaponId, node);
             } else if (nameLower.includes('clip') || nameLower.includes('mag')) {
               node.userData.baseX = node.position.x;
               node.userData.baseY = node.position.y;
               node.userData.baseZ = node.position.z;
-              this.magMeshes.set(spec.weaponId, node);
+              this.magMeshes.set(weaponId, node);
             }
           });
 
-          const proceduralGroup = this.weaponMeshes.get(spec.weaponId);
-          if (spec.weaponId === 'garam-karambit' && this.karambitSpinPivot && proceduralGroup) {
-            proceduralGroup.position.set(0, 0, 0);
-            proceduralGroup.rotation.set(0, 0, 0);
-            this.karambitSpinPivot.children.forEach((c) => {
-              if (c !== this.bladeTrailMesh) c.visible = false;
-            });
-            loadedModel.name = `${spec.weaponId}-glb-mesh`;
-            this.karambitSpinPivot.add(loadedModel);
-          } else if (proceduralGroup) {
-            proceduralGroup.position.set(0, 0, 0);
-            proceduralGroup.rotation.set(0, 0, 0);
-            proceduralGroup.children.forEach((c) => {
-              c.visible = false;
-            });
-            loadedModel.name = `${spec.weaponId}-glb-mesh`;
-            proceduralGroup.add(loadedModel);
+          // Attach a muzzle tip helper inside the normalized weapon so muzzle flash & gunsmoke track the barrel
+          const muzzleHelper = new THREE.Object3D();
+          muzzleHelper.position.set(
+            cfg.muzzleLocalPos[0],
+            cfg.muzzleLocalPos[1],
+            cfg.muzzleLocalPos[2]
+          );
+          loadedModel.add(muzzleHelper);
+          this.muzzleHelpers.set(weaponId, muzzleHelper);
+
+          const socketHolder = new THREE.Group();
+          socketHolder.name = `${weaponId}-socket-holder`;
+          socketHolder.position.set(cfg.localPos[0], cfg.localPos[1], cfg.localPos[2]);
+          socketHolder.rotation.set(cfg.localRotEuler[0], cfg.localRotEuler[1], cfg.localRotEuler[2]);
+          socketHolder.scale.setScalar(cfg.localScale);
+
+          if (weaponId === 'garam-karambit') {
+            // Dedicated spin group around retention ring at local (0, 0.02, 0.085) for draw/inspect twirl
+            const ringSpinGroup = new THREE.Group();
+            ringSpinGroup.position.set(0, 0.02, 0.085);
+            loadedModel.position.set(0, -0.02, -0.085);
+            ringSpinGroup.add(loadedModel);
+            socketHolder.add(ringSpinGroup);
+            this.karambitRingSpinGroup = ringSpinGroup;
+          } else {
+            socketHolder.add(loadedModel);
           }
 
-          this.glbLoadedWeapons.add(spec.weaponId);
-          if (spec.weaponId === this.currentWeaponId) {
-            this.syncArmVisibility();
+          const targetSocket =
+            cfg.socketBone === 'Hand_R' ? this.handRSocket : this.rifSocket;
+
+          if (this.armsLoaded && targetSocket) {
+            socketHolder.visible = weaponId === this.currentWeaponId;
+            targetSocket.add(socketHolder);
+            this.glbWeaponRoots.set(weaponId, socketHolder);
+          } else {
+            const proceduralGroup = this.weaponMeshes.get(weaponId);
+            if (proceduralGroup) {
+              proceduralGroup.children.forEach((c) => {
+                c.visible = false;
+              });
+              proceduralGroup.add(loadedModel);
+            }
           }
+
+          this.glbLoadedWeapons.add(weaponId);
+          if (weaponId === this.currentWeaponId) {
+            this.syncArmVisibility();
+            this.playWeaponAnimation('draw');
+          }
+        } catch {
+          console.warn(`[WeaponViewmodel] Failed to load GLB for ${weaponId}, retaining procedural fallback.`);
         }
-      } catch {
-        console.warn(`[WeaponViewmodel] Failed to bind GLB model for ${spec.weaponId}, retaining procedural fallback.`);
-      }
+      })
+    );
+
+    if (this.armsLoaded) {
+      this.syncArmVisibility();
+      this.playWeaponAnimation('draw');
     }
   }
 
-  private playM4Clip(
-    name: 'Equip' | 'Shots' | 'Reload' | 'Inspect',
-    timeScale = 1.0,
-    startTime = 0
+  private playWeaponAnimation(
+    state: 'idle' | 'walk' | 'draw' | 'fire' | 'altFire' | 'reload' | 'reloadFull' | 'inspect',
+    timeScale = 1.0
   ): void {
-    if (!this.m4Mixer || !this.m4FpLoaded) return;
-    const nextAction = this.m4Actions.get(name);
-    if (!nextAction) return;
+    if (!this.armsLoaded || !this.armsMixer || !this.armsRoot) return;
+    const clipName = resolveWeaponClipName(this.currentWeaponId, state);
+    const action = this.armsActions.get(clipName);
+    if (!action) return;
 
-    // Stop previous clips directly so effective skeletal weight stays strictly 1.0 (never dips toward T-pose)
-    this.m4Actions.forEach((act, key) => {
-      if (key !== name) {
-        act.stop();
-      }
+    this.armsActions.forEach((act) => {
+      act.stop();
     });
 
-    nextAction.reset();
-    nextAction.stopFading();
-    nextAction.enabled = true;
-    nextAction.setEffectiveWeight(1.0);
-    nextAction.setEffectiveTimeScale(timeScale);
-    nextAction.time = Math.min(startTime, Math.max(0, nextAction.getClip().duration - 0.05));
-    nextAction.play();
-    this.m4Mixer.update(0.001);
-  }
+    // Restore clean bind pose before evaluating new clip so unkeyed bones (e.g. PBody in M4/Karambit) never retain stale transforms
+    restoreBindPose(this.armsRoot, this.bindPoseSnapshot);
 
-  private applyFpsHandsFraming(weaponId: string): void {
-    if (!this.fpsHandsLoaded) return;
-    if (weaponId === 'sovereign-awp') {
-      this.fpsHandsContainer.position.set(0.026, 0.002, -0.018);
-      this.fpsHandsContainer.rotation.set(0.01, 0.05, 0.0);
-      this.fpsHandsContainer.scale.setScalar(1.0);
+    action.reset();
+    action.stopFading();
+    action.enabled = true;
+    action.setEffectiveWeight(1.0);
+    action.setEffectiveTimeScale(timeScale);
+    action.play();
+    this.armsMixer.update(0.001);
+
+    const isLoopClip = clipName.endsWith('_Idle') || clipName.endsWith('_Walk');
+    const isOneShot =
+      !isLoopClip &&
+      (state === 'draw' ||
+        state === 'fire' ||
+        state === 'altFire' ||
+        state === 'reload' ||
+        state === 'reloadFull' ||
+        state === 'inspect');
+
+    if (isOneShot) {
+      this.activeOneShotTimer = action.getClip().duration / Math.max(0.1, timeScale);
     } else {
-      // Garam-47 (AK-47) snug two-hand wrap on pistol grip & wooden handguard
-      this.fpsHandsContainer.position.set(0.026, 0.006, -0.012);
-      this.fpsHandsContainer.rotation.set(0.01, 0.06, 0.0);
-      this.fpsHandsContainer.scale.setScalar(1.0);
+      this.activeOneShotTimer = 0;
     }
   }
 
   private syncArmVisibility(): void {
     const hasGlb = this.glbLoadedWeapons.has(this.currentWeaponId);
-    const usesM4OwnHands = this.currentWeaponId === 'vanguard-m4' && this.m4FpLoaded;
-    const isRifleWithSharedCs2Hands =
-      this.currentWeaponId === 'garam-47' || this.currentWeaponId === 'sovereign-awp';
+    const usesUnifiedArms = this.armsLoaded && hasGlb;
 
-    if (usesM4OwnHands) {
+    if (usesUnifiedArms) {
+      const cfg = getWeaponSocketConfig(this.currentWeaponId);
+      this.armsContainer.scale.setScalar(cfg.armsScale);
+      this.armsContainer.position.set(
+        cfg.armsOffset[0],
+        cfg.armsOffset[1],
+        cfg.armsOffset[2]
+      );
+      this.armsContainer.visible = true;
       this.rightArm.visible = false;
       this.leftArm.visible = false;
-      this.fpsHandsContainer.visible = false;
-    } else if (this.fpsHandsLoaded && hasGlb && isRifleWithSharedCs2Hands) {
-      this.rightArm.visible = false;
-      this.leftArm.visible = false;
-      this.fpsHandsContainer.visible = true;
-      this.applyFpsHandsFraming(this.currentWeaponId);
+
+      this.weaponMeshes.forEach((mesh) => {
+        mesh.visible = false;
+      });
+      this.glbWeaponRoots.forEach((holder, id) => {
+        holder.visible = id === this.currentWeaponId;
+      });
     } else {
-      this.fpsHandsContainer.visible = false;
+      this.armsContainer.visible = false;
       this.rightArm.visible = !hasGlb;
       this.leftArm.visible = !hasGlb;
+      this.weaponMeshes.forEach((mesh, id) => {
+        mesh.visible = id === this.currentWeaponId;
+      });
     }
   }
 
   public setWeapon(weaponId: string): void {
     this.currentWeaponId = weaponId;
-
-    this.weaponMeshes.forEach((mesh, id) => {
-      mesh.visible = id === weaponId;
-    });
 
     this.slideKick = 0;
     this.boltKick = 0;
@@ -621,19 +545,14 @@ export class WeaponViewmodel {
     this.isStabbing = false;
     this.isInspecting = false;
     this.wasReloading = false;
-    this.m4ShotStopTimer = 0;
-    this.drawProgress = 0.0; // Trigger draw animation
+    this.activeOneShotTimer = 0;
+    this.drawProgress = 0.0;
 
-    if (weaponId === 'vanguard-m4' && this.m4FpLoaded) {
-      // Start Equip at 2.1s (in-frame bolt-settle & ready stance) so M4A1-S + hands are immediately framed on switch
-      this.playM4Clip('Equip', 2.4, 2.1);
-    }
-
-    // Calibrate muzzle flash, rising smoke & procedural fallback arm framing per weapon
+    // Calibrate fallback muzzle flash & procedural arm framing per weapon
     if (weaponId === 'desert-eagle') {
-      this.muzzleFlashLight.position.set(0.01, 0.05, -0.24);
-      this.muzzleFlashMesh.position.set(0.01, 0.05, -0.24);
-      this.gunsmokeMesh.position.set(0.01, 0.05, -0.24);
+      this.muzzleFlashLight.position.set(0.08, -0.11, -0.53);
+      this.muzzleFlashMesh.position.set(0.08, -0.11, -0.53);
+      this.gunsmokeMesh.position.set(0.08, -0.11, -0.53);
       this.rightArm.position.set(0.04, -0.09, -0.05);
       this.rightArm.rotation.set(0.24, -0.06, 0.10);
       this.leftArm.position.set(-0.02, -0.10, -0.06);
@@ -644,40 +563,56 @@ export class WeaponViewmodel {
       this.leftArm.position.set(-0.16, -0.13, -0.16);
       this.leftArm.rotation.set(-0.16, 0.46, -0.26);
     } else if (weaponId === 'sovereign-awp') {
-      this.muzzleFlashLight.position.set(-0.02, 0.03, -0.78);
-      this.muzzleFlashMesh.position.set(-0.02, 0.03, -0.78);
-      this.gunsmokeMesh.position.set(-0.02, 0.03, -0.78);
+      this.muzzleFlashLight.position.set(-0.06, -0.13, -0.82);
+      this.muzzleFlashMesh.position.set(-0.06, -0.13, -0.82);
+      this.gunsmokeMesh.position.set(-0.06, -0.13, -0.82);
       this.rightArm.position.set(0.04, -0.09, 0.06);
       this.rightArm.rotation.set(0.18, -0.08, 0.08);
       this.leftArm.position.set(-0.05, -0.08, -0.22);
       this.leftArm.rotation.set(-0.10, 0.44, -0.12);
     } else if (weaponId === 'vanguard-m4') {
-      this.muzzleFlashLight.position.set(-0.01, 0.04, -0.78);
-      this.muzzleFlashMesh.position.set(-0.01, 0.04, -0.78);
-      this.gunsmokeMesh.position.set(-0.01, 0.04, -0.78);
+      this.muzzleFlashLight.position.set(0.06, -0.10, -0.77);
+      this.muzzleFlashMesh.position.set(0.06, -0.10, -0.77);
+      this.gunsmokeMesh.position.set(0.06, -0.10, -0.77);
       this.rightArm.position.set(0.04, -0.09, 0.05);
       this.rightArm.rotation.set(0.18, -0.08, 0.08);
       this.leftArm.position.set(-0.04, -0.08, -0.18);
       this.leftArm.rotation.set(-0.10, 0.42, -0.10);
     } else {
-      // Garam-47 (CS2 AK-47)
-      this.muzzleFlashLight.position.set(-0.01, 0.03, -0.58);
-      this.muzzleFlashMesh.position.set(-0.01, 0.03, -0.58);
-      this.gunsmokeMesh.position.set(-0.01, 0.03, -0.58);
+      this.muzzleFlashLight.position.set(0.02, -0.13, -0.54);
+      this.muzzleFlashMesh.position.set(0.02, -0.13, -0.54);
+      this.gunsmokeMesh.position.set(0.02, -0.13, -0.54);
       this.rightArm.position.set(0.04, -0.09, 0.05);
       this.rightArm.rotation.set(0.18, -0.08, 0.08);
       this.leftArm.position.set(-0.04, -0.08, -0.18);
       this.leftArm.rotation.set(-0.10, 0.42, -0.10);
     }
 
+    const cfg = getWeaponSocketConfig(weaponId);
+    this.armsContainer.scale.setScalar(cfg.armsScale);
+    this.armsContainer.position.set(
+      cfg.armsOffset[0],
+      cfg.armsOffset[1],
+      cfg.armsOffset[2]
+    );
     this.syncArmVisibility();
+    this.playWeaponAnimation(cfg.clips.draw ? 'draw' : 'idle', 1.15);
   }
 
-  // 1. ELDAR'S CUSTOM DESERT EAGLE (.50 AE) - TRIANGULAR SHROUD & SERRATED SLIDE
+  private syncMuzzleTipPosition(): void {
+    const helper = this.muzzleHelpers.get(this.currentWeaponId);
+    if (!helper || !this.armsLoaded) return;
+    this.armsContainer.updateMatrixWorld(true);
+    helper.getWorldPosition(_muzzleWorld);
+    _muzzleLocal.copy(_muzzleWorld);
+    this.mesh.worldToLocal(_muzzleLocal);
+    this.muzzleFlashLight.position.copy(_muzzleLocal);
+    this.muzzleFlashMesh.position.copy(_muzzleLocal);
+  }
+
+  // 1. ELDAR'S CUSTOM DESERT EAGLE (.50 AE) - PROCEDURAL FALLBACK
   private createDesertEagleMesh(): THREE.Group {
     const group = new THREE.Group();
-
-    // Heavy Steel Frame
     const frameGeo = new THREE.BoxGeometry(0.038, 0.13, 0.12);
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x1c1f24, roughness: 0.35, metalness: 0.85 });
     const frame = new THREE.Mesh(frameGeo, frameMat);
@@ -685,38 +620,6 @@ export class WeaponViewmodel {
     frame.rotation.x = -0.22;
     group.add(frame);
 
-    // Textured Grip Panels
-    const gripPanelMat = new THREE.MeshStandardMaterial({ color: 0x121416, roughness: 0.88, metalness: 0.1 });
-    const gripL = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.10, 0.07), gripPanelMat);
-    gripL.position.set(-0.018, -0.05, 0.01);
-    gripL.rotation.x = -0.22;
-    group.add(gripL);
-    const gripR = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.10, 0.07), gripPanelMat);
-    gripR.position.set(0.018, -0.05, 0.01);
-    gripR.rotation.x = -0.22;
-    group.add(gripR);
-
-    // Gold GARAM Medallion on Grip
-    const medGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.042, 16);
-    medGeo.rotateZ(Math.PI / 2);
-    const medMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.15, metalness: 0.95 });
-    const medallion = new THREE.Mesh(medGeo, medMat);
-    medallion.position.set(0, -0.045, 0.01);
-    group.add(medallion);
-
-    // Trigger Guard & Curved Trigger
-    const tgGeo = new THREE.BoxGeometry(0.02, 0.04, 0.05);
-    const triggerGuard = new THREE.Mesh(tgGeo, frameMat);
-    triggerGuard.position.set(0, -0.03, -0.04);
-    group.add(triggerGuard);
-
-    const triggerGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.024, 8);
-    triggerGeo.rotateX(0.4);
-    const triggerMesh = new THREE.Mesh(triggerGeo, medMat);
-    triggerMesh.position.set(0, -0.025, -0.035);
-    group.add(triggerMesh);
-
-    // Chamfered Slide (.50 AE Heavy Blowback)
     const slideGeo = new THREE.BoxGeometry(0.042, 0.055, 0.22);
     const slideMat = new THREE.MeshStandardMaterial({ color: 0x363b42, roughness: 0.25, metalness: 0.9 });
     const slide = new THREE.Mesh(slideGeo, slideMat);
@@ -724,66 +627,6 @@ export class WeaponViewmodel {
     group.add(slide);
     this.slideMeshes.set('desert-eagle', slide);
 
-    // Rear Slide Cocking Serrations
-    for (let s = 0; s < 5; s++) {
-      const serration = new THREE.Mesh(
-        new THREE.BoxGeometry(0.043, 0.045, 0.004),
-        new THREE.MeshStandardMaterial({ color: 0x22262b, metalness: 0.95, roughness: 0.4 })
-      );
-      serration.position.set(0, 0.005, 0.06 - s * 0.009);
-      slide.add(serration);
-    }
-
-    // Triangular Tapered Barrel Shroud Top Profile
-    const shroudTop = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.018, 0.024, 0.12, 3),
-      new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.3, metalness: 0.9 })
-    );
-    shroudTop.rotation.x = Math.PI / 2;
-    shroudTop.position.set(0, 0.026, -0.07);
-    slide.add(shroudTop);
-
-    // Crimson Top Inlaid Rib
-    const topGeo = new THREE.BoxGeometry(0.018, 0.008, 0.20);
-    const topMat = new THREE.MeshStandardMaterial({ color: 0xd91438, roughness: 0.25, metalness: 0.65 });
-    const topStripe = new THREE.Mesh(topGeo, topMat);
-    topStripe.position.set(0, 0.038, 0);
-    slide.add(topStripe);
-
-    // Rear Combat Sights with Dual Tritium Dots
-    const rearSight = new THREE.Mesh(
-      new THREE.BoxGeometry(0.034, 0.014, 0.01),
-      new THREE.MeshStandardMaterial({ color: 0x181a1d, metalness: 0.85, roughness: 0.3 })
-    );
-    rearSight.position.set(0, 0.035, 0.09);
-    slide.add(rearSight);
-
-    const tritiumMat = new THREE.MeshStandardMaterial({
-      color: 0x00ff66,
-      emissive: 0x00ff66,
-      emissiveIntensity: 3.5,
-      roughness: 0.1,
-    });
-    const rearDotL = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 8, 8), tritiumMat);
-    rearDotL.position.set(-0.012, 0.004, 0.005);
-    rearSight.add(rearDotL);
-    const rearDotR = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 8, 8), tritiumMat);
-    rearDotR.position.set(0.012, 0.004, 0.005);
-    rearSight.add(rearDotR);
-
-    // Front Sight Post with Center Tritium Dot
-    const frontSight = new THREE.Mesh(
-      new THREE.BoxGeometry(0.008, 0.016, 0.01),
-      new THREE.MeshStandardMaterial({ color: 0x181a1d, metalness: 0.85, roughness: 0.3 })
-    );
-    frontSight.position.set(0, 0.035, -0.09);
-    slide.add(frontSight);
-
-    const frontDot = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 8, 8), tritiumMat);
-    frontDot.position.set(0, 0.005, 0.005);
-    frontSight.add(frontDot);
-
-    // .50 AE Steel Magazine (Choreographed Reload)
     const deagleMag = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.12, 0.05), frameMat);
     deagleMag.position.set(0, -0.06, 0.01);
     deagleMag.rotation.x = -0.22;
@@ -791,158 +634,45 @@ export class WeaponViewmodel {
     group.add(deagleMag);
     this.magMeshes.set('desert-eagle', deagleMag);
 
-    // Fluted Barrel with Recessed Crown
-    const barrelGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.09, 16);
-    barrelGeo.rotateX(Math.PI / 2);
-    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x0c0d0f, metalness: 0.95, roughness: 0.15 });
-    const barrel = new THREE.Mesh(barrelGeo, barrelMat);
-    barrel.position.set(0, 0.015, -0.16);
-    group.add(barrel);
-
     group.position.set(0.03, 0.01, -0.14);
     group.visible = false;
     return group;
   }
 
-  // 2. GARAM-47 (CURVED BANANA MAG, ANGLED STOCK HEEL, SLANTED AKM BRAKE)
+  // 2. GARAM-47 - PROCEDURAL FALLBACK
   private createGaram47Mesh(): THREE.Group {
     const group = new THREE.Group();
-
-    // Milled Steel Receiver
-    const bodyGeo = new THREE.BoxGeometry(0.052, 0.085, 0.42);
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0x16181b, roughness: 0.35, metalness: 0.88 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.085, 0.42), bodyMat);
     group.add(body);
 
-    // Beveled Dust Cover Ribs
-    for (let r = 0; r < 4; r++) {
-      const rib = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.004, 0.004, 0.048, 8),
-        new THREE.MeshStandardMaterial({ color: 0xd91438, metalness: 0.7, roughness: 0.3 })
-      );
-      rib.rotation.z = Math.PI / 2;
-      rib.position.set(0, 0.052, -0.12 + r * 0.06);
-      group.add(rib);
-    }
-
-    // Picatinny Top Rail
-    const railGeo = new THREE.BoxGeometry(0.036, 0.014, 0.34);
-    const railMat = new THREE.MeshStandardMaterial({ color: 0x222428, roughness: 0.3, metalness: 0.9 });
-    const rail = new THREE.Mesh(railGeo, railMat);
-    rail.position.set(0, 0.056, -0.04);
-    group.add(rail);
-
-    // True ExtrudeGeometry Curved Banana Magazine
-    const magShape = new THREE.Shape();
-    magShape.moveTo(-0.018, 0);
-    magShape.lineTo(0.018, 0);
-    magShape.quadraticCurveTo(0.024, -0.10, 0.046, -0.22);
-    magShape.lineTo(0.012, -0.23);
-    magShape.quadraticCurveTo(-0.010, -0.11, -0.018, 0);
-    magShape.closePath();
-
-    const magGeo = new THREE.ExtrudeGeometry(magShape, {
-      depth: 0.038,
-      bevelEnabled: true,
-      bevelThickness: 0.002,
-      bevelSize: 0.002,
-      bevelSegments: 2,
-    });
-    const magMat = new THREE.MeshStandardMaterial({ color: 0x24282c, roughness: 0.5, metalness: 0.75 });
-    const mag = new THREE.Mesh(magGeo, magMat);
-    mag.position.set(-0.019, -0.04, -0.06);
-    mag.userData.baseY = -0.04;
+    const mag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.036, 0.18, 0.065),
+      new THREE.MeshStandardMaterial({ color: 0x24282c, roughness: 0.5, metalness: 0.75 })
+    );
+    mag.position.set(0, -0.11, -0.06);
+    mag.userData.baseY = -0.11;
     group.add(mag);
     this.magMeshes.set('garam-47', mag);
 
-    // Angled Stock Heel
-    const stockMat = new THREE.MeshStandardMaterial({ color: 0x2a1c14, roughness: 0.65, metalness: 0.1 });
-    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.11, 0.22), stockMat);
-    stock.position.set(0, -0.02, 0.28);
-    stock.rotation.x = 0.10;
-    group.add(stock);
-
-    // Textured Polymer Handguard
-    const gripMat = new THREE.MeshStandardMaterial({ color: 0x282b30, roughness: 0.85 });
-    const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.065, 0.20), gripMat);
-    handguard.position.set(0, -0.01, -0.26);
-    group.add(handguard);
-
-    // Vented Gas Tube
-    const gasGeo = new THREE.CylinderGeometry(0.014, 0.014, 0.22, 12);
-    gasGeo.rotateX(Math.PI / 2);
-    const gasTube = new THREE.Mesh(gasGeo, bodyMat);
-    gasTube.position.set(0, 0.042, -0.26);
-    group.add(gasTube);
-
-    // Cold-Hammered Steel Barrel
     const barrelGeo = new THREE.CylinderGeometry(0.013, 0.013, 0.30, 12);
     barrelGeo.rotateX(Math.PI / 2);
     const barrel = new THREE.Mesh(barrelGeo, bodyMat);
     barrel.position.set(0, 0.015, -0.44);
     group.add(barrel);
 
-    // Slanted AKM Muzzle Brake (45° angle cut)
-    const brakeMat = new THREE.MeshStandardMaterial({ color: 0xd91438, metalness: 0.85, roughness: 0.3 });
-    const brake = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.06, 12), brakeMat);
-    brake.rotation.x = Math.PI / 2 + 0.24;
-    brake.position.set(0, 0.018, -0.58);
-    group.add(brake);
-
-    // Front Iron Sight Post
-    const sight = new THREE.Mesh(
-      new THREE.BoxGeometry(0.008, 0.032, 0.012),
-      new THREE.MeshBasicMaterial({ color: 0x00ff66 })
-    );
-    sight.position.set(0, 0.048, -0.54);
-    group.add(sight);
-
-    // Ergonomic Pistol Grip
-    const pGrip = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.13, 0.06), gripMat);
-    pGrip.position.set(0, -0.09, 0.12);
-    pGrip.rotation.x = -0.35;
-    group.add(pGrip);
-
     group.position.set(0.03, -0.04, -0.08);
     group.visible = false;
     return group;
   }
 
-  // 3. VANGUARD M4A1-S (PERFORATED SUPPRESSOR, CARRY HANDLE, BOLT PADDLE)
+  // 3. VANGUARD M4A1-S - PROCEDURAL FALLBACK
   private createVanguardM4Mesh(): THREE.Group {
     const group = new THREE.Group();
-
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1f2429, roughness: 0.35, metalness: 0.85 });
-    const cyanMat = new THREE.MeshStandardMaterial({ color: 0x3b9eff, roughness: 0.25, metalness: 0.7 });
-
-    // Upper & Lower Receiver
     const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.09, 0.36), bodyMat);
     group.add(receiver);
 
-    // Bolt-Release Paddle on Left Receiver
-    const boltPaddle = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.022, 0.016), cyanMat);
-    boltPaddle.position.set(-0.026, 0.015, -0.04);
-    group.add(boltPaddle);
-
-    // Cyan Vanguard Upper Stripe
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.014, 0.32), cyanMat);
-    stripe.position.set(0, 0.05, 0);
-    group.add(stripe);
-
-    // Angled Carry Handle & Rear Aperture
-    const carry = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.038, 0.18), bodyMat);
-    carry.position.set(0, 0.076, 0.02);
-    group.add(carry);
-
-    const aperture = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.008, 0.008, 0.032, 12),
-      new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 1.2 })
-    );
-    aperture.rotation.x = Math.PI / 2;
-    aperture.position.set(0, 0.086, 0.09);
-    group.add(aperture);
-
-    // Straight STANAG Magazine
     const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.17, 0.075), bodyMat);
     mag.position.set(0, -0.11, -0.06);
     mag.rotation.x = -0.14;
@@ -950,155 +680,58 @@ export class WeaponViewmodel {
     group.add(mag);
     this.magMeshes.set('vanguard-m4', mag);
 
-    // Quad-Rail Handguard
-    const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.055, 0.22), bodyMat);
-    handguard.position.set(0, 0.01, -0.26);
-    group.add(handguard);
-
-    // Perforated Monolithic Suppressor with Cobalt Collar
-    const supGroup = new THREE.Group();
     const supGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.28, 16);
     supGeo.rotateX(Math.PI / 2);
-    const supMat = new THREE.MeshStandardMaterial({ color: 0x181c22, roughness: 0.3, metalness: 0.9 });
-    const sup = new THREE.Mesh(supGeo, supMat);
-    supGroup.add(sup);
-
-    // Cobalt Accent Collar Ring
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.035, 16), cyanMat);
-    collar.rotation.x = Math.PI / 2;
-    collar.position.set(0, 0, 0.12);
-    supGroup.add(collar);
-
-    supGroup.position.set(0, 0.01, -0.48);
-    group.add(supGroup);
-
-    // Contoured Ergonomic Pistol Grip
-    const pGrip = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.12, 0.055), bodyMat);
-    pGrip.position.set(0, -0.09, 0.10);
-    pGrip.rotation.x = -0.32;
-    group.add(pGrip);
+    const sup = new THREE.Mesh(
+      supGeo,
+      new THREE.MeshStandardMaterial({ color: 0x181c22, roughness: 0.3, metalness: 0.9 })
+    );
+    sup.position.set(0, 0.01, -0.48);
+    group.add(sup);
 
     group.position.set(0.03, -0.04, -0.08);
     group.visible = false;
     return group;
   }
 
-  // 4. SOVEREIGN AWP (FLARED OBJECTIVE BELL, EMERALD LENS, FOLDED BIPOD)
+  // 4. SOVEREIGN AWP - PROCEDURAL FALLBACK
   private createSovereignAWPMesh(): THREE.Group {
     const group = new THREE.Group();
-
     const stockMat = new THREE.MeshStandardMaterial({ color: 0x1a211e, roughness: 0.75, metalness: 0.2 });
     const metalMat = new THREE.MeshStandardMaterial({ color: 0x121416, metalness: 0.92, roughness: 0.25 });
-    const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0a0c0e, metalness: 0.95, roughness: 0.15 });
-    const goldMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.95, roughness: 0.2 });
 
-    // Chassis / Stock with Cheek-Rest Riser
     const stock = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.095, 0.58), stockMat);
     group.add(stock);
 
-    const cheekRest = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.022, 0.16), stockMat);
-    cheekRest.position.set(0, 0.058, 0.16);
-    group.add(cheekRest);
-
-    // Folded Bipod Legs under forend
-    const bipodL = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.20, 8), metalMat);
-    bipodL.rotation.x = Math.PI / 2;
-    bipodL.position.set(-0.026, -0.055, -0.22);
-    group.add(bipodL);
-    const bipodR = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.20, 8), metalMat);
-    bipodR.rotation.x = Math.PI / 2;
-    bipodR.position.set(0.026, -0.055, -0.22);
-    group.add(bipodR);
-
-    // .338 Lapua Magnum Steel Magazine
     const awpMag = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.14, 0.09), metalMat);
     awpMag.position.set(0, -0.07, -0.08);
     awpMag.userData.baseY = -0.07;
     group.add(awpMag);
     this.magMeshes.set('sovereign-awp', awpMag);
 
-    // Gold Sovereign Trim Line
-    const goldStripe = new THREE.Mesh(new THREE.BoxGeometry(0.057, 0.012, 0.48), goldMat);
-    goldStripe.position.set(0, 0.02, 0);
-    group.add(goldStripe);
-
-    // Fluted Match Barrel
     const barrelGeo = new THREE.CylinderGeometry(0.016, 0.018, 0.48, 16);
     barrelGeo.rotateX(Math.PI / 2);
     const barrel = new THREE.Mesh(barrelGeo, metalMat);
     barrel.position.set(0, 0.02, -0.52);
     group.add(barrel);
 
-    // Heavy Fluted Muzzle Compensator
-    const brake = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.034, 0.08), metalMat);
-    brake.position.set(0, 0.02, -0.74);
-    group.add(brake);
-
-    // Optical Sniper Scope with Flared Objective Bell
-    const scopeTubeGeo = new THREE.CylinderGeometry(0.024, 0.028, 0.26, 16);
-    scopeTubeGeo.rotateX(Math.PI / 2);
-    const scopeTube = new THREE.Mesh(scopeTubeGeo, scopeMat);
-    scopeTube.position.set(0, 0.095, -0.04);
-    group.add(scopeTube);
-
-    // Flared Objective Bell & Emerald Lens
-    const bellGeo = new THREE.CylinderGeometry(0.036, 0.028, 0.08, 16);
-    bellGeo.rotateX(Math.PI / 2);
-    const bell = new THREE.Mesh(bellGeo, scopeMat);
-    bell.position.set(0, 0.095, -0.21);
-    group.add(bell);
-
-    const lensGeo = new THREE.CircleGeometry(0.032, 16);
-    const lensMat = new THREE.MeshStandardMaterial({
-      color: 0x00cc88,
-      roughness: 0.08,
-      metalness: 0.92,
-      emissive: 0x003322,
-      emissiveIntensity: 0.4,
-    });
-    const lens = new THREE.Mesh(lensGeo, lensMat);
-    lens.position.set(0, 0.095, -0.251);
-    lens.rotation.y = Math.PI;
-    group.add(lens);
-
-    // Scope Mount Rings
-    const ring1 = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.045, 0.03), goldMat);
-    ring1.position.set(0, 0.075, 0.04);
-    group.add(ring1);
-    const ring2 = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.045, 0.03), goldMat);
-    ring2.position.set(0, 0.075, -0.14);
-    group.add(ring2);
-
-    // Interactive Bolt Handle with Sphere Knob
     const boltGroup = new THREE.Group();
-    const boltRod = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.07), metalMat);
-    boltRod.rotation.z = Math.PI / 2.6;
-    boltRod.position.set(0.035, 0.02, 0);
-    boltGroup.add(boltRod);
-
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.016, 12, 12), goldMat);
-    knob.position.set(0.065, 0.035, 0);
-    boltGroup.add(knob);
-
     boltGroup.position.set(0.025, 0.04, 0.08);
     group.add(boltGroup);
-    this.boltMeshes.set('sovereign-awp', boltGroup as unknown as THREE.Mesh);
+    this.boltMeshes.set('sovereign-awp', boltGroup);
 
     group.position.set(0.04, -0.04, -0.06);
     group.visible = false;
     return group;
   }
 
-  // 5. GARAM CRIMSON TACTICAL KARAMBIT (CS2 HAWKBILL TALON EXTRUSION & REVERSE GRIP)
+  // 5. GARAM CRIMSON TACTICAL KARAMBIT - PROCEDURAL FALLBACK
   private createKarambitMesh(): THREE.Group {
     const root = new THREE.Group();
-
-    // Pivot for 360° ring-spin draw and inspect twirl
     const spinPivot = new THREE.Group();
     this.karambitSpinPivot = spinPivot;
     root.add(spinPivot);
 
-    // 1. Integrated Gold Retention Ring (Centered at pivot origin)
     const ringGeo = new THREE.TorusGeometry(0.022, 0.006, 16, 32);
     const ringMat = new THREE.MeshStandardMaterial({
       color: 0xd4af37,
@@ -1106,124 +739,8 @@ export class WeaponViewmodel {
       roughness: 0.15,
       envMapIntensity: 2.2,
     });
-    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-    spinPivot.add(ringMesh);
+    spinPivot.add(new THREE.Mesh(ringGeo, ringMat));
 
-    // Retention ring gold pommel collar
-    const collar = new THREE.Mesh(
-      new THREE.BoxGeometry(0.016, 0.016, 0.024),
-      ringMat
-    );
-    collar.position.set(0, 0.022, 0);
-    spinPivot.add(collar);
-
-    // 2. Contoured Ergonomic G10 Tactical Handle with 3 Finger Grooves
-    const handleShape = new THREE.Shape();
-    handleShape.moveTo(0.014, 0.02);
-    handleShape.lineTo(0.018, 0.045);
-    // 3 sculpted finger grooves
-    handleShape.quadraticCurveTo(0.009, 0.060, 0.018, 0.078);
-    handleShape.quadraticCurveTo(0.008, 0.095, 0.018, 0.112);
-    handleShape.quadraticCurveTo(0.007, 0.128, 0.016, 0.145);
-    // Choil & thumb ramp
-    handleShape.lineTo(0.004, 0.155);
-    handleShape.lineTo(-0.014, 0.148);
-    // Outer spine curve
-    handleShape.quadraticCurveTo(-0.022, 0.085, -0.016, 0.02);
-    handleShape.closePath();
-
-    const handleGeo = new THREE.ExtrudeGeometry(handleShape, {
-      depth: 0.022,
-      bevelEnabled: true,
-      bevelThickness: 0.003,
-      bevelSize: 0.003,
-      bevelSegments: 2,
-    });
-    const handleMat = new THREE.MeshStandardMaterial({
-      color: 0x17191d,
-      roughness: 0.82,
-      metalness: 0.25,
-      envMapIntensity: 1.4,
-    });
-    const handleMesh = new THREE.Mesh(handleGeo, handleMat);
-    handleMesh.position.set(0, 0, -0.011);
-    spinPivot.add(handleMesh);
-
-    // Exposed Brushed Steel Tang Pins
-    const pinMat = new THREE.MeshStandardMaterial({ color: 0xd8dde3, metalness: 0.92, roughness: 0.18 });
-    for (let p = 0; p < 3; p++) {
-      const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.0028, 0.0028, 0.026, 12), pinMat);
-      pin.rotation.x = Math.PI / 2;
-      pin.position.set(0, 0.06 + p * 0.035, 0);
-      spinPivot.add(pin);
-    }
-
-    // 3. Curved Hawkbill Talon Blade (ExtrudeGeometry with razor bevels)
-    const bladeShape = new THREE.Shape();
-    bladeShape.moveTo(0.002, 0.152);
-    // Sweeping convex spine curving out and forward to razor needle tip
-    bladeShape.bezierCurveTo(0.010, 0.19, 0.036, 0.24, 0.078, 0.285);
-    // Needle tip
-    bladeShape.lineTo(0.081, 0.281);
-    // Razor concave inner cutting edge
-    bladeShape.bezierCurveTo(0.038, 0.23, 0.006, 0.18, -0.012, 0.146);
-    // Choil notch & spine jimping serrations
-    bladeShape.lineTo(-0.008, 0.148);
-    bladeShape.lineTo(-0.003, 0.150);
-    bladeShape.closePath();
-
-    const bladeGeo = new THREE.ExtrudeGeometry(bladeShape, {
-      depth: 0.005,
-      bevelEnabled: true,
-      bevelThickness: 0.0022,
-      bevelSize: 0.0025,
-      bevelSegments: 3,
-    });
-    const bladeMat = new THREE.MeshStandardMaterial({
-      color: 0xc8102e, // Anodized Crimson Metallic
-      roughness: 0.18,
-      metalness: 0.88,
-      envMapIntensity: 2.4,
-    });
-    const bladeMesh = new THREE.Mesh(bladeGeo, bladeMat);
-    bladeMesh.position.set(0, 0, -0.0025);
-    spinPivot.add(bladeMesh);
-
-    // Mirror-Chrome Razor Edge Highlight Strip
-    const edgeShape = new THREE.Shape();
-    edgeShape.moveTo(0.081, 0.281);
-    edgeShape.bezierCurveTo(0.038, 0.23, 0.006, 0.18, -0.012, 0.146);
-    edgeShape.lineTo(-0.006, 0.148);
-    edgeShape.bezierCurveTo(0.010, 0.182, 0.042, 0.232, 0.080, 0.280);
-    edgeShape.closePath();
-
-    const edgeGeo = new THREE.ExtrudeGeometry(edgeShape, {
-      depth: 0.0052,
-      bevelEnabled: true,
-      bevelThickness: 0.001,
-      bevelSize: 0.001,
-      bevelSegments: 2,
-    });
-    const edgeMat = new THREE.MeshStandardMaterial({
-      color: 0xe8eef5, // Mirror Chrome Edge Strip
-      roughness: 0.08,
-      metalness: 0.98,
-      envMapIntensity: 2.8,
-    });
-    const edgeMesh = new THREE.Mesh(edgeGeo, edgeMat);
-    edgeMesh.position.set(0, 0, -0.0026);
-    spinPivot.add(edgeMesh);
-
-    // Recessed Dark Fuller Groove
-    const fuller = new THREE.Mesh(
-      new THREE.BoxGeometry(0.003, 0.08, 0.006),
-      new THREE.MeshStandardMaterial({ color: 0x111317, metalness: 0.92, roughness: 0.3 })
-    );
-    fuller.position.set(0.018, 0.21, 0);
-    fuller.rotation.z = -0.32;
-    spinPivot.add(fuller);
-
-    // Blade Trail Sweep Mesh (Flashes during slashes)
     const trailGeo = new THREE.RingGeometry(0.18, 0.28, 16, 1, 0, Math.PI / 2);
     const trailMat = new THREE.MeshBasicMaterial({
       color: 0xff3355,
@@ -1236,7 +753,6 @@ export class WeaponViewmodel {
     this.bladeTrailMesh.position.set(0.05, 0.18, 0);
     spinPivot.add(this.bladeTrailMesh);
 
-    // Position Karambit in front of camera
     root.position.set(0.05, -0.08, -0.16);
     root.rotation.set(-0.25, 0.15, -0.30);
     root.visible = false;
@@ -1258,10 +774,16 @@ export class WeaponViewmodel {
     if (this.currentWeaponId === 'sovereign-awp') {
       this.boltKick = 0.085;
     }
-    if (this.currentWeaponId === 'vanguard-m4' && this.m4FpLoaded) {
-      this.playM4Clip('Shots', 1.75, 0.0);
-      this.m4ShotStopTimer = 0.22;
-    }
+
+    // Play skeletal fire animation on unified FPS arms
+    const fireSpeed =
+      this.currentWeaponId === 'sovereign-awp'
+        ? 1.25
+        : this.currentWeaponId === 'desert-eagle'
+          ? 1.35
+          : 1.5;
+    this.playWeaponAnimation('fire', fireSpeed);
+    this.syncMuzzleTipPosition();
 
     // Volumetric radial fireball muzzle flash (suppressed compact puff on M4A1-S)
     const isSuppressed = this.currentWeaponId === 'vanguard-m4';
@@ -1287,8 +809,9 @@ export class WeaponViewmodel {
     if (this.isReloading) return;
     this.isInspecting = true;
     this.inspectTime = 0;
-    if (this.currentWeaponId === 'vanguard-m4' && this.m4FpLoaded) {
-      this.playM4Clip('Inspect', 1.25, 0.0);
+    const cfg = getWeaponSocketConfig(this.currentWeaponId);
+    if (cfg.clips.inspect) {
+      this.playWeaponAnimation('inspect', 1.15);
     }
   }
 
@@ -1299,22 +822,32 @@ export class WeaponViewmodel {
   public triggerSlash(): void {
     this.isSlashing = true;
     this.slashTime = 0;
-    this.slashDirection = this.slashDirection === 1 ? -1 : 1; // Alternate left/right
+    this.slashDirection = this.slashDirection === 1 ? -1 : 1;
+    this.playWeaponAnimation('fire', 1.15);
   }
 
   public triggerStab(): void {
     this.isStabbing = true;
     this.stabTime = 0;
+    this.playWeaponAnimation('altFire', 1.1);
   }
 
-  public update(dt: number, mouseDeltaX: number, mouseDeltaY: number, walkBob: number, strafeRoll: number): void {
+  public update(
+    dt: number,
+    mouseDeltaX: number,
+    mouseDeltaY: number,
+    walkBob: number,
+    strafeRoll: number
+  ): void {
     const safeDt = Math.max(0.0001, Math.min(dt, 0.05));
 
     // Muzzle flash decay
     if (this.flashTimer > 0) {
       this.flashTimer -= safeDt;
+      this.syncMuzzleTipPosition();
       const ratio = Math.max(0, this.flashTimer / 0.055);
-      this.muzzleFlashLight.intensity = (this.currentWeaponId === 'vanguard-m4' ? 2.0 : 6.8) * ratio;
+      this.muzzleFlashLight.intensity =
+        (this.currentWeaponId === 'vanguard-m4' ? 2.0 : 6.8) * ratio;
       if (this.muzzleFlashMat) {
         this.muzzleFlashMat.opacity = Math.min(0.96, ratio * 1.4);
       }
@@ -1338,26 +871,35 @@ export class WeaponViewmodel {
       this.gunsmokeMesh.visible = false;
     }
 
-    // Authentic CS2 M4A1-S AnimationMixer state synchronization
-    const usesM4Anim = this.currentWeaponId === 'vanguard-m4' && this.m4FpLoaded && this.m4Mixer !== null;
-    if (usesM4Anim && this.m4Mixer) {
+    const usesUnifiedArms =
+      this.armsLoaded &&
+      this.armsMixer !== null &&
+      this.glbLoadedWeapons.has(this.currentWeaponId);
+
+    if (usesUnifiedArms && this.armsMixer) {
       if (this.isReloading && !this.wasReloading) {
-        this.m4ShotStopTimer = 0;
-        this.playM4Clip('Reload', 1.85, 0.0);
+        this.isInspecting = false;
+        const reloadState = this.isEmptyReload ? 'reloadFull' : 'reload';
+        const clipName = resolveWeaponClipName(this.currentWeaponId, reloadState);
+        const act = this.armsActions.get(clipName);
+        // Scale reload clip duration to align with weapon reload timer
+        const clipDur = act ? act.getClip().duration : 2.2;
+        const timeScale = Math.max(0.85, Math.min(1.65, clipDur / 2.25));
+        this.playWeaponAnimation(reloadState, timeScale);
+      } else if (!this.isReloading && this.wasReloading) {
+        this.playWeaponAnimation('idle', 1.0);
       }
       this.wasReloading = this.isReloading;
 
-      if (this.m4ShotStopTimer > 0) {
-        this.m4ShotStopTimer -= safeDt;
-        if (this.m4ShotStopTimer <= 0 && !this.isReloading) {
-          const equipAct = this.m4Actions.get('Equip');
-          if (equipAct) {
-            this.playM4Clip('Equip', 1.0, equipAct.getClip().duration);
-          }
+      if (this.activeOneShotTimer > 0) {
+        this.activeOneShotTimer -= safeDt;
+        if (this.activeOneShotTimer <= 0 && !this.isReloading) {
+          const isWalking = Math.abs(walkBob) > 0.0012;
+          this.playWeaponAnimation(isWalking ? 'walk' : 'idle', 1.0);
         }
       }
 
-      this.m4Mixer.update(safeDt);
+      this.armsMixer.update(safeDt);
     } else {
       this.wasReloading = this.isReloading;
     }
@@ -1368,30 +910,33 @@ export class WeaponViewmodel {
     }
     this.mesh.visible = true;
 
-    // Equip draw raise animation (0 to 1 over 0.42s; M4A1-S uses its own authentic Equip clip)
+    // Equip draw raise animation (0 to 1 over 0.42s)
     let drawY = 0;
     if (this.drawProgress < 1.0) {
       this.drawProgress = Math.min(1.0, this.drawProgress + safeDt * 2.38);
-      drawY = usesM4Anim ? 0 : (1.0 - this.drawProgress) * -0.22;
+      drawY = usesUnifiedArms ? (1.0 - this.drawProgress) * -0.06 : (1.0 - this.drawProgress) * -0.22;
     }
 
-    // CS2 Karambit Ring-Spin on Draw & Inspect
-    if (this.currentWeaponId === 'garam-karambit' && this.karambitSpinPivot) {
-      if (this.drawProgress < 1.0) {
-        // Spin 360° around gold retention ring pivot as hand sweeps up
-        this.karambitSpinPivot.rotation.z = (1.0 - this.drawProgress) * Math.PI * 2;
-      } else if (this.isInspecting) {
-        // Continuous CS2 finger-ring twirl
-        this.karambitSpinPivot.rotation.z = this.inspectTime * 8.5;
-      } else {
-        this.karambitSpinPivot.rotation.z = 0;
+    // CS2 Karambit Ring-Spin on Draw & Inspect (around index finger retention ring)
+    if (this.currentWeaponId === 'garam-karambit') {
+      const spinAngle =
+        this.drawProgress < 1.0
+          ? (1.0 - this.drawProgress) * Math.PI * 2
+          : this.isInspecting
+            ? Math.sin(this.inspectTime * 2.0) * Math.PI * 2
+            : 0;
+      if (this.karambitRingSpinGroup) {
+        this.karambitRingSpinGroup.rotation.x = spinAngle;
+      }
+      if (this.karambitSpinPivot) {
+        this.karambitSpinPivot.rotation.z = spinAngle;
       }
     }
 
     // Slide blowback recovery (relative to node's rest position)
     const slide = this.slideMeshes.get(this.currentWeaponId);
     if (slide) {
-      this.slideKick += (0 - this.slideKick) * (1 - Math.exp(-32 * dt));
+      this.slideKick += (0 - this.slideKick) * (1 - Math.exp(-32 * safeDt));
       const baseZ = typeof slide.userData.baseZ === 'number' ? slide.userData.baseZ : -0.05;
       slide.position.z = baseZ + this.slideKick;
     }
@@ -1399,54 +944,43 @@ export class WeaponViewmodel {
     // Bolt handle recovery (relative to node's rest position)
     const bolt = this.boltMeshes.get(this.currentWeaponId);
     if (bolt) {
-      this.boltKick += (0 - this.boltKick) * (1 - Math.exp(-14 * dt));
+      this.boltKick += (0 - this.boltKick) * (1 - Math.exp(-14 * safeDt));
       const baseZ = typeof bolt.userData.baseZ === 'number' ? bolt.userData.baseZ : 0.08;
       bolt.position.z = baseZ + this.boltKick;
     }
 
-    // Melee animations: M1 Alternating Slash vs M2 Heavy Hook-Stab
+    // Melee timers & fallback arc
     let meleeYaw = 0;
     let meleePitch = 0;
     let meleeZ = 0;
 
     if (this.isSlashing) {
-      this.slashTime += dt * (Math.PI / 0.32); // 0.32s duration
+      this.slashTime += safeDt * (Math.PI / 0.34);
       if (this.slashTime >= Math.PI) {
         this.isSlashing = false;
         this.slashTime = 0;
-        if (this.bladeTrailMesh) (this.bladeTrailMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      } else {
+        if (this.bladeTrailMesh)
+          (this.bladeTrailMesh.material as THREE.MeshBasicMaterial).opacity = 0;
+      } else if (!usesUnifiedArms) {
         const arc = Math.sin(this.slashTime);
         meleeYaw = this.slashDirection * arc * 0.54;
         meleePitch = -arc * 0.32;
         meleeZ = -arc * 0.06;
-        if (this.bladeTrailMesh) {
-          (this.bladeTrailMesh.material as THREE.MeshBasicMaterial).opacity = arc * 0.45;
-        }
       }
     } else if (this.isStabbing) {
-      this.stabTime += dt * (Math.PI / 0.45); // 0.45s duration
+      this.stabTime += safeDt * (Math.PI / 0.46);
       if (this.stabTime >= Math.PI) {
         this.isStabbing = false;
         this.stabTime = 0;
-      } else {
+      } else if (!usesUnifiedArms) {
         const p = this.stabTime / Math.PI;
-        if (p < 0.18) {
-          // Windup pull-back
-          const pull = Math.sin((p / 0.18) * (Math.PI / 2));
-          meleeZ = pull * 0.06;
-          meleePitch = pull * 0.14;
-        } else {
-          // Hook-thrust forward lunge
-          const lunge = Math.sin(((p - 0.18) / 0.82) * Math.PI);
-          meleeZ = -lunge * 0.22;
-          meleePitch = -lunge * 0.38;
-          meleeYaw = -lunge * 0.18;
-        }
+        const lunge = Math.sin(p * Math.PI);
+        meleeZ = -lunge * 0.20;
+        meleePitch = -lunge * 0.32;
       }
     }
 
-    // Inspect Animation (F Key: Firearms tilt/rotate to showcase engravings)
+    // Inspect Animation (F Key)
     let inspectYaw = 0;
     let inspectPitch = 0;
     let inspectRoll = 0;
@@ -1456,70 +990,70 @@ export class WeaponViewmodel {
       if (this.inspectTime >= Math.PI * 2) {
         this.isInspecting = false;
         this.inspectTime = 0;
-      } else if (this.currentWeaponId !== 'garam-karambit' && !usesM4Anim) {
-        inspectYaw = Math.sin(this.inspectTime) * 0.55;
-        inspectPitch = Math.sin(this.inspectTime * 0.5) * 0.28;
-        inspectRoll = Math.sin(this.inspectTime) * 0.45;
+      } else {
+        const cfg = getWeaponSocketConfig(this.currentWeaponId);
+        if (!cfg.clips.inspect) {
+          inspectYaw = Math.sin(this.inspectTime) * 0.42;
+          inspectPitch = Math.sin(this.inspectTime * 0.5) * 0.22;
+          inspectRoll = Math.sin(this.inspectTime) * 0.34;
+        }
       }
     }
 
-    // Multi-stage CS2 magazine reload animation & left-arm choreography (M4A1-S uses skeletal Reload clip)
+    // Fallback magazine reload choreography when procedural mesh is active
     let reloadY = 0;
     let reloadRoll = 0;
     const currentMag = this.magMeshes.get(this.currentWeaponId);
 
-    if (this.isReloading && !usesM4Anim) {
+    if (this.isReloading && !usesUnifiedArms) {
       reloadY = -0.06 * Math.sin(this.reloadProgress * Math.PI);
       reloadRoll = 0.22 * Math.sin(this.reloadProgress * Math.PI);
 
       if (currentMag && typeof currentMag.userData.baseY === 'number') {
         const baseY = currentMag.userData.baseY;
         if (this.reloadProgress < 0.35) {
-          // Stage 1 (0–35%): Empty magazine drops out downward
           const drop = this.reloadProgress / 0.35;
           currentMag.position.y = baseY - drop * 0.16;
-          currentMag.rotation.z = drop * 0.25;
         } else if (this.reloadProgress < 0.70) {
-          // Stage 2 (35–70%): Fresh magazine rises from tactical pouch into magwell
           const rise = (this.reloadProgress - 0.35) / 0.35;
           currentMag.position.y = baseY - (1.0 - rise) * 0.16;
-          currentMag.rotation.z = (1.0 - rise) * 0.12;
         } else {
-          // Stage 3 (70–100%): Fresh mag firmly seated
           currentMag.position.y = baseY;
-          currentMag.rotation.z = 0;
-          // Rack charging handle / bolt only on empty reload
-          if (this.isEmptyReload) {
-            this.slideKick = Math.sin((this.reloadProgress - 0.70) / 0.30 * Math.PI) * 0.04;
-          }
         }
       }
     } else if (currentMag && typeof currentMag.userData.baseY === 'number') {
       currentMag.position.y = currentMag.userData.baseY;
-      currentMag.rotation.z = 0;
     }
 
-    // Unconditionally stable sub-stepped 3D Hooke's Law spring-damper (immune to low-FPS dt spikes)
+    // Unconditionally stable sub-stepped 3D Hooke's Law spring-damper
     const k = 150;
     const c = 18;
 
     const swayX = -mouseDeltaX * 0.0008;
     const swayY = mouseDeltaY * 0.0008;
 
-    const m4RecoilScale = usesM4Anim ? 0.35 : 1.0;
+    const recoilScale = usesUnifiedArms ? 0.45 : 1.0;
     this.targetRot.y = Math.max(-0.16, Math.min(0.16, swayX)) + meleeYaw + inspectYaw;
-    this.targetRot.x = Math.max(-0.16, Math.min(0.16, swayY)) + this.recoilPitch * m4RecoilScale + meleePitch + inspectPitch;
+    this.targetRot.x =
+      Math.max(-0.16, Math.min(0.16, swayY)) +
+      this.recoilPitch * recoilScale +
+      meleePitch +
+      inspectPitch;
     this.targetRot.z = strafeRoll + reloadRoll + inspectRoll;
 
     // Decay recoil kicks
     this.recoilPitch += (0 - this.recoilPitch) * (1 - Math.exp(-22 * safeDt));
     this.recoilZ += (0 - this.recoilZ) * (1 - Math.exp(-24 * safeDt));
 
-    this.targetPos.x = 0.14;
-    this.targetPos.y = -0.13 + walkBob + reloadY + drawY;
-    this.targetPos.z = -0.32 + this.recoilZ + meleeZ;
+    // Unified arms rig is already authored in camera space around Head_Cam (0, 0, 0)
+    const basePosX = usesUnifiedArms ? 0.0 : 0.14;
+    const basePosY = usesUnifiedArms ? 0.0 : -0.13;
+    const basePosZ = usesUnifiedArms ? 0.0 : -0.32;
 
-    // Sub-step spring integration in <= 1/120s chunks so spectral radius is strictly < 1
+    this.targetPos.x = basePosX;
+    this.targetPos.y = basePosY + walkBob + reloadY + drawY;
+    this.targetPos.z = basePosZ + this.recoilZ * recoilScale + meleeZ;
+
     const subSteps = Math.max(1, Math.ceil(safeDt / (1 / 120)));
     const stepDt = safeDt / subSteps;
     for (let i = 0; i < subSteps; i++) {
@@ -1546,27 +1080,28 @@ export class WeaponViewmodel {
     }
     this.mesh.position.copy(this.currentPos);
 
-    // Rotation interpolation
     this.currentRot.x += (this.targetRot.x - this.currentRot.x) * (1 - Math.exp(-18 * safeDt));
     this.currentRot.y += (this.targetRot.y - this.currentRot.y) * (1 - Math.exp(-18 * safeDt));
     this.currentRot.z += (this.targetRot.z - this.currentRot.z) * (1 - Math.exp(-18 * safeDt));
     this.mesh.rotation.copy(this.currentRot);
   }
 
-  /**
-   * Cleans up GPU buffers, geometries, materials, and maps
-   */
   public dispose(): void {
-    this.m4Mixer?.stopAllAction();
-    this.m4Mixer = null;
-    this.m4Actions.clear();
+    this.armsMixer?.stopAllAction();
+    this.armsMixer = null;
+    this.armsActions.clear();
     this.weaponMeshes.forEach((mesh) => {
       AssetManager.disposeObject3D(mesh);
     });
+    this.glbWeaponRoots.forEach((holder) => {
+      AssetManager.disposeObject3D(holder);
+    });
     AssetManager.disposeObject3D(this.muzzleFlashMesh);
     AssetManager.disposeObject3D(this.gunsmokeMesh);
-    AssetManager.disposeObject3D(this.fpsHandsContainer);
+    AssetManager.disposeObject3D(this.armsContainer);
     this.weaponMeshes.clear();
+    this.glbWeaponRoots.clear();
+    this.muzzleHelpers.clear();
     this.slideMeshes.clear();
     this.boltMeshes.clear();
     this.magMeshes.clear();

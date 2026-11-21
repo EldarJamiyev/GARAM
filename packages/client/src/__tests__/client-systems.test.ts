@@ -291,5 +291,78 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       expect(vel.y).toBe(0);
     });
   });
+
+  describe('ViewmodelRig Unified Gloved Hands Socket & Clip System', () => {
+    it('provides calibrated socket configurations and clip sets for all 5 weapons (including pistol and karambit)', async () => {
+      const THREE = await import('three');
+      const {
+        WEAPON_SOCKET_CONFIGS,
+        resolveWeaponClipName,
+        captureBindPose,
+        restoreBindPose,
+        buildKarambitAnimationClips,
+      } = await import('../viewmodel/ViewmodelRig.js');
+
+      const expectedWeapons = [
+        'garam-47',
+        'vanguard-m4',
+        'sovereign-awp',
+        'desert-eagle',
+        'garam-karambit',
+      ];
+      for (const id of expectedWeapons) {
+        const cfg = WEAPON_SOCKET_CONFIGS[id];
+        expect(cfg, `Config for ${id}`).toBeDefined();
+        expect(cfg.modelPath.startsWith('/models/')).toBe(true);
+        expect(cfg.modelPath).not.toContain('m4a1s_fp.glb');
+        expect(['Rif', 'Hand_R']).toContain(cfg.socketBone);
+        expect(cfg.armsScale).toBeGreaterThanOrEqual(0.25);
+        expect(cfg.armsScale).toBeLessThanOrEqual(0.38);
+        expect(cfg.armsOffset[2]).toBeLessThan(-0.1);
+        expect(resolveWeaponClipName(id, 'idle').length).toBeGreaterThan(3);
+        expect(resolveWeaponClipName(id, 'walk').length).toBeGreaterThan(3);
+        expect(resolveWeaponClipName(id, 'fire').length).toBeGreaterThan(3);
+        expect(resolveWeaponClipName(id, 'reload').length).toBeGreaterThan(3);
+      }
+
+      // Verify bind-pose snapshot and restoration prevents unkeyed PBody bone bleed
+      const root = new THREE.Group();
+      root.name = 'Root';
+      const pBody = new THREE.Object3D();
+      pBody.name = 'PBody';
+      pBody.position.set(-0.0442, 0.1206, 0.2668);
+      pBody.quaternion.set(0.7049, -0.0294, -0.0475, 0.7071);
+      root.add(pBody);
+
+      const snapshot = captureBindPose(root);
+      pBody.position.set(99, -99, 42);
+      pBody.quaternion.set(0, 1, 0, 0);
+      restoreBindPose(root, snapshot);
+      expect(pBody.position.x).toBeCloseTo(-0.0442, 5);
+      expect(pBody.quaternion.w).toBeCloseTo(0.7071, 5);
+
+      // Verify Karambit animation clip generator synthesizes all 6 clips from Pistol_Idle + AK_Idle
+      const mockPistolIdle = new THREE.AnimationClip('Pistol_Idle', 1.98, [
+        new THREE.VectorKeyframeTrack('IK_Hand_Cntrl_R.position', [0, 1], [-0.08, 0.03, 0.22, -0.08, 0.03, 0.22]),
+        new THREE.QuaternionKeyframeTrack('IK_Hand_Cntrl_R.quaternion', [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+        new THREE.QuaternionKeyframeTrack('Hand_R.quaternion', [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+        new THREE.QuaternionKeyframeTrack('Bone_R005.quaternion', [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+      ]);
+      const mockAkIdle = new THREE.AnimationClip('AK_Idle', 1.98, [
+        new THREE.QuaternionKeyframeTrack('UpArm_L.quaternion', [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+        new THREE.QuaternionKeyframeTrack('Forearm_L.quaternion', [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),
+      ]);
+      const karClips = buildKarambitAnimationClips([mockPistolIdle, mockAkIdle]);
+      expect(karClips.map((c) => c.name)).toEqual([
+        'Karambit_Idle',
+        'Karambit_Walk',
+        'Karambit_Draw',
+        'Karambit_Slash',
+        'Karambit_Stab',
+        'Karambit_Inspect',
+      ]);
+    });
+  });
 });
+
 

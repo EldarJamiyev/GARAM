@@ -473,6 +473,27 @@ export class ProceduralAudio {
     gain.connect(destinationNode);
     osc.start(t);
     osc.stop(t + 0.12);
+
+    // Subtle limestone gravel / boot tread friction transient
+    if (this.sharedNoiseBuffer) {
+      const grit = this.ctx.createBufferSource();
+      grit.buffer = this.sharedNoiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(
+        surface === 'METAL_SHEET' ? 2400 : surface === 'WOOD_THIN' ? 1150 : 1750,
+        t
+      );
+      filter.Q.setValueAtTime(2.6, t);
+      const gGain = this.ctx.createGain();
+      gGain.gain.setValueAtTime(0.085, t);
+      gGain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+      grit.connect(filter);
+      filter.connect(gGain);
+      gGain.connect(destinationNode);
+      grit.start(t, Math.random() * 1.6);
+      grit.stop(t + 0.055);
+    }
   }
 
   public cancelReloadAudio(): void {
@@ -516,15 +537,29 @@ export class ProceduralAudio {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(400, t);
-    osc.frequency.exponentialRampToValueAtTime(150, t + 0.08);
-    gain.gain.setValueAtTime(0.3, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    osc.frequency.setValueAtTime(420, t);
+    osc.frequency.exponentialRampToValueAtTime(145, t + 0.085);
+    gain.gain.setValueAtTime(0.32, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.095);
     osc.connect(gain);
     gain.connect(this.masterGain!);
     this.registerReloadNode(osc, gain);
     osc.start(t);
-    osc.stop(t + 0.09);
+    osc.stop(t + 0.095);
+
+    // Metallic magazine catch latch click
+    const latch = this.ctx.createOscillator();
+    const lGain = this.ctx.createGain();
+    latch.type = 'square';
+    latch.frequency.setValueAtTime(2150, t);
+    latch.frequency.exponentialRampToValueAtTime(720, t + 0.025);
+    lGain.gain.setValueAtTime(0.14, t);
+    lGain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+    latch.connect(lGain);
+    lGain.connect(this.masterGain!);
+    this.registerReloadNode(latch, lGain);
+    latch.start(t);
+    latch.stop(t + 0.03);
   }
 
   public playMagIn(delaySeconds = 0): void {
@@ -534,15 +569,29 @@ export class ProceduralAudio {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(180, t);
-    osc.frequency.exponentialRampToValueAtTime(60, t + 0.12);
-    gain.gain.setValueAtTime(0.45, t);
+    osc.frequency.setValueAtTime(195, t);
+    osc.frequency.exponentialRampToValueAtTime(58, t + 0.12);
+    gain.gain.setValueAtTime(0.46, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
     osc.connect(gain);
     gain.connect(this.masterGain!);
     this.registerReloadNode(osc, gain);
     osc.start(t);
     osc.stop(t + 0.14);
+
+    // Crisp magazine lock-in snap
+    const snap = this.ctx.createOscillator();
+    const sGain = this.ctx.createGain();
+    snap.type = 'triangle';
+    snap.frequency.setValueAtTime(1680, t + 0.035);
+    snap.frequency.exponentialRampToValueAtTime(540, t + 0.075);
+    sGain.gain.setValueAtTime(0.22, t + 0.035);
+    sGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    snap.connect(sGain);
+    sGain.connect(this.masterGain!);
+    this.registerReloadNode(snap, sGain);
+    snap.start(t + 0.035);
+    snap.stop(t + 0.08);
   }
 
   public playBoltRack(delaySeconds = 0): void {
@@ -552,15 +601,29 @@ export class ProceduralAudio {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(650, t);
-    osc.frequency.exponentialRampToValueAtTime(220, t + 0.10);
-    gain.gain.setValueAtTime(0.4, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    osc.frequency.setValueAtTime(680, t);
+    osc.frequency.exponentialRampToValueAtTime(240, t + 0.075);
+    gain.gain.setValueAtTime(0.36, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.085);
     osc.connect(gain);
     gain.connect(this.masterGain!);
     this.registerReloadNode(osc, gain);
     osc.start(t);
-    osc.stop(t + 0.12);
+    osc.stop(t + 0.085);
+
+    // Bolt carrier forward return slam
+    const slam = this.ctx.createOscillator();
+    const slGain = this.ctx.createGain();
+    slam.type = 'square';
+    slam.frequency.setValueAtTime(1420, t + 0.085);
+    slam.frequency.exponentialRampToValueAtTime(310, t + 0.145);
+    slGain.gain.setValueAtTime(0.28, t + 0.085);
+    slGain.gain.exponentialRampToValueAtTime(0.001, t + 0.155);
+    slam.connect(slGain);
+    slGain.connect(this.masterGain!);
+    this.registerReloadNode(slam, slGain);
+    slam.start(t + 0.085);
+    slam.stop(t + 0.155);
   }
 
   public playBodyHitCrunch(worldPos?: THREE.Vector3, listenerPos?: THREE.Vector3, blocks: MapBlockCollider[] = []): void {
@@ -713,14 +776,33 @@ export class ProceduralAudio {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(700, t);
-    osc.frequency.exponentialRampToValueAtTime(250, t + 0.08);
-    gain.gain.setValueAtTime(0.35, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    osc.frequency.setValueAtTime(760, t);
+    osc.frequency.exponentialRampToValueAtTime(220, t + 0.095);
+    gain.gain.setValueAtTime(0.32, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.105);
     osc.connect(gain);
     gain.connect(this.masterGain!);
     osc.start(t);
-    osc.stop(t + 0.09);
+    osc.stop(t + 0.105);
+
+    // High-velocity Karambit blade air-whip + subtle steel ring
+    if (this.sharedNoiseBuffer) {
+      const whip = this.ctx.createBufferSource();
+      whip.buffer = this.sharedNoiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(2650, t);
+      filter.frequency.exponentialRampToValueAtTime(920, t + 0.11);
+      filter.Q.setValueAtTime(3.2, t);
+      const wGain = this.ctx.createGain();
+      wGain.gain.setValueAtTime(0.24, t);
+      wGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      whip.connect(filter);
+      filter.connect(wGain);
+      wGain.connect(this.masterGain!);
+      whip.start(t, Math.random() * 1.5);
+      whip.stop(t + 0.12);
+    }
   }
 
   public playBombBeep(worldPos?: THREE.Vector3, listenerPos?: THREE.Vector3, blocks: MapBlockCollider[] = []): void {
