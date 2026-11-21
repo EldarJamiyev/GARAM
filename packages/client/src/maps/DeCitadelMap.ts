@@ -34,118 +34,209 @@ export interface BotEntity {
 }
 
 export function createProceduralTextures(maxAnisotropy = 8) {
-  // 1. Tactical Concrete Ground (High-albedo sunlit concrete with sRGB color space)
+  // 1. Sun-Baked Citadel Limestone Flagstone Courtyard (Warm CS2 Mirage/Dust2 paving)
   const canvasConcrete = document.createElement('canvas');
   canvasConcrete.width = 512;
   canvasConcrete.height = 512;
   const ctxC = canvasConcrete.getContext('2d')!;
 
-  ctxC.fillStyle = '#8e939a';
+  ctxC.fillStyle = '#b9a992';
   ctxC.fillRect(0, 0, 512, 512);
 
-  for (let i = 0; i < 45000; i++) {
+  // Subtle flagstone tile color variation (4x4 stone slabs)
+  const slabTones = ['#bdaea0', '#c4b49c', '#b1a089', '#c0af95', '#b6a58d'];
+  for (let row = 0; row < 4; row++) {
+    const offset = (row % 2) * 64;
+    for (let col = -1; col < 5; col++) {
+      ctxC.fillStyle = slabTones[(row * 5 + col + 10) % slabTones.length];
+      ctxC.fillRect(col * 128 + offset + 2, row * 128 + 2, 124, 124);
+    }
+  }
+
+  // Organic sandstone mineral speckle & wind-blown dust grain
+  for (let i = 0; i < 48000; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
     const val = Math.random();
-    ctxC.fillStyle = val > 0.5 ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.10)';
+    ctxC.fillStyle = val > 0.55 ? 'rgba(255,248,235,0.09)' : 'rgba(65,52,38,0.10)';
     ctxC.fillRect(x, y, 2, 2);
   }
 
-  // Expansion joint grid
-  ctxC.strokeStyle = 'rgba(20, 24, 30, 0.45)';
+  // Grout joints & subtle bevel highlights
+  ctxC.strokeStyle = 'rgba(58, 48, 36, 0.42)';
   ctxC.lineWidth = 3;
-  ctxC.strokeRect(0, 0, 512, 512);
-  ctxC.strokeRect(0, 0, 256, 256);
-  ctxC.strokeRect(256, 256, 256, 256);
+  for (let row = 0; row < 4; row++) {
+    const y = row * 128;
+    ctxC.beginPath();
+    ctxC.moveTo(0, y);
+    ctxC.lineTo(512, y);
+    ctxC.stroke();
+    const offset = (row % 2) * 64;
+    for (let col = 0; col <= 4; col++) {
+      const x = (col * 128 + offset) % 512;
+      ctxC.beginPath();
+      ctxC.moveTo(x, y);
+      ctxC.lineTo(x, y + 128);
+      ctxC.stroke();
+    }
+  }
 
   const concreteTex = new THREE.CanvasTexture(canvasConcrete);
   concreteTex.colorSpace = THREE.SRGBColorSpace;
   concreteTex.wrapS = THREE.RepeatWrapping;
   concreteTex.wrapT = THREE.RepeatWrapping;
-  concreteTex.repeat.set(24, 24);
+  concreteTex.repeat.set(22, 22);
   concreteTex.anisotropy = maxAnisotropy;
 
-  // 2. Fortified Citadel Travertine Wall with 1.65m Head-Height Architectural Band
+  // 2. Fortified Mediterranean Sandstone & Stucco Wall with 1.65m Head-Height Cornice Band
   const canvasWall = document.createElement('canvas');
   canvasWall.width = 512;
   canvasWall.height = 512;
   const ctxW = canvasWall.getContext('2d')!;
 
-  ctxW.fillStyle = '#88857e';
+  const wallGrad = ctxW.createLinearGradient(0, 0, 0, 512);
+  wallGrad.addColorStop(0.0, '#d3c4aa');
+  wallGrad.addColorStop(0.65, '#c5b498');
+  wallGrad.addColorStop(0.88, '#a6967c');
+  wallGrad.addColorStop(1.0, '#786c5a');
+  ctxW.fillStyle = wallGrad;
   ctxW.fillRect(0, 0, 512, 512);
 
-  for (let i = 0; i < 35000; i++) {
+  // Subtle ashlar stone masonry courses on lower half
+  ctxW.strokeStyle = 'rgba(72, 58, 42, 0.24)';
+  ctxW.lineWidth = 2;
+  for (let y = 320; y < 480; y += 40) {
+    ctxW.beginPath();
+    ctxW.moveTo(0, y);
+    ctxW.lineTo(512, y);
+    ctxW.stroke();
+    const shift = ((y / 40) % 2) * 64;
+    for (let x = shift; x < 512; x += 128) {
+      ctxW.beginPath();
+      ctxW.moveTo(x, y);
+      ctxW.lineTo(x, y + 40);
+      ctxW.stroke();
+    }
+  }
+
+  // Sun-weathered stucco micro-grain & plaster variation
+  for (let i = 0; i < 42000; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
-    ctxW.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.09)';
+    ctxW.fillStyle = Math.random() > 0.5 ? 'rgba(255,250,238,0.08)' : 'rgba(62,48,32,0.09)';
     ctxW.fillRect(x, y, 2, 2);
   }
 
-  // Dark protective base kick-plate (bottom 36px)
-  ctxW.fillStyle = '#2b2e34';
+  // Dark stone protective base plinth (bottom 36px)
+  ctxW.fillStyle = '#5a5043';
   ctxW.fillRect(0, 476, 512, 36);
+  ctxW.fillStyle = 'rgba(30, 24, 18, 0.45)';
+  ctxW.fillRect(0, 474, 512, 4);
 
-  // 1.65m Head-Height Architectural Datum Line (CS2 Pro Pre-Aim Reference)
-  ctxW.fillStyle = '#3a3e46';
-  ctxW.fillRect(0, 310, 512, 14);
-  ctxW.fillStyle = 'rgba(212, 175, 55, 0.45)'; // Subtle gold accent stripe
-  ctxW.fillRect(0, 308, 512, 2);
+  // 1.65m Head-Height Architectural Travertine Molding (CS2 Pro Pre-Aim Datum Line)
+  ctxW.fillStyle = '#7b6c58';
+  ctxW.fillRect(0, 308, 512, 14);
+  ctxW.fillStyle = '#e3d5bc';
+  ctxW.fillRect(0, 306, 512, 3);
+  ctxW.fillStyle = 'rgba(42, 34, 24, 0.35)';
+  ctxW.fillRect(0, 322, 512, 4);
 
-  // Subtle vertical panel seams
-  ctxW.strokeStyle = 'rgba(15, 18, 22, 0.35)';
+  // Top parapet trim band
+  ctxW.fillStyle = '#8b7b65';
+  ctxW.fillRect(0, 0, 512, 18);
+  ctxW.fillStyle = 'rgba(35, 28, 20, 0.35)';
+  ctxW.fillRect(0, 18, 512, 4);
+
+  // Vertical architectural pilaster seam
+  ctxW.strokeStyle = 'rgba(58, 46, 34, 0.28)';
   ctxW.lineWidth = 2;
   ctxW.beginPath();
-  ctxW.moveTo(256, 0); ctxW.lineTo(256, 512);
+  ctxW.moveTo(256, 0);
+  ctxW.lineTo(256, 512);
   ctxW.stroke();
-  ctxW.strokeRect(0, 0, 512, 512);
 
   const wallTex = new THREE.CanvasTexture(canvasWall);
   wallTex.colorSpace = THREE.SRGBColorSpace;
   wallTex.wrapS = THREE.RepeatWrapping;
   wallTex.wrapT = THREE.RepeatWrapping;
-  wallTex.repeat.set(4, 2);
+  wallTex.repeat.set(4, 1.5);
   wallTex.anisotropy = maxAnisotropy;
 
-  // 3. Military Wooden Crate
+  // 3. Detailed Military Timber Supply Crate (Planks, Wood Grain, Steel Corner Plates)
   const canvasCrate = document.createElement('canvas');
-  canvasCrate.width = 256;
-  canvasCrate.height = 256;
+  canvasCrate.width = 512;
+  canvasCrate.height = 512;
   const ctxCr = canvasCrate.getContext('2d')!;
 
-  ctxCr.fillStyle = '#94663d';
-  ctxCr.fillRect(0, 0, 256, 256);
+  ctxCr.fillStyle = '#9a6d42';
+  ctxCr.fillRect(0, 0, 512, 512);
 
-  ctxCr.fillStyle = '#7a4e28';
-  for (let y = 0; y < 256; y += 32) {
-    ctxCr.fillRect(0, y, 256, 3);
+  // Wood plank tones & fine horizontal grain
+  const plankColors = ['#9c6e42', '#8f6339', '#a37548', '#895e36'];
+  for (let p = 0; p < 8; p++) {
+    ctxCr.fillStyle = plankColors[p % plankColors.length];
+    ctxCr.fillRect(0, p * 64, 512, 62);
+    ctxCr.fillStyle = 'rgba(34, 20, 10, 0.55)';
+    ctxCr.fillRect(0, p * 64 + 61, 512, 3);
+  }
+  for (let i = 0; i < 6000; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    ctxCr.fillStyle = Math.random() > 0.5 ? 'rgba(255,220,175,0.06)' : 'rgba(38,22,10,0.10)';
+    ctxCr.fillRect(x, y, 18 + Math.random() * 24, 2);
   }
 
-  ctxCr.strokeStyle = '#241f1a';
-  ctxCr.lineWidth = 14;
-  ctxCr.strokeRect(0, 0, 256, 256);
+  // Heavy exterior timber framing & diagonal brace
+  ctxCr.strokeStyle = '#6c4726';
+  ctxCr.lineWidth = 34;
+  ctxCr.strokeRect(17, 17, 478, 478);
+  ctxCr.strokeStyle = '#5a3a1e';
+  ctxCr.lineWidth = 24;
   ctxCr.beginPath();
-  ctxCr.moveTo(0, 0);
-  ctxCr.lineTo(256, 256);
+  ctxCr.moveTo(32, 32);
+  ctxCr.lineTo(480, 480);
   ctxCr.stroke();
 
-  ctxCr.fillStyle = 'rgba(255, 255, 255, 0.4)';
-  ctxCr.font = 'bold 20px monospace';
+  // Inner recessed shadow line
+  ctxCr.strokeStyle = 'rgba(20, 12, 6, 0.55)';
+  ctxCr.lineWidth = 4;
+  ctxCr.strokeRect(34, 34, 444, 444);
+
+  // Galvanized steel corner brackets & bolt rivets
+  ctxCr.fillStyle = '#383d42';
+  const corners = [
+    [0, 0],
+    [456, 0],
+    [0, 456],
+    [456, 456],
+  ];
+  for (const [cx, cy] of corners) {
+    ctxCr.fillRect(cx, cy, 56, 56);
+    ctxCr.fillStyle = '#6b727a';
+    ctxCr.fillRect(cx + 10, cy + 10, 8, 8);
+    ctxCr.fillRect(cx + 38, cy + 38, 8, 8);
+    ctxCr.fillStyle = '#383d42';
+  }
+
+  // Faded military cargo stencil
+  ctxCr.fillStyle = 'rgba(24, 18, 12, 0.55)';
+  ctxCr.font = 'bold 34px monospace';
   ctxCr.textAlign = 'center';
-  ctxCr.fillText('GARAM SEC', 128, 140);
+  ctxCr.fillText('GARAM // 04', 256, 268);
 
   const crateTex = new THREE.CanvasTexture(canvasCrate);
   crateTex.colorSpace = THREE.SRGBColorSpace;
   crateTex.anisotropy = maxAnisotropy;
 
-  // 4. Industrial Hazard Stripes
+  // 4. Weathered Tactical Hazard Beam
   const canvasHazard = document.createElement('canvas');
   canvasHazard.width = 256;
   canvasHazard.height = 256;
   const ctxH = canvasHazard.getContext('2d')!;
 
-  ctxH.fillStyle = '#f5c518';
+  ctxH.fillStyle = '#d4a31e';
   ctxH.fillRect(0, 0, 256, 256);
-  ctxH.fillStyle = '#141618';
+  ctxH.fillStyle = '#222428';
 
   for (let i = -256; i < 512; i += 40) {
     ctxH.beginPath();
@@ -155,6 +246,10 @@ export function createProceduralTextures(maxAnisotropy = 8) {
     ctxH.lineTo(i + 256, 256);
     ctxH.fill();
   }
+  for (let i = 0; i < 4000; i++) {
+    ctxH.fillStyle = 'rgba(0,0,0,0.08)';
+    ctxH.fillRect(Math.random() * 256, Math.random() * 256, 3, 3);
+  }
 
   const hazardTex = new THREE.CanvasTexture(canvasHazard);
   hazardTex.colorSpace = THREE.SRGBColorSpace;
@@ -163,27 +258,34 @@ export function createProceduralTextures(maxAnisotropy = 8) {
   hazardTex.repeat.set(4, 1);
   hazardTex.anisotropy = maxAnisotropy;
 
-  // 5. Corrugated Shipping Container (with paired relief bump map)
+  // 5. Weathered Corrugated Steel Shipping Container (with specular relief & rust streaks)
   const canvasCorrugated = document.createElement('canvas');
   canvasCorrugated.width = 256;
   canvasCorrugated.height = 256;
   const ctxCorr = canvasCorrugated.getContext('2d')!;
 
-  ctxCorr.fillStyle = '#26425e';
+  ctxCorr.fillStyle = '#264461';
   ctxCorr.fillRect(0, 0, 256, 256);
   for (let x = 0; x < 256; x += 16) {
     ctxCorr.fillStyle = 'rgba(255, 255, 255, 0.16)';
     ctxCorr.fillRect(x, 0, 4, 256);
-    ctxCorr.fillStyle = 'rgba(0, 0, 0, 0.32)';
+    ctxCorr.fillStyle = 'rgba(0, 0, 0, 0.34)';
     ctxCorr.fillRect(x + 8, 0, 8, 256);
   }
+  // Subtle lower grime & weathering
+  const corrGrime = ctxCorr.createLinearGradient(0, 180, 0, 256);
+  corrGrime.addColorStop(0, 'rgba(30, 22, 16, 0.0)');
+  corrGrime.addColorStop(1, 'rgba(30, 22, 16, 0.42)');
+  ctxCorr.fillStyle = corrGrime;
+  ctxCorr.fillRect(0, 180, 256, 76);
+
   const containerBlueTex = new THREE.CanvasTexture(canvasCorrugated);
   containerBlueTex.colorSpace = THREE.SRGBColorSpace;
   containerBlueTex.wrapS = THREE.RepeatWrapping;
   containerBlueTex.wrapT = THREE.RepeatWrapping;
   containerBlueTex.anisotropy = maxAnisotropy;
 
-  // 6. Paired PBR Bump/Roughness Maps (Linear NoColorSpace for accurate micro-relief)
+  // 6. Paired PBR Bump/Roughness Maps (Linear NoColorSpace for realistic surface relief)
   const makeGrayTex = (srcCanvas: HTMLCanvasElement, repeatX: number, repeatY: number): THREE.CanvasTexture => {
     const tex = new THREE.CanvasTexture(srcCanvas);
     tex.wrapS = THREE.RepeatWrapping;
@@ -193,8 +295,8 @@ export function createProceduralTextures(maxAnisotropy = 8) {
     return tex;
   };
 
-  const concreteBump = makeGrayTex(canvasConcrete, 24, 24);
-  const wallBump = makeGrayTex(canvasWall, 4, 2);
+  const concreteBump = makeGrayTex(canvasConcrete, 22, 22);
+  const wallBump = makeGrayTex(canvasWall, 4, 1.5);
   const crateBump = makeGrayTex(canvasCrate, 1, 1);
   const corrBump = makeGrayTex(canvasCorrugated, 1, 1);
 
@@ -229,60 +331,74 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     corrBump,
   } = createProceduralTextures();
 
-  // 120m x 120m PBR Concrete Floor (SceneManager provides the 450m atmospheric shader sky dome)
+  // 120m x 120m Sun-Baked Sandstone Flagstone Floor
   const floorGeo = new THREE.PlaneGeometry(124, 124);
   const floorMat = new THREE.MeshStandardMaterial({
     map: concreteTex,
     bumpMap: concreteBump,
-    bumpScale: 0.035,
+    bumpScale: 0.045,
     roughnessMap: concreteBump,
-    roughness: 0.84,
-    metalness: 0.08,
+    roughness: 0.86,
+    metalness: 0.04,
   });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   scene.add(floor);
 
-  // Shared map colliders
+  // Shared authoritative map colliders (100% locked to DE_CITADEL_BLOCKS)
   const blocks = DE_CITADEL_BLOCKS;
   const colliders: AABBCollider[] = [];
 
   const wallMat = new THREE.MeshStandardMaterial({
     map: wallTex,
     bumpMap: wallBump,
-    bumpScale: 0.045,
+    bumpScale: 0.055,
     roughnessMap: wallBump,
-    roughness: 0.82,
-    metalness: 0.1,
+    roughness: 0.86,
+    metalness: 0.04,
+  });
+  const copingMat = new THREE.MeshStandardMaterial({
+    color: 0x8f7e68,
+    bumpMap: wallBump,
+    bumpScale: 0.03,
+    roughness: 0.9,
+    metalness: 0.05,
+  });
+  const timberMat = new THREE.MeshStandardMaterial({
+    color: 0x5c3e24,
+    bumpMap: crateBump,
+    bumpScale: 0.04,
+    roughness: 0.88,
+    metalness: 0.04,
   });
   const crateMat = new THREE.MeshStandardMaterial({
     map: crateTex,
     bumpMap: crateBump,
-    bumpScale: 0.05,
-    roughness: 0.86,
-    metalness: 0.05,
+    bumpScale: 0.06,
+    roughness: 0.84,
+    metalness: 0.08,
   });
   const hazardMat = new THREE.MeshStandardMaterial({
     map: hazardTex,
-    roughness: 0.42,
+    roughness: 0.48,
     metalness: 0.32,
   });
   const containerBlueMat = new THREE.MeshStandardMaterial({
     map: containerBlueTex,
     bumpMap: corrBump,
-    bumpScale: 0.06,
-    roughness: 0.38,
-    metalness: 0.72,
-    envMapIntensity: 1.4,
+    bumpScale: 0.065,
+    roughness: 0.42,
+    metalness: 0.68,
+    envMapIntensity: 1.35,
   });
   const containerRedMat = new THREE.MeshStandardMaterial({
-    color: 0x8e2c2a,
+    color: 0x8e3028,
     bumpMap: corrBump,
-    bumpScale: 0.06,
-    roughness: 0.4,
-    metalness: 0.7,
-    envMapIntensity: 1.4,
+    bumpScale: 0.065,
+    roughness: 0.44,
+    metalness: 0.65,
+    envMapIntensity: 1.35,
   });
 
   // Contact AO floor gradient for wall & crate bases
@@ -290,9 +406,9 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   aoCanvas.width = 64; aoCanvas.height = 64;
   const aoCtx = aoCanvas.getContext('2d')!;
   const aoGrad = aoCtx.createLinearGradient(0, 0, 0, 64);
-  aoGrad.addColorStop(0, 'rgba(0, 0, 0, 0.65)');
-  aoGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.25)');
-  aoGrad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
+  aoGrad.addColorStop(0, 'rgba(28, 20, 12, 0.58)');
+  aoGrad.addColorStop(0.5, 'rgba(28, 20, 12, 0.22)');
+  aoGrad.addColorStop(1, 'rgba(28, 20, 12, 0.0)');
   aoCtx.fillStyle = aoGrad;
   aoCtx.fillRect(0, 0, 64, 64);
   const aoTex = new THREE.CanvasTexture(aoCanvas);
@@ -305,6 +421,8 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   });
 
   const wallGeos: THREE.BufferGeometry[] = [];
+  const copingGeos: THREE.BufferGeometry[] = [];
+  const timberGeos: THREE.BufferGeometry[] = [];
   const crateGeos: THREE.BufferGeometry[] = [];
   const containerBlueGeos: THREE.BufferGeometry[] = [];
   const containerRedGeos: THREE.BufferGeometry[] = [];
@@ -334,23 +452,42 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
       hazardGeos.push(geo);
     } else {
       wallGeos.push(geo);
+      // Flush stone parapet coping cap atop walls (zero collision overhang, high CS2 silhouette polish)
+      if (b.h >= 2.2 && b.w <= 62 && b.d <= 62) {
+        const cap = new THREE.BoxGeometry(b.w + 0.12, 0.18, b.d + 0.12);
+        cap.translate(b.x, b.y + b.h + 0.09, b.z);
+        copingGeos.push(cap);
+      }
     }
 
     // Grounded Contact AO Floor Strips along wall & crate bases
     if (b.y <= 0.1 && b.h >= 1.5 && b.w <= 50) {
-      const gFront = new THREE.PlaneGeometry(b.w, 0.42);
+      const gFront = new THREE.PlaneGeometry(b.w, 0.48);
       gFront.rotateX(-Math.PI / 2);
-      gFront.translate(b.x, 0.015, b.z + b.d / 2 + 0.21);
+      gFront.translate(b.x, 0.014, b.z + b.d / 2 + 0.24);
       aoGeos.push(gFront);
 
-      const gBack = new THREE.PlaneGeometry(b.w, 0.42);
+      const gBack = new THREE.PlaneGeometry(b.w, 0.48);
       gBack.rotateX(Math.PI / 2);
-      gBack.translate(b.x, 0.015, b.z - b.d / 2 - 0.21);
+      gBack.translate(b.x, 0.014, b.z - b.d / 2 - 0.24);
       aoGeos.push(gBack);
     }
   }
 
-  // Catwalk Steel Support Trusses & Jersey Barrier Detailing (Merged into existing batches = 0 extra draw calls)
+  // Overhead CS2 Mirage-Style Timber Sun-Pergola Rafters spanning Mid Choke (y=6.2m, clear of gameplay)
+  for (let i = 0; i < 7; i++) {
+    const beam = new THREE.BoxGeometry(10.5, 0.22, 0.24);
+    beam.translate(3.0, 6.35, -3.5 + i * 1.15);
+    timberGeos.push(beam);
+  }
+  const sideRunnerL = new THREE.BoxGeometry(0.28, 0.28, 8.2);
+  sideRunnerL.translate(-2.0, 6.2, 0.0);
+  timberGeos.push(sideRunnerL);
+  const sideRunnerR = new THREE.BoxGeometry(0.28, 0.28, 8.2);
+  sideRunnerR.translate(8.0, 6.2, 0.0);
+  timberGeos.push(sideRunnerR);
+
+  // Catwalk Steel Support Trusses (Merged into existing batches = 0 extra draw calls)
   const catwalkTruss = new THREE.BoxGeometry(0.22, 0.22, 14.0);
   catwalkTruss.translate(-26.5, 3.4, -26.0);
   hazardGeos.push(catwalkTruss);
@@ -365,8 +502,6 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   catwalkCross2.translate(-26.5, 2.2, -30.0);
   hazardGeos.push(catwalkCross2);
 
-  // Note: jersey_b1 & jersey_b2 are authoritative solid blocks in DE_CITADEL_BLOCKS (merged above)
-
   const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, castShadow: boolean) => {
     if (geos.length === 0) return;
     const merged = mergeGeometries(geos, false);
@@ -378,6 +513,8 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   };
 
   addMerged(wallGeos, wallMat, true);
+  addMerged(copingGeos, copingMat, true);
+  addMerged(timberGeos, timberMat, true);
   addMerged(crateGeos, crateMat, true);
   addMerged(containerBlueGeos, containerBlueMat, true);
   addMerged(containerRedGeos, containerRedMat, true);
@@ -392,11 +529,11 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
     aoGeos.forEach(g => g.dispose());
   }
 
-  // Volumetric Tunnel & Connector Dust Light Cones (Merged into 1 draw call)
+  // Subtle Warm Sunbeam Dust Cones in Covered Connectors (1 draw call)
   const coneMat = new THREE.MeshBasicMaterial({
-    color: 0xffeedd,
+    color: 0xffe4b8,
     transparent: true,
-    opacity: 0.08,
+    opacity: 0.065,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -417,84 +554,71 @@ export function buildTacticalCitadelMap(scene: THREE.Scene): {
   scene.add(lightConesMesh);
   coneGeos.forEach(g => g.dispose());
 
-  // Bombsite A Ground Ring
-  const siteAGround = new THREE.Mesh(
-    new THREE.RingGeometry(5.2, 5.8, 32),
-    new THREE.MeshBasicMaterial({ color: 0xff3344, side: THREE.DoubleSide })
-  );
-  siteAGround.rotation.x = -Math.PI / 2;
-  siteAGround.position.set(BOMBSITES.A.center.x, 0.02, BOMBSITES.A.center.z);
-  scene.add(siteAGround);
+  // Weathered CS2-Style Spray-Painted Bombsite Floor Stencils (A & B)
+  const buildBombsiteDecal = (label: string, colorHex: string, center: Vec3) => {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 256;
+    const ctx = c.getContext('2d')!;
+    ctx.strokeStyle = colorHex;
+    ctx.lineWidth = 8;
+    ctx.setLineDash([28, 14]);
+    ctx.strokeRect(18, 18, 220, 220);
+    ctx.setLineDash([]);
+    ctx.fillStyle = colorHex;
+    ctx.font = '900 132px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 128, 134);
+    // Subtle paint scuffing so stencil sits naturally on stone
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 420; i++) {
+      ctx.fillStyle = `rgba(0,0,0,${(0.18 + Math.random() * 0.32).toFixed(2)})`;
+      ctx.fillRect(Math.random() * 256, Math.random() * 256, 3 + Math.random() * 6, 3 + Math.random() * 6);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(10.5, 10.5),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.78, depthWrite: false })
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(center.x, 0.024, center.z);
+    scene.add(mesh);
+  };
 
-  const canvasA = document.createElement('canvas');
-  canvasA.width = 128; canvasA.height = 128;
-  const ctxA = canvasA.getContext('2d')!;
-  ctxA.fillStyle = 'rgba(0,0,0,0)';
-  ctxA.fillRect(0, 0, 128, 128);
-  ctxA.fillStyle = '#ff3344';
-  ctxA.font = 'bold 96px sans-serif';
-  ctxA.textAlign = 'center';
-  ctxA.textBaseline = 'middle';
-  ctxA.fillText('A', 64, 64);
-  const aTex = new THREE.CanvasTexture(canvasA);
-  aTex.colorSpace = THREE.SRGBColorSpace;
-  const aMesh = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({ map: aTex, transparent: true, side: THREE.DoubleSide }));
-  aMesh.rotation.x = -Math.PI / 2;
-  aMesh.position.set(BOMBSITES.A.center.x, 0.03, BOMBSITES.A.center.z);
-  scene.add(aMesh);
+  buildBombsiteDecal('A', '#c82828', BOMBSITES.A.center);
+  buildBombsiteDecal('B', '#2b6cb8', BOMBSITES.B.center);
 
-  // Bombsite B Ground Ring
-  const siteBGround = new THREE.Mesh(
-    new THREE.RingGeometry(5.2, 5.8, 32),
-    new THREE.MeshBasicMaterial({ color: 0x3388ff, side: THREE.DoubleSide })
-  );
-  siteBGround.rotation.x = -Math.PI / 2;
-  siteBGround.position.set(BOMBSITES.B.center.x, 0.02, BOMBSITES.B.center.z);
-  scene.add(siteBGround);
-
-  const canvasB = document.createElement('canvas');
-  canvasB.width = 128; canvasB.height = 128;
-  const ctxB = canvasB.getContext('2d')!;
-  ctxB.fillStyle = 'rgba(0,0,0,0)';
-  ctxB.fillRect(0, 0, 128, 128);
-  ctxB.fillStyle = '#3388ff';
-  ctxB.font = 'bold 96px sans-serif';
-  ctxB.textAlign = 'center';
-  ctxB.textBaseline = 'middle';
-  ctxB.fillText('B', 64, 64);
-  const bTex = new THREE.CanvasTexture(canvasB);
-  bTex.colorSpace = THREE.SRGBColorSpace;
-  const bMesh = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), new THREE.MeshBasicMaterial({ map: bTex, transparent: true, side: THREE.DoubleSide }));
-  bMesh.rotation.x = -Math.PI / 2;
-  bMesh.position.set(BOMBSITES.B.center.x, 0.03, BOMBSITES.B.center.z);
-  scene.add(bMesh);
-
-  // Directional Wall Signage
-  const createSign = (text: string, pos: THREE.Vector3, rotY: number, color = '#ffffff') => {
+  // Weathered CS2-Style Painted Directional Wall Stencils
+  const createSign = (text: string, pos: THREE.Vector3, rotY: number, color = '#d62828') => {
     const sCanvas = document.createElement('canvas');
     sCanvas.width = 256; sCanvas.height = 64;
     const sCtx = sCanvas.getContext('2d')!;
-    sCtx.fillStyle = 'rgba(10, 14, 20, 0.85)';
-    sCtx.fillRect(0, 0, 256, 64);
+    sCtx.fillStyle = 'rgba(28, 24, 20, 0.68)';
+    sCtx.fillRect(4, 6, 248, 52);
     sCtx.strokeStyle = color;
-    sCtx.lineWidth = 4;
-    sCtx.strokeRect(2, 2, 252, 60);
+    sCtx.lineWidth = 3;
+    sCtx.strokeRect(4, 6, 248, 52);
     sCtx.fillStyle = color;
-    sCtx.font = 'bold 24px sans-serif';
+    sCtx.font = '900 26px sans-serif';
     sCtx.textAlign = 'center';
     sCtx.textBaseline = 'middle';
-    sCtx.fillText(text, 128, 32);
+    sCtx.fillText(text, 128, 33);
     const sTex = new THREE.CanvasTexture(sCanvas);
     sTex.colorSpace = THREE.SRGBColorSpace;
-    const sMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 0.88), new THREE.MeshBasicMaterial({ map: sTex, transparent: true }));
+    const sMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.4, 0.84),
+      new THREE.MeshBasicMaterial({ map: sTex, transparent: true, depthWrite: false })
+    );
     sMesh.position.copy(pos);
     sMesh.rotation.y = rotY;
     scene.add(sMesh);
   };
 
-  createSign('SITE A ->', new THREE.Vector3(-1.6, 3.8, 1.8), 0, '#ff3344');
-  createSign('<- SITE B', new THREE.Vector3(7.6, 3.8, 1.8), 0, '#3b9eff');
-  createSign('<- MID CHOKE ->', new THREE.Vector3(3.0, 5.8, 1.8), 0, '#00ff88');
+  createSign('SITE A →', new THREE.Vector3(-1.6, 3.8, 1.8), 0, '#e04838');
+  createSign('← SITE B', new THREE.Vector3(7.6, 3.8, 1.8), 0, '#55a6f5');
+  createSign('MID COURTYARD', new THREE.Vector3(3.0, 5.75, 1.8), 0, '#f0d698');
 
   // Covered B Tunnel Industrial Ceiling Lights
   const tunnelLight1 = new THREE.PointLight(0xffb566, 1.8, 16);

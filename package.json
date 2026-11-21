@@ -8,8 +8,8 @@
   ],
   "scripts": {
     "dev:client": "npm --workspace=@garam/client run dev",
-    "dev:server": "npm --workspace=@garam/server run dev",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm run build -w @garam/shared && npm --workspace=@garam/server run dev",
+    "dev": "npm run build -w @garam/shared && concurrently \"npm --workspace=@garam/server run dev\" \"npm run dev:client\"",
     "build": "npm run build -w @garam/shared && npm run build -w @garam/server && npm run build -w @garam/client",
     "typecheck": "npm run build -w @garam/shared && npm run typecheck --workspaces",
     "lint": "npm run typecheck",

@@ -154,6 +154,7 @@ export class WeaponController {
     _right.setFromMatrixColumn(camera.matrixWorld, 0);
     _up.setFromMatrixColumn(camera.matrixWorld, 1);
     this.effects.spawnShellCasing(camera.position, _forward, _right);
+    this.audio.playShellClink(0.38 + Math.random() * 0.12);
 
     const dynamicSpread = computeWeaponSpread(weapon, currentSpeed, isGrounded, isCrouching, wasScoped, this.consecutiveShots);
     const spreadX = (Math.random() - 0.5) * dynamicSpread;
@@ -245,6 +246,8 @@ export class WeaponController {
               this.audio.playBodyHitCrunch(_hitVec, eyePos, blocks);
             }
 
+            _reverseNormal.copy(_rayDir).negate();
+            this.effects.spawnBloodBurst(_hitVec, _reverseNormal, !!hit.isHeadshot);
             victim.rig?.triggerFlinch();
             this.callbacks.onHitmarker?.(!!hit.isHeadshot);
 
@@ -260,6 +263,8 @@ export class WeaponController {
         } else {
           _hitNormal.set(hit.normal.x, hit.normal.y, hit.normal.z);
           this.effects.spawnBulletDecal(_hitVec, _hitNormal, hit.material);
+          this.effects.spawnImpactBurst(_hitVec, _hitNormal, hit.material);
+          this.audio.playSurfaceImpact(hit.material as 'CONCRETE' | 'WOOD_THIN' | 'METAL_SHEET', _hitVec, eyePos, blocks);
 
           if (hit.exitPoint) {
             _exitVec.set(hit.exitPoint.x, hit.exitPoint.y, hit.exitPoint.z);
@@ -270,7 +275,7 @@ export class WeaponController {
       }
     }
 
-    this.effects.spawnTracer(eyePos, _terminalPoint, weapon.id);
+    this.effects.spawnTracer(eyePos, _terminalPoint, weapon.id, _right);
 
     let sprayPitchDeg = 0;
     let sprayYawDeg = 0;

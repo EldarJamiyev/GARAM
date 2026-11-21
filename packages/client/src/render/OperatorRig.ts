@@ -94,6 +94,27 @@ function getSharedShadowTexture(): THREE.CanvasTexture {
   return sharedShadowTexture;
 }
 
+let sharedBotFlashTexture: THREE.CanvasTexture | null = null;
+function getSharedBotFlashTexture(): THREE.CanvasTexture {
+  if (!sharedBotFlashTexture) {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 128;
+    const ctx = c.getContext('2d')!;
+    const g = ctx.createRadialGradient(64, 64, 2, 64, 64, 62);
+    g.addColorStop(0.0, 'rgba(255, 255, 240, 1.0)');
+    g.addColorStop(0.3, 'rgba(255, 206, 96, 0.88)');
+    g.addColorStop(0.68, 'rgba(255, 110, 20, 0.35)');
+    g.addColorStop(1.0, 'rgba(255, 60, 0, 0.0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    sharedBotFlashTexture = new THREE.CanvasTexture(c);
+    sharedBotFlashTexture.colorSpace = THREE.SRGBColorSpace;
+  }
+  return sharedBotFlashTexture;
+}
+const geoBotFlashPlane = new THREE.PlaneGeometry(0.36, 0.36);
+
 export class OperatorRig {
   public root: THREE.Group;
   public headCollider: THREE.Mesh;
@@ -114,6 +135,9 @@ export class OperatorRig {
   // High-Fidelity CS2 GLB Operator Rig & World Rifle
   private glbRig: OperatorSkeletonRig | null = null;
   private glbWeaponHolder: THREE.Group | null = null;
+  private worldMuzzleFlash: THREE.Group | null = null;
+  private muzzleFlashTimer = 0;
+  private fireRecoilTimer = 0;
   private isDisposed = false;
 
   // UI Billboard
@@ -403,6 +427,29 @@ export class OperatorRig {
       holder.position.set(-0.08, 1.29, 0.34);
       holder.rotation.set(0.03, 0.22, 0);
       holder.add(rifleModel);
+
+      // 3D Cross-Plane Volumetric Muzzle Flash at rifle barrel tip
+      const flashMat = new THREE.MeshBasicMaterial({
+        map: getSharedBotFlashTexture(),
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      this.ownedMaterials.push(flashMat);
+      const flashGroup = new THREE.Group();
+      const fp1 = new THREE.Mesh(geoBotFlashPlane, flashMat);
+      const fp2 = new THREE.Mesh(geoBotFlashPlane, flashMat);
+      fp2.rotation.y = Math.PI / 2;
+      const fp3 = new THREE.Mesh(geoBotFlashPlane, flashMat);
+      fp3.rotation.x = Math.PI / 2;
+      flashGroup.add(fp1, fp2, fp3);
+      flashGroup.position.set(0, 0.04, team === 'Vanguard' ? 0.50 : 0.48);
+      flashGroup.visible = false;
+      holder.add(flashGroup);
+      this.worldMuzzleFlash = flashGroup;
+
       this.glbWeaponHolder = holder;
       this.root.add(holder);
     }
@@ -483,8 +530,10 @@ export class OperatorRig {
     }
 
     if (this.glbWeaponHolder) {
-      this.glbWeaponHolder.position.y = (isCrouching ? 0.95 : 1.29) + walkBob;
-      this.glbWeaponHolder.rotation.x = 0.03 - aimPitch * 0.45;
+      const recoilKick = this.fireRecoilTimer > 0 ? Math.sin((this.fireRecoilTimer / 0.09) * Math.PI) : 0;
+      this.glbWeaponHolder.position.y = (isCrouching ? 0.95 : 1.29) + walkBob + recoilKick * 0.015;
+      this.glbWeaponHolder.position.z = 0.34 - recoilKick * 0.055;
+      this.glbWeaponHolder.rotation.x = 0.03 - aimPitch * 0.45 - recoilKick * 0.14;
     }
   }
 
@@ -591,6 +640,16 @@ export class OperatorRig {
     this.flinchTimer = 0.14;
   }
 
+  public triggerMuzzleFlash(): void {
+    this.muzzleFlashTimer = 0.055;
+    this.fireRecoilTimer = 0.09;
+    if (this.worldMuzzleFlash) {
+      this.worldMuzzleFlash.visible = true;
+      this.worldMuzzleFlash.rotation.z = Math.random() * Math.PI * 2;
+      this.worldMuzzleFlash.scale.setScalar(0.85 + Math.random() * 0.45);
+    }
+  }
+
   public update(dt: number, state: OperatorVisualState): void {
     if (state.isDead) {
       if (this.deathProgress < 1.0) {
@@ -658,6 +717,16 @@ export class OperatorRig {
       this.rightLeg.rotation.z = 0;
       this.torso.position.y = targetTorsoY + Math.sin(performance.now() * 0.003) * 0.012;
       this.root.rotation.z = 0;
+    }
+
+    if (this.muzzleFlashTimer > 0) {
+      this.muzzleFlashTimer -= dt;
+      if (this.muzzleFlashTimer <= 0 && this.worldMuzzleFlash) {
+        this.worldMuzzleFlash.visible = false;
+      }
+    }
+    if (this.fireRecoilTimer > 0) {
+      this.fireRecoilTimer = Math.max(0, this.fireRecoilTimer - dt);
     }
 
     const aimPitch = state.pitch || 0;

@@ -13,11 +13,16 @@ export interface ModelNormalizationOptions {
   receiveShadow?: boolean;
 }
 
+interface CachedAssetEntry {
+  scene: THREE.Object3D;
+  animations: THREE.AnimationClip[];
+}
+
 export class AssetManager {
   private static instance: AssetManager;
   private loader: GLTFLoader;
-  private cache: Map<string, THREE.Object3D> = new Map();
-  private inflight: Map<string, Promise<THREE.Object3D | null>> = new Map();
+  private cache: Map<string, CachedAssetEntry> = new Map();
+  private inflight: Map<string, Promise<CachedAssetEntry | null>> = new Map();
   private failedPaths: Set<string> = new Set();
   private maxAnisotropy = 8;
 
@@ -44,16 +49,27 @@ export class AssetManager {
     path: string,
     options: ModelNormalizationOptions = {}
   ): Promise<THREE.Object3D | null> {
+    const res = await this.loadModelWithAnimations(path, options);
+    return res ? res.model : null;
+  }
+
+  /**
+   * Loads a .glb / .gltf model along with its embedded THREE.AnimationClip array.
+   */
+  public async loadModelWithAnimations(
+    path: string,
+    options: ModelNormalizationOptions = {}
+  ): Promise<{ model: THREE.Object3D; animations: THREE.AnimationClip[] } | null> {
     if (this.failedPaths.has(path)) {
       return null;
     }
 
     try {
-      const template = await this.getOrLoadTemplate(path);
-      if (!template) return null;
+      const entry = await this.getOrLoadTemplate(path);
+      if (!entry) return null;
 
       // Safe clone preserving SkinnedMesh skeletons and independent bone hierarchies
-      const cloned = SkeletonUtils.clone(template);
+      const cloned = SkeletonUtils.clone(entry.scene);
       const castShadow = options.castShadow ?? true;
       const receiveShadow = options.receiveShadow ?? true;
 
@@ -89,7 +105,7 @@ export class AssetManager {
       }
       wrapper.add(cloned);
       this.normalizeGLB(wrapper, cloned, options);
-      return wrapper;
+      return { model: wrapper, animations: entry.animations };
     } catch {
       console.warn(`[AssetManager] Model at "${path}" failed to load. Falling back to procedural PBR mesh.`);
       this.failedPaths.add(path);
@@ -97,7 +113,7 @@ export class AssetManager {
     }
   }
 
-  private async getOrLoadTemplate(path: string): Promise<THREE.Object3D | null> {
+  private async getOrLoadTemplate(path: string): Promise<CachedAssetEntry | null> {
     const cached = this.cache.get(path);
     if (cached) return cached;
 
@@ -124,9 +140,10 @@ export class AssetManager {
               }
             }
           });
-          this.cache.set(path, root);
+          const entry: CachedAssetEntry = { scene: root, animations: gltf.animations || [] };
+          this.cache.set(path, entry);
           this.inflight.delete(path);
-          return root;
+          return entry;
         })
         .catch(() => {
           this.failedPaths.add(path);

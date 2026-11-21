@@ -3,7 +3,13 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { validateClientPacket } from '@garam/shared';
 import { RoomRegistry } from './RoomRegistry.js';
 
-const PORT = Number(process.env.PORT) || 2567;
+const rawPort = process.env.GARAM_SERVER_PORT || process.env.WS_PORT || process.env.PORT;
+const parsedPort = Number(rawPort);
+const nginxPort = Number(process.env.NGINX_PORT);
+const PORT =
+  Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort !== nginxPort && parsedPort !== 3000
+    ? parsedPort
+    : 2567;
 const MAX_CONNECTIONS = 32;
 const MAX_CONNS_PER_IP = 3;
 const TOKEN_BUCKET_CAPACITY = 240;
@@ -223,6 +229,10 @@ const heartbeatInterval = setInterval(() => {
   });
 }, 15000);
 heartbeatInterval.unref();
+
+server.on('error', (err: NodeJS.ErrnoException) => {
+  console.error(`[GARAM Server] HTTP/WS listen error on port ${PORT}:`, err.message);
+});
 
 server.listen(PORT, () => {
   console.log(`[GARAM Server] Authoritative 64-Tick Server running on ws://localhost:${PORT}`);

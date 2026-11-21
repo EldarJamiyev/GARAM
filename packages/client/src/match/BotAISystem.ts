@@ -625,6 +625,7 @@ export class BotAISystem {
                   }
                 }
 
+                bot.rig?.triggerMuzzleFlash();
                 this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, 'garam-47');
               }
             }
@@ -747,6 +748,7 @@ export class BotAISystem {
                     }
                   }
 
+                  bot.rig?.triggerMuzzleFlash();
                   this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, 'garam-47');
                 }
               }

@@ -12,6 +12,7 @@ interface TracerLine {
 const _dummy = new THREE.Object3D();
 const _lookTarget = new THREE.Vector3();
 const _projPos = new THREE.Vector3();
+const _particleColor = new THREE.Color();
 
 interface PooledDamagePopup {
   el: HTMLDivElement;
@@ -53,6 +54,18 @@ export class EffectsManager {
   private tracerIndex = 0;
   private readonly MAX_TRACERS = 24;
   private tracerMat: THREE.LineBasicMaterial;
+
+  // Instanced Impact Sparks, Dust Plumes & Blood Mist (96 particles = 1 draw call, zero GC)
+  private readonly MAX_PARTICLES = 96;
+  private particleMesh: THREE.InstancedMesh;
+  private particleIndex = 0;
+  private particleActive: Uint8Array;
+  private particlePos: Float32Array;
+  private particleVel: Float32Array;
+  private particleLife: Float32Array;
+  private particleMaxLife: Float32Array;
+  private particleScale: Float32Array;
+  private particleGravity: Float32Array;
 
   // Pooled DOM Damage Popups (Max 8, Zero-DOM-create/remove during gunfights)
   private readonly MAX_POPUPS = 8;
@@ -192,9 +205,11 @@ export class EffectsManager {
     this.shellLife = new Float32Array(this.MAX_SHELLS);
     this.shellBounces = new Uint8Array(this.MAX_SHELLS);
 
-    // 4. Initialize Tracer Pool (Zero Runtime Allocations)
+    // 4. Initialize Tracer Pool (Bright golden supersonic streak, zero runtime allocations)
     this.tracerMat = new THREE.LineBasicMaterial({
-      color: 0xffea55,
+      color: 0xffe478,
+      transparent: true,
+      opacity: 0.92,
       linewidth: 2,
     });
     for (let i = 0; i < this.MAX_TRACERS; i++) {
@@ -207,7 +222,34 @@ export class EffectsManager {
       this.tracerPool.push({ line, positions, lifetime: 0, active: false });
     }
 
-    // 5. Initialize Pooled DOM Damage Popups
+    // 5. Initialize Pooled Instanced Impact & Blood Particle System (1 draw call)
+    const particleGeo = new THREE.OctahedronGeometry(0.032, 0);
+    const particleMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+    });
+    this.particleMesh = new THREE.InstancedMesh(particleGeo, particleMat, this.MAX_PARTICLES);
+    this.particleMesh.frustumCulled = false;
+    this.particleActive = new Uint8Array(this.MAX_PARTICLES);
+    this.particlePos = new Float32Array(this.MAX_PARTICLES * 3);
+    this.particleVel = new Float32Array(this.MAX_PARTICLES * 3);
+    this.particleLife = new Float32Array(this.MAX_PARTICLES);
+    this.particleMaxLife = new Float32Array(this.MAX_PARTICLES);
+    this.particleScale = new Float32Array(this.MAX_PARTICLES);
+    this.particleGravity = new Float32Array(this.MAX_PARTICLES);
+
+    _particleColor.setHex(0xffffff);
+    for (let i = 0; i < this.MAX_PARTICLES; i++) {
+      this.particleMesh.setMatrixAt(i, _dummy.matrix);
+      this.particleMesh.setColorAt(i, _particleColor);
+    }
+    this.particleMesh.instanceMatrix.needsUpdate = true;
+    if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
+    this.scene.add(this.particleMesh);
+
+    // 6. Initialize Pooled DOM Damage Popups
     if (typeof document !== 'undefined' && document.body) {
       for (let i = 0; i < this.MAX_POPUPS; i++) {
         const el = document.createElement('div');
@@ -280,16 +322,19 @@ export class EffectsManager {
     }
   }
 
-  public spawnTracer(from: THREE.Vector3, to: THREE.Vector3, weaponId: string): void {
+  public spawnTracer(from: THREE.Vector3, to: THREE.Vector3, weaponId: string, rightVec?: THREE.Vector3): void {
     if (weaponId === 'vanguard-m4') return; // Suppressed
 
     const tracer = this.tracerPool[this.tracerIndex];
     this.tracerIndex = (this.tracerIndex + 1) % this.MAX_TRACERS;
 
     const pos = tracer.positions;
-    pos[0] = from.x;
-    pos[1] = from.y - 0.12;
-    pos[2] = from.z;
+    const rx = rightVec ? rightVec.x * 0.16 : 0;
+    const ry = rightVec ? rightVec.y * 0.16 : 0;
+    const rz = rightVec ? rightVec.z * 0.16 : 0;
+    pos[0] = from.x + rx;
+    pos[1] = from.y - 0.11 + ry;
+    pos[2] = from.z + rz;
     pos[3] = to.x;
     pos[4] = to.y;
     pos[5] = to.z;
@@ -297,8 +342,107 @@ export class EffectsManager {
     const attr = tracer.line.geometry.attributes.position as THREE.BufferAttribute;
     attr.needsUpdate = true;
     tracer.line.visible = true;
-    tracer.lifetime = 0.055;
+    tracer.lifetime = 0.065;
     tracer.active = true;
+  }
+
+  private emitParticle(
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    colorHex: number,
+    scale: number,
+    maxLife: number,
+    gravity: number
+  ): void {
+    const idx = this.particleIndex;
+    this.particleIndex = (this.particleIndex + 1) % this.MAX_PARTICLES;
+    const o3 = idx * 3;
+    this.particlePos[o3] = x;
+    this.particlePos[o3 + 1] = y;
+    this.particlePos[o3 + 2] = z;
+    this.particleVel[o3] = vx;
+    this.particleVel[o3 + 1] = vy;
+    this.particleVel[o3 + 2] = vz;
+    this.particleLife[idx] = maxLife;
+    this.particleMaxLife[idx] = maxLife;
+    this.particleScale[idx] = scale;
+    this.particleGravity[idx] = gravity;
+    this.particleActive[idx] = 1;
+
+    _particleColor.setHex(colorHex);
+    this.particleMesh.setColorAt(idx, _particleColor);
+    if (this.particleMesh.instanceColor) this.particleMesh.instanceColor.needsUpdate = true;
+  }
+
+  public spawnImpactBurst(point: THREE.Vector3, normal: THREE.Vector3, materialType: string): void {
+    const isMetal = materialType === 'METAL_SHEET';
+    const isWood = materialType === 'WOOD_THIN';
+    const count = isMetal ? 10 : 8;
+
+    for (let i = 0; i < count; i++) {
+      const spread = isMetal ? 3.2 : 2.1;
+      const speed = isMetal ? 3.8 + Math.random() * 4.5 : 1.4 + Math.random() * 2.6;
+      const vx = normal.x * speed + (Math.random() - 0.5) * spread;
+      const vy = normal.y * speed + Math.random() * (isMetal ? 2.4 : 1.8);
+      const vz = normal.z * speed + (Math.random() - 0.5) * spread;
+
+      const colorHex = isMetal
+        ? i % 2 === 0
+          ? 0xffd266
+          : 0xff7722
+        : isWood
+          ? i % 2 === 0
+            ? 0xa47144
+            : 0x6e4726
+          : i % 3 === 0
+            ? 0xdfd3be
+            : 0xb6a994;
+
+      const scale = isMetal ? 0.55 + Math.random() * 0.55 : 0.9 + Math.random() * 1.1;
+      const life = isMetal ? 0.16 + Math.random() * 0.14 : 0.24 + Math.random() * 0.20;
+      const grav = isMetal ? 12.0 : isWood ? 10.0 : 3.2;
+
+      this.emitParticle(
+        point.x + normal.x * 0.03,
+        point.y + normal.y * 0.03,
+        point.z + normal.z * 0.03,
+        vx,
+        vy,
+        vz,
+        colorHex,
+        scale,
+        life,
+        grav
+      );
+    }
+  }
+
+  public spawnBloodBurst(point: THREE.Vector3, normal: THREE.Vector3, isHeadshot: boolean): void {
+    const count = isHeadshot ? 14 : 8;
+    for (let i = 0; i < count; i++) {
+      const isDinkSpark = isHeadshot && i < 6;
+      const speed = isDinkSpark ? 3.6 + Math.random() * 4.0 : 1.2 + Math.random() * 2.4;
+      const vx = normal.x * speed + (Math.random() - 0.5) * 2.6;
+      const vy = normal.y * speed + Math.random() * (isDinkSpark ? 2.8 : 1.4);
+      const vz = normal.z * speed + (Math.random() - 0.5) * 2.6;
+
+      this.emitParticle(
+        point.x,
+        point.y,
+        point.z,
+        vx,
+        vy,
+        vz,
+        isDinkSpark ? (i % 2 === 0 ? 0xfff0a0 : 0xffaa22) : i % 2 === 0 ? 0xa8101c : 0x6b0810,
+        isDinkSpark ? 0.75 : 1.05 + Math.random() * 0.85,
+        isDinkSpark ? 0.18 : 0.26 + Math.random() * 0.14,
+        isDinkSpark ? 11.0 : 6.5
+      );
+    }
   }
 
   public spawnShellCasing(origin: THREE.Vector3, forward: THREE.Vector3, right: THREE.Vector3): void {
@@ -422,7 +566,43 @@ export class EffectsManager {
       this.shellInstancedMesh.instanceMatrix.needsUpdate = true;
     }
 
-    // 3. Tick pooled DOM damage popups (GPU-composited transform + opacity only)
+    // 3. Tick pooled impact sparks, dust plumes & blood mist
+    let particlesUpdated = false;
+    for (let i = 0; i < this.MAX_PARTICLES; i++) {
+      if (!this.particleActive[i]) continue;
+      this.particleLife[i] -= dt;
+      if (this.particleLife[i] <= 0) {
+        this.particleActive[i] = 0;
+        _dummy.position.set(0, -500, 0);
+        _dummy.scale.set(0, 0, 0);
+        _dummy.updateMatrix();
+        this.particleMesh.setMatrixAt(i, _dummy.matrix);
+        particlesUpdated = true;
+        continue;
+      }
+
+      const o3 = i * 3;
+      this.particleVel[o3 + 1] -= this.particleGravity[i] * dt;
+      this.particleVel[o3] *= Math.max(0, 1 - 2.2 * dt);
+      this.particleVel[o3 + 2] *= Math.max(0, 1 - 2.2 * dt);
+      this.particlePos[o3] += this.particleVel[o3] * dt;
+      this.particlePos[o3 + 1] += this.particleVel[o3 + 1] * dt;
+      this.particlePos[o3 + 2] += this.particleVel[o3 + 2] * dt;
+
+      const tRatio = Math.max(0, this.particleLife[i] / Math.max(0.01, this.particleMaxLife[i]));
+      const s = this.particleScale[i] * tRatio;
+      _dummy.position.set(this.particlePos[o3], this.particlePos[o3 + 1], this.particlePos[o3 + 2]);
+      _dummy.rotation.set(tRatio * 6, tRatio * 4, 0);
+      _dummy.scale.set(s, s, s);
+      _dummy.updateMatrix();
+      this.particleMesh.setMatrixAt(i, _dummy.matrix);
+      particlesUpdated = true;
+    }
+    if (particlesUpdated) {
+      this.particleMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    // 4. Tick pooled DOM damage popups (GPU-composited transform + opacity only)
     for (let i = 0; i < this.popupPool.length; i++) {
       const slot = this.popupPool[i];
       if (!slot.active) continue;
@@ -441,7 +621,7 @@ export class EffectsManager {
 
   public dispose(): void {
     const decalGeo = this.concreteDecals.geometry;
-    this.scene.remove(this.concreteDecals, this.woodDecals, this.metalDecals, this.shellInstancedMesh);
+    this.scene.remove(this.concreteDecals, this.woodDecals, this.metalDecals, this.shellInstancedMesh, this.particleMesh);
     decalGeo.dispose();
     (this.concreteDecals.material as THREE.Material).dispose();
     (this.woodDecals.material as THREE.Material).dispose();
@@ -453,6 +633,8 @@ export class EffectsManager {
 
     this.shellInstancedMesh.geometry.dispose();
     (this.shellInstancedMesh.material as THREE.Material).dispose();
+    this.particleMesh.geometry.dispose();
+    (this.particleMesh.material as THREE.Material).dispose();
 
     for (const tracer of this.tracerPool) {
       this.scene.remove(tracer.line);

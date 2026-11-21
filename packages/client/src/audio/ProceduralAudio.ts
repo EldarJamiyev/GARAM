@@ -402,18 +402,37 @@ export class ProceduralAudio {
     whiteNoise.start(t, offset);
     whiteNoise.stop(t + dur);
 
-    // 3. Crisp mechanical hammer / bolt action transient click
+    // 3. Crisp mechanical hammer / AK bolt-carrier slap transient
     const clickOsc = this.ctx.createOscillator();
     const clickGain = this.ctx.createGain();
     clickOsc.type = 'square';
-    clickOsc.frequency.setValueAtTime(isSuppressed ? 1600 : isAWP ? 4200 : 3200, t);
-    clickOsc.frequency.exponentialRampToValueAtTime(400, t + 0.02);
-    clickGain.gain.setValueAtTime(isSuppressed ? 0.15 : 0.45, t);
-    clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    clickOsc.frequency.setValueAtTime(isSuppressed ? 1600 : isAWP ? 4200 : 3400, t);
+    clickOsc.frequency.exponentialRampToValueAtTime(380, t + 0.024);
+    clickGain.gain.setValueAtTime(isSuppressed ? 0.16 : 0.48, t);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.028);
     clickOsc.connect(clickGain);
     clickGain.connect(destinationNode);
     clickOsc.start(t);
-    clickOsc.stop(t + 0.025);
+    clickOsc.stop(t + 0.028);
+
+    // 4. Outdoor supersonic canyon crack tail for unsuppressed high-caliber rifles
+    if (!isSuppressed && this.sharedNoiseBuffer) {
+      const tail = this.ctx.createBufferSource();
+      tail.buffer = this.sharedNoiseBuffer;
+      const tailFilter = this.ctx.createBiquadFilter();
+      tailFilter.type = 'bandpass';
+      tailFilter.frequency.setValueAtTime(isAWP ? 950 : 1250, t + 0.03);
+      tailFilter.frequency.exponentialRampToValueAtTime(320, t + (isAWP ? 0.52 : 0.28));
+      tailFilter.Q.setValueAtTime(1.4, t + 0.03);
+      const tailGain = this.ctx.createGain();
+      tailGain.gain.setValueAtTime(isAWP ? 0.36 : 0.22, t + 0.025);
+      tailGain.gain.exponentialRampToValueAtTime(0.001, t + (isAWP ? 0.54 : 0.30));
+      tail.connect(tailFilter);
+      tailFilter.connect(tailGain);
+      tailGain.connect(destinationNode);
+      tail.start(t + 0.025, Math.random() * 1.2);
+      tail.stop(t + (isAWP ? 0.54 : 0.30));
+    }
   }
 
   // --- Tactical Foley Suite ---
@@ -605,17 +624,86 @@ export class ProceduralAudio {
     this.initContext();
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+
+    // Dual-harmonic CS2 metallic helmet dink + crunch confirm
+    const freqs = [2850, 4420];
+    for (let i = 0; i < freqs.length; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = i === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freqs[i], t);
+      osc.frequency.exponentialRampToValueAtTime(freqs[i] * 0.48, t + 0.16);
+      gain.gain.setValueAtTime(i === 0 ? 0.52 : 0.34, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.21);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t);
+      osc.stop(t + 0.21);
+    }
+  }
+
+  public playShellClink(delaySeconds = 0.42): void {
+    this.initContext();
+    if (!this.ctx || !this.masterGain) return;
+    const t = this.ctx.currentTime + delaySeconds;
+    const baseFreq = 5200 + Math.random() * 1400;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(2600, t);
-    osc.frequency.exponentialRampToValueAtTime(1100, t + 0.18);
-    gain.gain.setValueAtTime(0.55, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc.frequency.setValueAtTime(baseFreq, t);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.72, t + 0.045);
+    gain.gain.setValueAtTime(0.055, t);
+    gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.05);
     osc.connect(gain);
-    gain.connect(this.masterGain!);
+    gain.connect(this.masterGain);
     osc.start(t);
-    osc.stop(t + 0.22);
+    osc.stop(t + 0.055);
+  }
+
+  public playSurfaceImpact(
+    surface: SurfaceMaterialType,
+    worldPos?: THREE.Vector3,
+    listenerPos?: THREE.Vector3,
+    blocks: MapBlockCollider[] = []
+  ): void {
+    this.initContext();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = worldPos
+      ? this.createSpatialRoute(worldPos, listenerPos, blocks).input
+      : this.masterGain!;
+
+    if (surface === 'METAL_SHEET') {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(2100 + Math.random() * 700, t);
+      osc.frequency.exponentialRampToValueAtTime(680, t + 0.11);
+      gain.gain.setValueAtTime(0.24, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.12);
+      return;
+    }
+
+    if (this.sharedNoiseBuffer) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.sharedNoiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(surface === 'WOOD_THIN' ? 780 : 1450, t);
+      filter.Q.setValueAtTime(surface === 'WOOD_THIN' ? 2.4 : 1.6, t);
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.22, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(dest);
+      src.start(t, Math.random() * 1.5);
+      src.stop(t + 0.065);
+    }
   }
 
   public playKnifeSlash(): void {

@@ -35,9 +35,9 @@ export class SceneManager {
       this.isSoftwareGl ? 4 : renderer.capabilities.getMaxAnisotropy()
     );
 
-    // 1. World Scene & Camera with subtle sunlit-horizon atmospheric perspective
+    // 1. World Scene & Camera with warm CS2 sunlit Mediterranean atmospheric perspective
     this.worldScene = new THREE.Scene();
-    this.worldScene.fog = new THREE.FogExp2(0xc4d8ec, 0.0036);
+    this.worldScene.fog = new THREE.FogExp2(0xd9cfc0, 0.0029);
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 600);
 
     // 2. Viewmodel Scene & Camera (Dual-pass at 68 deg FOV, near 0.005m)
@@ -53,12 +53,12 @@ export class SceneManager {
       this.loadHdrEnvironment(renderer);
     }
 
-    // 4. Calibrated Sun, Cool Fill & Ambient Lighting (High-contrast CS2 visibility)
-    this.hemiLight = new THREE.HemisphereLight(0xd4e7ff, 0x4b4842, 0.92);
+    // 4. Calibrated Golden-Hour Sun, Azure Sky Fill & Warm Ground Bounce (CS2 Mirage/Dust2 clarity)
+    this.hemiLight = new THREE.HemisphereLight(0xcce4ff, 0x76644c, 0.98);
     this.worldScene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff1dc, 1.55);
-    this.sunLight.position.set(55, 80, 40);
+    this.sunLight = new THREE.DirectionalLight(0xffe7c2, 1.82);
+    this.sunLight.position.set(52, 68, 38);
     this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.width = 2048;
     this.sunLight.shadow.mapSize.height = 2048;
@@ -74,20 +74,20 @@ export class SceneManager {
     this.sunLight.shadow.camera.bottom = -d;
     this.worldScene.add(this.sunLight);
 
-    // Opposite cool sky bounce fill so shadowed sides of CS2 operators retain crisp detail
-    const fillLight = new THREE.DirectionalLight(0x9ac4ee, 0.5);
-    fillLight.position.set(-48, 36, -42);
+    // Opposite cool Mediterranean sky bounce fill so shadowed sides of CS2 operators retain crisp contrast
+    const fillLight = new THREE.DirectionalLight(0x98c2f0, 0.56);
+    fillLight.position.set(-48, 38, -42);
     this.worldScene.add(fillLight);
 
-    // Viewmodel crisp 3-point studio lighting rig (Warm Key + Cool Rim + Hemisphere Fill)
-    const vmHemi = new THREE.HemisphereLight(0xe4f0ff, 0x454a52, 1.15);
+    // Viewmodel crisp 3-point studio lighting rig (Warm Sun Key + Cool Sky Rim + Balanced Hemisphere)
+    const vmHemi = new THREE.HemisphereLight(0xeef5ff, 0x5d5345, 1.18);
     this.viewmodelScene.add(vmHemi);
 
-    const vmKey = new THREE.DirectionalLight(0xfff5e4, 1.65);
+    const vmKey = new THREE.DirectionalLight(0xfff0d4, 1.75);
     vmKey.position.set(2.5, 4.5, 3.0);
     this.viewmodelScene.add(vmKey);
 
-    const vmRim = new THREE.DirectionalLight(0x88c8ff, 1.05);
+    const vmRim = new THREE.DirectionalLight(0x8bc6ff, 1.15);
     vmRim.position.set(-3.2, 2.2, -2.5);
     this.viewmodelScene.add(vmRim);
 
@@ -113,11 +113,11 @@ export class SceneManager {
     const ctx = canvas.getContext('2d')!;
 
     const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0.0, '#1a5796');
-    grad.addColorStop(0.55, '#89b6db');
-    grad.addColorStop(0.78, '#eaf2fa');
-    grad.addColorStop(0.82, '#6b665c');
-    grad.addColorStop(1.0, '#302d29');
+    grad.addColorStop(0.0, '#164d8f');
+    grad.addColorStop(0.52, '#79aed8');
+    grad.addColorStop(0.76, '#efe6d6');
+    grad.addColorStop(0.82, '#8b775c');
+    grad.addColorStop(1.0, '#3d3326');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 256);
 
@@ -192,21 +192,24 @@ export class SceneManager {
         vec3 dir = normalize(vWorldPosition);
         float y = dir.y;
 
-        vec3 zenithColor = vec3(0.09, 0.34, 0.62);
-        vec3 horizonColor = vec3(0.85, 0.91, 0.98);
-        vec3 groundColor = vec3(0.24, 0.22, 0.20);
+        vec3 zenithColor = vec3(0.08, 0.30, 0.62);
+        vec3 midSkyColor = vec3(0.46, 0.69, 0.88);
+        vec3 horizonColor = vec3(0.90, 0.85, 0.77);
+        vec3 groundColor = vec3(0.36, 0.31, 0.25);
 
-        vec3 sky = mix(horizonColor, zenithColor, clamp(pow(max(y, 0.0), 0.65), 0.0, 1.0));
+        vec3 sky = mix(horizonColor, midSkyColor, smoothstep(0.0, 0.24, max(y, 0.0)));
+        sky = mix(sky, zenithColor, smoothstep(0.20, 0.85, max(y, 0.0)));
         if (y < 0.0) {
           sky = mix(horizonColor, groundColor, clamp(-y * 6.0, 0.0, 1.0));
         }
 
         vec3 sunDir = normalize(sunPosition);
         float cosTheta = dot(dir, sunDir);
-        float sunDisc = smoothstep(0.9982, 0.9996, cosTheta);
-        float sunGlow = pow(max(cosTheta, 0.0), 16.0) * 0.45;
+        float sunDisc = smoothstep(0.9984, 0.9996, cosTheta);
+        float sunHalo = pow(max(cosTheta, 0.0), 10.0) * 0.36;
+        float warmHorizon = pow(1.0 - clamp(abs(y), 0.0, 1.0), 6.0) * 0.14;
 
-        vec3 finalColor = sky + vec3(1.0, 0.95, 0.8) * (sunDisc * 3.5 + sunGlow);
+        vec3 finalColor = sky + vec3(1.0, 0.91, 0.72) * (sunDisc * 3.8 + sunHalo + warmHorizon);
         gl_FragColor = vec4(finalColor, 1.0);
       }
     `;
@@ -225,31 +228,33 @@ export class SceneManager {
   }
 
   /**
-   * Distant low-poly industrial silhouette batched into 1 single InstancedMesh (1 draw call instead of 48)
+   * Distant sunlit city silhouette blended naturally into atmospheric horizon haze (1 draw call)
    */
   private buildDistantHorizon(): THREE.InstancedMesh {
     const numStructures = 48;
     const unitBox = new THREE.BoxGeometry(1, 1, 1);
-    const horizonMat = new THREE.MeshBasicMaterial({
-      color: 0x485868,
-      fog: false,
+    const horizonMat = new THREE.MeshStandardMaterial({
+      color: 0xbcb09e,
+      roughness: 0.96,
+      metalness: 0.0,
+      fog: true,
     });
 
     const instanced = new THREE.InstancedMesh(unitBox, horizonMat, numStructures);
     instanced.frustumCulled = false;
 
     const dummy = new THREE.Object3D();
-    const radius = 175;
+    const radius = 205;
 
     for (let i = 0; i < numStructures; i++) {
-      // Deterministic pseudo-random silhouette layout
+      // Deterministic pseudo-random Mediterranean skyline silhouette
       const seed = Math.sin(i * 12.9898) * 43758.5453;
       const r1 = seed - Math.floor(seed);
       const seed2 = Math.sin(i * 78.233) * 19341.1234;
       const r2 = seed2 - Math.floor(seed2);
 
       const angle = (i / numStructures) * Math.PI * 2;
-      const dist = radius + (r1 - 0.5) * 30;
+      const dist = radius + (r1 - 0.5) * 36;
       const x = Math.cos(angle) * dist;
       const z = Math.sin(angle) * dist;
 
@@ -257,18 +262,18 @@ export class SceneManager {
       let sy: number;
       let sz: number;
 
-      if (r1 < 0.45) {
-        sx = 18 + r2 * 24;
-        sy = 14 + r1 * 32;
-        sz = 16 + r2 * 18;
-      } else if (r1 < 0.75) {
-        sx = 6 + r2 * 5;
-        sy = 35 + r2 * 45;
-        sz = 6 + r2 * 5;
+      if (r1 < 0.55) {
+        sx = 22 + r2 * 26;
+        sy = 11 + r1 * 18;
+        sz = 18 + r2 * 20;
+      } else if (r1 < 0.85) {
+        sx = 14 + r2 * 14;
+        sy = 18 + r2 * 16;
+        sz = 14 + r2 * 12;
       } else {
-        sx = 4;
-        sy = 45 + r2 * 35;
-        sz = 4;
+        sx = 9 + r2 * 6;
+        sy = 24 + r2 * 12;
+        sz = 9 + r2 * 6;
       }
 
       dummy.position.set(x, sy * 0.5 - 4, z);
