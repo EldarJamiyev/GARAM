@@ -243,8 +243,10 @@ async function runVisualAudit() {
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }));
-      // Pitch camera up to look directly at the overhead wooden pergolas & corbels
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: -160, bubbles: true }));
+      // Discharge first 2 frames of lockAcquiredFrames filter, then pitch up
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 0, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 0, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: -220, bubbles: true }));
     })()`,
   });
   await sleep(600);
@@ -254,8 +256,8 @@ async function runVisualAudit() {
   console.log('\n[Capture 8] Inspecting 3rd-Person Bot Holding Weapon along +Z...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      // Restore pitch, turn slightly right towards Sentinel bot
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -180, movementY: 160, bubbles: true }));
+      // Restore pitch and turn right towards Sentinel bot
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -320, movementY: 220, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
     })()`,
   });
@@ -267,7 +269,7 @@ async function runVisualAudit() {
   await send('Runtime.evaluate', {
     expression: `(() => {
       // Re-center aim
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 180, movementY: 0, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 320, movementY: 0, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
       const canvas = document.getElementById('game-canvas');
       if (canvas) {
@@ -290,17 +292,23 @@ async function runVisualAudit() {
   console.log('\n[Capture 10] Deploying Tactical Smoke & Molotov on Stone Deck (y=2.1m)...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
+      const smokeBtn = document.querySelector('[data-buy="smoke-grenade"]');
+      if (smokeBtn) smokeBtn.click();
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit4', key: '4', bubbles: true }));
-      const canvas = document.getElementById('game-canvas');
-      if (canvas) {
-        canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
-        setTimeout(() => {
-          canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
-        }, 80);
-      }
+      setTimeout(() => {
+        const canvas = document.getElementById('game-canvas');
+        if (canvas) {
+          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+          setTimeout(() => {
+            canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
+          }, 60);
+        }
+      }, 300);
     })()`,
   });
-  await sleep(1500);
+  await sleep(2400);
   await capture('audit_10_live_utility_deck.png', 'Stage 10: Live Tactical Smoke & Molotov on Deck');
 
   console.log('\n=====================================================');
