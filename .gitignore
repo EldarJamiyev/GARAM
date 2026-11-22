@@ -26,4 +26,5 @@ GARAM/
 # Environment and secrets
 .env
 .env.*
+!.env.example
 *.env

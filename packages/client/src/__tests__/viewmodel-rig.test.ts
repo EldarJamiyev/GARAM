@@ -249,4 +249,187 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     expect(m4Idle.tracks.some((t) => t.name === 'Hand_L.quaternion')).toBe(true);
     expect(m4Idle.tracks.some((t) => t.name === 'Bone_L004.quaternion')).toBe(true);
   });
+
+  it('verifies ArmIKSolver wrist seam gap < 0.002m across idle, fire recoil, and reload states', () => {
+    const rig = buildSyntheticFPSArmRig(false);
+    const solver = new ArmIKSolver(rig.root);
+    expect(solver.isValid).toBe(true);
+
+    const states = [
+      { name: 'idle', posL: [-0.08, 0.06, 0.36], posR: [0.10, 0.04, 0.32], rotL: 0.2 },
+      { name: 'fire_recoil', posL: [-0.075, 0.075, 0.33], posR: [0.105, 0.058, 0.29], rotL: 0.35 },
+      { name: 'reload', posL: [-0.14, -0.02, 0.28], posR: [0.09, 0.035, 0.31], rotL: 0.8 },
+    ];
+
+    for (const state of states) {
+      rig.handL.parent!.position.set(state.posL[0], state.posL[1], state.posL[2]);
+      rig.handR.parent!.position.set(state.posR[0], state.posR[1], state.posR[2]);
+      rig.handL.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), state.rotL);
+      rig.root.updateMatrixWorld(true);
+
+      solver.solve();
+
+      const gapL = rig.wristLEnd
+        .getWorldPosition(new THREE.Vector3())
+        .distanceTo(rig.handL.getWorldPosition(new THREE.Vector3()));
+      const gapR = rig.wristREnd
+        .getWorldPosition(new THREE.Vector3())
+        .distanceTo(rig.handR.getWorldPosition(new THREE.Vector3()));
+
+      expect(gapL, `${state.name} left wrist gap`).toBeLessThan(0.002);
+      expect(gapR, `${state.name} right wrist gap`).toBeLessThan(0.002);
+    }
+  });
+
+  it('enforces left-hand-to-forend grip anchor calibration within < 0.025m for all firearms', () => {
+    const physicalForendUnderside: Record<string, [number, number, number]> = {
+      'garam-47': [0.000, -0.018, -0.235],
+      'vanguard-m4': [0.002, 0.032, -0.245],
+      'sovereign-awp': [0.000, 0.022, -0.255],
+      'desert-eagle': [-0.014, -0.018, 0.002],
+    };
+
+    for (const [weaponId, expectedPos] of Object.entries(physicalForendUnderside)) {
+      const cfg = WEAPON_SOCKET_CONFIGS[weaponId];
+      expect(cfg).toBeDefined();
+      expect(cfg.leftHandAnchorLocal).toBeDefined();
+      const actual = new THREE.Vector3(...cfg.leftHandAnchorLocal!);
+      const expected = new THREE.Vector3(...expectedPos);
+      const dist = actual.distanceTo(expected);
+      expect(dist, `${weaponId} leftHandAnchor distance to forend`).toBeLessThan(0.025);
+    }
+  });
+
+  it('validates CS2 Karambit reverse-grip orientation, visible hawkbill blade, and ring positioning', () => {
+    const kCfg = WEAPON_SOCKET_CONFIGS['garam-karambit'];
+    expect(kCfg).toBeDefined();
+    expect(kCfg.localRotEuler).toBeDefined();
+
+    // CS2 reverse-grip rotation: yaw 180°, pitch 180°, roll -157° [-3.142, -3.142, -2.742]
+    const [rx, ry, rz] = kCfg.localRotEuler!;
+    expect(rx).toBeCloseTo(-Math.PI, 1);
+    expect(ry).toBeCloseTo(-Math.PI, 1);
+    expect(rz).toBeCloseTo(-2.742, 1);
+
+    // Compute NDC projection using viewmodel camera (FOV 62°, 1440x900)
+    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 10);
+    camera.updateProjectionMatrix();
+
+    const vmMesh = new THREE.Group();
+    const armsContainer = new THREE.Group();
+    armsContainer.position.set(...kCfg.armsOffset);
+    armsContainer.rotation.y = Math.PI;
+    armsContainer.scale.setScalar(kCfg.armsScale);
+    vmMesh.add(armsContainer);
+
+    const ikHandCtrlR = new THREE.Object3D();
+    ikHandCtrlR.position.set(-0.135, 0.095, 0.225);
+    ikHandCtrlR.quaternion.set(-0.0572, 0.0106, 0.5295, 0.8463);
+    armsContainer.add(ikHandCtrlR);
+
+    const handR = new THREE.Object3D();
+    handR.quaternion.set(-0.4733, 0.5626, 0.514, -0.4419);
+    ikHandCtrlR.add(handR);
+
+    const socketHolder = new THREE.Group();
+    socketHolder.position.set(...kCfg.localPos);
+    socketHolder.rotation.set(...kCfg.localRotEuler!);
+    handR.add(socketHolder);
+
+    const ringSpinGroup = new THREE.Group();
+    ringSpinGroup.position.set(0, 0.02, 0.085);
+    socketHolder.add(ringSpinGroup);
+
+    const knifeModel = new THREE.Group();
+    knifeModel.position.set(0, -0.02, -0.085);
+    ringSpinGroup.add(knifeModel);
+
+    const bladeTip = new THREE.Object3D();
+    bladeTip.position.set(0, -0.045, -0.110);
+    knifeModel.add(bladeTip);
+
+    vmMesh.updateMatrixWorld(true);
+
+    const tipWorld = bladeTip.getWorldPosition(new THREE.Vector3());
+    const ringWorld = ringSpinGroup.getWorldPosition(new THREE.Vector3());
+
+    const tipNDC = tipWorld.clone().project(camera);
+    const ringNDC = ringWorld.clone().project(camera);
+
+    // Blade tip must project inside lower-right visible viewport
+    expect(tipNDC.x).toBeGreaterThan(0.12);
+    expect(tipNDC.x).toBeLessThan(0.55);
+    expect(tipNDC.y).toBeGreaterThan(-0.55);
+    expect(tipNDC.y).toBeLessThan(-0.05);
+
+    // Blade tip must be higher in the viewport than the retention ring (curved blade sweeps UP)
+    expect(tipNDC.y).toBeGreaterThan(ringNDC.y);
+    expect(tipNDC.x).toBeLessThan(ringNDC.x);
+  });
+
+  it('guarantees zero crosshair collision (|ndcX| < 0.12 && |ndcY| < 0.12) across all 5 viewmodel setups', () => {
+    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 10);
+    camera.updateProjectionMatrix();
+
+    for (const [weaponId, cfg] of Object.entries(WEAPON_SOCKET_CONFIGS)) {
+      const armsContainer = new THREE.Group();
+      armsContainer.rotation.y = Math.PI;
+
+      const inner = new THREE.Group();
+      inner.position.set(...cfg.armsOffset);
+      inner.scale.setScalar(cfg.armsScale);
+      armsContainer.add(inner);
+
+      const rightHand = new THREE.Group();
+      inner.add(rightHand);
+
+      const weaponWrapper = new THREE.Group();
+      if (cfg.localRotEuler) {
+        weaponWrapper.rotation.set(...cfg.localRotEuler);
+      }
+      rightHand.add(weaponWrapper);
+
+      // Check key landmark points (grip, muzzle, top rail)
+      const pointsToCheck = [
+        new THREE.Vector3(0, 0, 0), // grip
+        new THREE.Vector3(0, 0.08, -0.5), // muzzle or barrel
+        new THREE.Vector3(0, 0.12, -0.2), // top rail / sight
+      ];
+
+      armsContainer.updateMatrixWorld(true);
+
+      for (const pt of pointsToCheck) {
+        const worldPt = pt.clone().applyMatrix4(weaponWrapper.matrixWorld);
+        const ndc = worldPt.project(camera);
+
+        // Point must not occupy the center crosshair deadzone
+        const inDeadzone = Math.abs(ndc.x) < 0.12 && Math.abs(ndc.y) < 0.12;
+        expect(inDeadzone, `${weaponId} point ${pt.toArray()} in crosshair deadzone (ndc: ${ndc.x.toFixed(2)}, ${ndc.y.toFixed(2)})`).toBe(false);
+      }
+    }
+  });
+
+  it('confirms AWP top scope rail sits strictly below crosshair elevation (ndcY <= -0.02)', () => {
+    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 10);
+    camera.updateProjectionMatrix();
+
+    const awpCfg = WEAPON_SOCKET_CONFIGS['sovereign-awp'];
+    const vmRoot = new THREE.Group();
+    vmRoot.position.set(0.14, -0.13, -0.32);
+
+    const awp = new THREE.Group();
+    awp.position.set(...awpCfg.localPos);
+    awp.rotation.set(...awpCfg.localRotEuler);
+    vmRoot.add(awp);
+
+    // Scope top rail landmark in AWP space
+    const scopeRail = new THREE.Object3D();
+    scopeRail.position.set(0, 0.12, -0.22);
+    awp.add(scopeRail);
+
+    vmRoot.updateMatrixWorld(true);
+    const scopeNDC = scopeRail.getWorldPosition(new THREE.Vector3()).project(camera);
+
+    expect(scopeNDC.y, 'AWP scope rail NDC Y').toBeLessThanOrEqual(-0.02);
+  });
 });

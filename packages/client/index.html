@@ -123,11 +123,11 @@
     /* Fixed CS2 Tournament 3-Column Round Header */
     #round-header {
       position: absolute;
-      top: 16px;
+      top: 14px;
       left: 50%;
       transform: translateX(-50%);
       display: grid;
-      grid-template-columns: minmax(130px, 190px) minmax(90px, 110px) minmax(130px, 190px);
+      grid-template-columns: minmax(110px, 160px) minmax(80px, 100px) minmax(110px, 160px);
       align-items: center;
       background: rgba(12, 15, 20, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.16);
@@ -135,15 +135,15 @@
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.65);
       overflow: hidden;
       white-space: nowrap;
-      max-width: calc(100vw - 32px);
+      max-width: 340px;
       z-index: 40;
     }
     .header-team {
       display: flex;
       align-items: center;
-      padding: 8px 18px;
+      padding: 6px 14px;
       font-weight: 800;
-      font-size: 13px;
+      font-size: 12px;
       letter-spacing: 1.5px;
       white-space: nowrap;
     }
@@ -160,38 +160,43 @@
       border-left: 1px solid rgba(255, 255, 255, 0.08);
     }
     .header-score {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 900;
       color: #fff;
     }
     .header-timer {
       text-align: center;
-      font-size: 19px;
+      font-size: 18px;
       font-weight: 800;
       letter-spacing: 1px;
       color: #fff;
     }
 
-    /* Killfeed */
+    /* Killfeed (Anchored Top-Right, Compact CS2 Esports Positioning) */
     #killfeed {
       position: absolute;
-      top: 24px;
-      right: 28px;
+      top: 14px;
+      right: 16px;
+      max-width: 310px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
       pointer-events: none;
+      z-index: 45;
     }
     .kill-entry {
       background: rgba(14, 18, 24, 0.92);
       border-left: 3px solid #ff334b;
-      padding: 8px 16px;
+      padding: 6px 12px;
       border-radius: 4px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       color: #e4e9f0;
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
       animation: fadeKill 5s forwards;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     @keyframes fadeKill {
       0% { opacity: 0; transform: translateX(20px); }
@@ -220,59 +225,98 @@
       100% { opacity: 0; transform: translate(-50%, -120%) scale(0.9); }
     }
 
-    /* Tactical HUD Bottom */
+    /* Tactical HUD Bottom - Slim Translucent 46px */
     #hud-bottom {
       position: absolute;
-      bottom: 24px;
-      left: 32px;
-      right: 32px;
+      bottom: 14px;
+      left: 24px;
+      right: 24px;
+      height: 46px;
       display: flex;
       justify-content: space-between;
-      align-items: flex-end;
+      align-items: center;
       font-weight: 700;
+      pointer-events: none;
+      z-index: 40;
     }
     .hud-block {
-      background: rgba(12, 16, 22, 0.92);
+      height: 46px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(10, 14, 20, 0.58);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      padding: 12px 22px;
-      border-radius: 6px;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+      padding: 0 16px;
+      border-radius: 4px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      position: relative;
     }
     .hud-label {
-      font-size: 11px;
-      letter-spacing: 1.5px;
+      font-size: 10px;
+      letter-spacing: 1.2px;
       color: #8e959e;
       text-transform: uppercase;
-      margin-bottom: 2px;
+      white-space: nowrap;
     }
-    .hud-val { font-size: 32px; letter-spacing: 1px; color: #fff; }
+    .hud-val {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      color: #fff;
+      line-height: 1;
+    }
     .hud-val.hp { color: #ff334b; }
     .hud-val.armor { color: #3b9eff; }
     .hud-val.ammo { color: #ffb833; }
     .hud-val.cash { color: #00ff88; }
-    .hud-val.speed { font-size: 15px; color: #00ff88; }
+    .hud-val.speed {
+      font-size: 11px;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #00ff88;
+      background: rgba(0, 255, 136, 0.12);
+      border: 1px solid rgba(0, 255, 136, 0.25);
+      padding: 3px 8px;
+      border-radius: 3px;
+      white-space: nowrap;
+    }
 
-    /* Weapon Slot Selector Bar */
+    /* Weapon Slot Selector Bar (CS2 Vertical Right Margin) */
     #slot-bar {
+      position: absolute;
+      right: 16px;
+      bottom: 86px;
       display: flex;
-      gap: 8px;
-      margin-bottom: 10px;
+      flex-direction: column;
+      gap: 4px;
+      align-items: flex-end;
+      pointer-events: none;
+      z-index: 45;
     }
     .slot-item {
-      padding: 5px 12px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 4px;
+      padding: 4px 10px;
+      background: rgba(14, 18, 24, 0.65);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-right: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
       font-size: 11px;
       letter-spacing: 1px;
       color: #7b8590;
       transition: all 0.15s ease;
+      text-align: right;
     }
     .slot-item.active {
-      background: rgba(59, 158, 255, 0.25);
+      background: rgba(59, 158, 255, 0.32);
       border-color: #3b9eff;
+      border-right: 3px solid #3b9eff;
       color: #fff;
       font-weight: 800;
+      box-shadow: 0 0 10px rgba(59, 158, 255, 0.3);
     }
 
     /* Reload Progress Bar */
@@ -617,9 +661,9 @@
       <div class="crosshair-dot"></div>
     </div>
 
-    <!-- Tactical HUD Bottom -->
+    <!-- Tactical HUD Bottom (Slim Translucent 46px) -->
     <div id="hud-bottom">
-      <div style="display: flex; gap: 16px;">
+      <div style="display: flex; gap: 10px; align-items: center;">
         <div class="hud-block">
           <div class="hud-label">+ HEALTH</div>
           <div class="hud-val hp" id="hud-hp">100</div>
@@ -634,28 +678,26 @@
         </div>
       </div>
 
-      <div style="display: flex; flex-direction: column; align-items: flex-end;">
-        <!-- Slot Selector Bar -->
-        <div id="slot-bar">
-          <div class="slot-item active" id="slot-1">[1] PRIMARY</div>
-          <div class="slot-item" id="slot-2">[2] PISTOL</div>
-          <div class="slot-item" id="slot-3">[3] KNIFE</div>
-          <div class="slot-item" id="slot-4">[4] UTILITY</div>
-          <div class="slot-item" id="slot-5">[5] CORE</div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="hud-block">
+          <div class="hud-label">$ CASH</div>
+          <div class="hud-val cash" id="hud-cash">$800</div>
         </div>
-
-        <div style="display: flex; gap: 16px;">
-          <div class="hud-block">
-            <div class="hud-label">$ CASH</div>
-            <div class="hud-val cash" id="hud-cash">$800</div>
-          </div>
-          <div class="hud-block" style="text-align: right; min-width: 180px;">
-            <div class="hud-label" id="hud-weapon-name">GARAM-47</div>
-            <div class="hud-val ammo"><span id="hud-ammo-cur">30</span> <span style="font-size: 18px; color: #8e959e;">/ <span id="hud-ammo-res">90</span></span></div>
-            <div id="reload-indicator"><div id="reload-fill"></div></div>
-          </div>
+        <div class="hud-block" style="min-width: 175px; justify-content: flex-end;">
+          <div class="hud-label" id="hud-weapon-name" style="margin-right: 6px;">GARAM-47</div>
+          <div class="hud-val ammo"><span id="hud-ammo-cur">30</span> <span style="font-size: 15px; color: #8e959e; font-weight: 700;">/ <span id="hud-ammo-res">90</span></span></div>
+          <div id="reload-indicator" style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255, 255, 255, 0.1); border-radius: 0 0 4px 4px; overflow: hidden; display: none;"><div id="reload-fill" style="width: 0%; height: 100%; background: #ffb833; transition: width 0.05s linear;"></div></div>
         </div>
       </div>
+    </div>
+
+    <!-- Weapon Slot Selector Bar (CS2 Vertical Right Margin) -->
+    <div id="slot-bar">
+      <div class="slot-item active" id="slot-1">[1] PRIMARY</div>
+      <div class="slot-item" id="slot-2">[2] PISTOL</div>
+      <div class="slot-item" id="slot-3">[3] KNIFE</div>
+      <div class="slot-item" id="slot-4">[4] UTILITY</div>
+      <div class="slot-item" id="slot-5">[5] CORE</div>
     </div>
   </div>
 

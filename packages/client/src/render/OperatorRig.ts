@@ -317,6 +317,7 @@ export class OperatorRig {
       map: getSharedShadowTexture(),
       transparent: true,
       depthWrite: false,
+      opacity: 0.42,
     });
     this.contactShadow = new THREE.Mesh(geoShadow, shadowMat);
     this.contactShadow.position.y = 0.015;
@@ -542,9 +543,11 @@ export class OperatorRig {
           holder.position.set(0, 0, 0);
         }
 
-        // Align holder in socket-local space so weapon barrel (+Z) points cleanly forward in neutral combat stance
+        // Align holder in socket-local space so weapon barrel (-Z) points cleanly forward (+Z) in neutral combat stance
         socketBone.getWorldQuaternion(_qSocketWorld);
         this.root.getWorldQuaternion(_qDesiredWorld);
+        // Weapon barrel points along -Z in weaponModel space; rotate 180° around Y so barrel points forward along character +Z
+        _qDesiredWorld.multiply(new THREE.Quaternion().setFromAxisAngle(_vAxisY, Math.PI));
         _euler.set(0.02, 0.16, 0, 'XYZ');
         _qDelta.setFromEuler(_euler);
         _qDesiredWorld.multiply(_qDelta);
@@ -954,6 +957,15 @@ export class OperatorRig {
 
   private updateBillboard(hpRatio: number, team: 'Vanguard' | 'Syndicate', name: string): void {
     const localTeam = settingsStore.settings.faction;
+    const isAlly = team === localTeam;
+
+    // Enemies: strictly hidden (never visible through walls)
+    if (!isAlly) {
+      this.uiBillboard.visible = false;
+      return;
+    }
+    this.uiBillboard.visible = true;
+
     const hpPct = Math.max(0, Math.min(100, Math.round(hpRatio * 100)));
     const key = `${hpPct}:${team}:${localTeam}:${name}`;
     if (key === this.lastBillboardKey) return;
@@ -962,38 +974,33 @@ export class OperatorRig {
     const ctx = this.uiCtx;
     ctx.clearRect(0, 0, 256, 80);
 
-    const isAlly = team === localTeam;
-    (this.uiBillboard.material as THREE.SpriteMaterial).depthTest = !isAlly;
-    const tagColor = isAlly ? '#3b9eff' : '#ffaa00';
-    const tagText = isAlly ? `[ALLY] ${name}` : `[ENEMY] ${name}`;
+    // Clean CS2 Teammate Overhead Chevron & Drop-Shadowed Callsign (Zero opaque dark box!)
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 2;
 
-    ctx.fillStyle = 'rgba(8, 11, 16, 0.88)';
+    // Crisp small cyan/emerald chevron pip
+    ctx.fillStyle = team === 'Vanguard' ? '#38bdf8' : '#34d399';
     ctx.beginPath();
-    ctx.roundRect(10, 8, 236, 64, 8);
+    ctx.moveTo(128, 62);
+    ctx.lineTo(118, 48);
+    ctx.lineTo(138, 48);
+    ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = tagColor;
-    ctx.lineWidth = 2;
-    ctx.stroke();
 
+    // Clean drop-shadowed callsign
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 18px sans-serif';
+    ctx.font = '800 20px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(tagText, 128, 34);
+    ctx.fillText(name, 128, 40);
 
-    const barX = 24;
-    const barY = 44;
-    const barW = 208;
-    const barH = 12;
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
 
-    ctx.fillStyle = '#22262c';
-    ctx.fillRect(barX, barY, barW, barH);
-
-    let hpColor = '#00ff88';
-    if (hpRatio < 0.35) hpColor = '#ff2233';
-    else if (hpRatio < 0.65) hpColor = '#ffaa00';
-
-    ctx.fillStyle = hpColor;
-    ctx.fillRect(barX, barY, Math.max(0, barW * (hpPct / 100)), barH);
+    const spriteMat = this.uiBillboard.material as THREE.SpriteMaterial;
+    spriteMat.depthTest = false;
+    spriteMat.opacity = 0.85;
 
     this.uiTexture.needsUpdate = true;
   }

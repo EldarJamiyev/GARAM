@@ -17,6 +17,10 @@ const _muzzleLocal = new THREE.Vector3();
 const _mat4Inv = new THREE.Matrix4();
 const _mat4Rel = new THREE.Matrix4();
 const _mat3Lin = new THREE.Matrix3();
+const _vA = new THREE.Vector3();
+const _vB = new THREE.Vector3();
+const _euler = new THREE.Euler();
+const _qDelta = new THREE.Quaternion();
 
 /**
  * Computes the local translation vector in `part.parent` space that produces exactly
@@ -81,6 +85,12 @@ export class WeaponViewmodel {
   private bindPoseSnapshot: Map<string, BoneTransformSnapshot> = new Map();
   private rifSocket: THREE.Object3D | null = null;
   private handRSocket: THREE.Object3D | null = null;
+  private ikHandCtrlL: THREE.Object3D | null = null;
+  private handL: THREE.Object3D | null = null;
+  private fingerBones: Map<string, THREE.Object3D> = new Map();
+  private akFingerPose: Map<string, THREE.Quaternion> = new Map();
+  private leftHandGripAnchors: Map<string, THREE.Object3D> = new Map();
+  private leftHandLockWeight = 1.0;
   private armsLoaded = false;
   private activeOneShotTimer = 0;
   private wasReloading = false;
@@ -365,6 +375,38 @@ export class WeaponViewmodel {
         this.bindPoseSnapshot = captureBindPose(armsModel);
         this.rifSocket = armsModel.getObjectByName('Rif') || null;
         this.handRSocket = armsModel.getObjectByName('Hand_R') || null;
+        this.ikHandCtrlL = armsModel.getObjectByName('IK_Hand_Cntrl_L') || null;
+        this.handL = armsModel.getObjectByName('Hand_L') || null;
+
+        this.fingerBones.clear();
+        armsModel.traverse((node) => {
+          if (node.name && node.name.startsWith('Bone_L.')) {
+            this.fingerBones.set(node.name, node);
+          }
+        });
+
+        // Extract AK_Idle frame 0 finger curl quaternions to wrap fingers around forend
+        this.akFingerPose.clear();
+        const akIdle = armsRes.animations.find((a) => a.name === 'AK_Idle');
+        if (akIdle) {
+          for (const track of akIdle.tracks) {
+            if (track.name.endsWith('.quaternion') && track.values.length >= 4) {
+              const dot = track.name.lastIndexOf('.');
+              const boneName = track.name.slice(0, dot);
+              if (boneName.startsWith('Bone_L.')) {
+                this.akFingerPose.set(
+                  boneName,
+                  new THREE.Quaternion(
+                    track.values[0],
+                    track.values[1],
+                    track.values[2],
+                    track.values[3]
+                  )
+                );
+              }
+            }
+          }
+        }
 
         const mixer = new THREE.AnimationMixer(armsModel);
         this.armsMixer = mixer;
@@ -471,7 +513,34 @@ export class WeaponViewmodel {
           socketHolder.rotation.set(cfg.localRotEuler[0], cfg.localRotEuler[1], cfg.localRotEuler[2]);
           socketHolder.scale.setScalar(cfg.localScale);
 
+          if (cfg.leftHandAnchorLocal) {
+            const gripAnchor = new THREE.Object3D();
+            gripAnchor.name = 'left_hand_grip_anchor';
+            gripAnchor.position.set(
+              cfg.leftHandAnchorLocal[0],
+              cfg.leftHandAnchorLocal[1],
+              cfg.leftHandAnchorLocal[2]
+            );
+            loadedModel.add(gripAnchor);
+            this.leftHandGripAnchors.set(weaponId, gripAnchor);
+          }
+
           if (weaponId === 'garam-karambit') {
+            // Apply rich crimson-anodized metallic sheen and PMREM reflections to Karambit blade
+            loadedModel.traverse((child) => {
+              if ((child as THREE.Mesh).isMesh) {
+                const mesh = child as THREE.Mesh;
+                const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                for (const m of mats) {
+                  if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
+                    const std = m as THREE.MeshStandardMaterial;
+                    std.metalness = Math.max(0.88, std.metalness);
+                    std.roughness = Math.min(0.22, std.roughness);
+                    std.envMapIntensity = 2.0;
+                  }
+                }
+              }
+            });
             // Dedicated spin group around retention ring at local (0, 0.02, 0.085) for draw/inspect twirl
             const ringSpinGroup = new THREE.Group();
             ringSpinGroup.position.set(0, 0.02, 0.085);
@@ -893,7 +962,8 @@ export class WeaponViewmodel {
     mouseDeltaX: number,
     mouseDeltaY: number,
     walkBob: number,
-    strafeRoll: number
+    strafeRoll: number,
+    playerSpeed = 0
   ): void {
     const safeDt = Math.max(0.0001, Math.min(dt, 0.05));
 
@@ -950,12 +1020,65 @@ export class WeaponViewmodel {
       if (this.activeOneShotTimer > 0) {
         this.activeOneShotTimer -= safeDt;
         if (this.activeOneShotTimer <= 0 && !this.isReloading) {
-          const isWalking = Math.abs(walkBob) > 0.0012;
+          const isWalking = playerSpeed > 0.5 || Math.abs(walkBob) > 0.0012;
+          this.playWeaponAnimation(isWalking ? 'walk' : 'idle', 1.0);
+        }
+      } else if (!this.isReloading && !this.isInspecting && this.drawProgress >= 1.0) {
+        const isWalking = playerSpeed > 0.5 || Math.abs(walkBob) > 0.0012;
+        const desiredClip = resolveWeaponClipName(this.currentWeaponId, isWalking ? 'walk' : 'idle');
+        const act = this.armsActions.get(desiredClip);
+        if (act && !act.isRunning()) {
           this.playWeaponAnimation(isWalking ? 'walk' : 'idle', 1.0);
         }
       }
 
+      // Smoothly blend leftHandLockWeight: 1.0 for idle/walk/fire (firearms only), 0.0 for reload/draw/inspect/karambit
+      const shouldLockLeftHand =
+        this.currentWeaponId !== 'garam-karambit' &&
+        !this.isReloading &&
+        !this.isInspecting &&
+        this.drawProgress >= 1.0;
+      if (shouldLockLeftHand) {
+        this.leftHandLockWeight = Math.min(1.0, this.leftHandLockWeight + safeDt * 8.0);
+      } else {
+        this.leftHandLockWeight = Math.max(0.0, this.leftHandLockWeight - safeDt * 8.0);
+      }
+
       this.armsMixer.update(safeDt);
+
+      // Lock left hand to weapon handguard/forend underside anchor
+      if (this.leftHandLockWeight > 0.001 && this.ikHandCtrlL) {
+        const gripAnchor = this.leftHandGripAnchors.get(this.currentWeaponId);
+        const cfg = getWeaponSocketConfig(this.currentWeaponId);
+        if (gripAnchor) {
+          gripAnchor.updateMatrixWorld(true);
+          gripAnchor.getWorldPosition(_vA);
+          if (this.ikHandCtrlL.parent) {
+            this.ikHandCtrlL.parent.updateMatrixWorld(true);
+            this.ikHandCtrlL.parent.worldToLocal(_vB.copy(_vA));
+            this.ikHandCtrlL.position.lerp(_vB, this.leftHandLockWeight);
+          } else {
+            this.ikHandCtrlL.position.lerp(_vA, this.leftHandLockWeight);
+          }
+          if (this.handL && cfg.leftHandRelRotEuler) {
+            _euler.set(cfg.leftHandRelRotEuler[0], cfg.leftHandRelRotEuler[1], cfg.leftHandRelRotEuler[2], 'XYZ');
+            _qDelta.setFromEuler(_euler);
+            this.handL.quaternion.slerp(_qDelta, this.leftHandLockWeight);
+          }
+          if (
+            this.akFingerPose.size > 0 &&
+            (this.currentWeaponId === 'vanguard-m4' || this.currentWeaponId === 'sovereign-awp')
+          ) {
+            this.akFingerPose.forEach((qTarget, boneName) => {
+              const bone = this.fingerBones.get(boneName);
+              if (bone) {
+                bone.quaternion.slerp(qTarget, this.leftHandLockWeight);
+              }
+            });
+          }
+        }
+      }
+
       this.armIKSolver?.solve();
     } else {
       this.wasReloading = this.isReloading;

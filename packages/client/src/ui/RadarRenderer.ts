@@ -27,7 +27,7 @@ export class RadarRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private size = 185;
-  private readonly MAP_SCALE = 2.4; // Pixels per meter tuned for 94m × 90m DE_MERIDIAN
+  private readonly MAP_SCALE = 2.8; // Pixels per meter tuned for CS2 ~88% radar coverage on DE_MERIDIAN
   private spottedEnemies: Map<string, SpottedRecord> = new Map();
 
   constructor() {
@@ -115,6 +115,17 @@ export class RadarRenderer {
     ctx.rotate(radarRot);
 
     const s = this.MAP_SCALE;
+
+    // 0. Render Walkable Main Deck Footprint (Warm Sandstone Courtyard Fill)
+    ctx.fillStyle = 'rgba(74, 62, 50, 0.42)';
+    for (const b of blocks) {
+      if (!b.id.startsWith('deck_')) continue;
+      const rx = (b.minX - playerX) * s;
+      const ry = (b.minZ - playerZ) * s;
+      const rw = (b.maxX - b.minX) * s;
+      const rh = (b.maxZ - b.minZ) * s;
+      ctx.fillRect(rx, ry, rw, rh);
+    }
 
     // 1. Sunken Aqueduct Underpass (y = 0.0m) in dashed teal
     const upX = (-3.5 - playerX) * s;

@@ -28,6 +28,8 @@ export interface WeaponSocketConfig {
   leftHandAnchorLocal?: [number, number, number];
   /** Optional relative Euler rotation for Hand_L in weapon holder space (matched to AK_Idle palm cradle) */
   leftHandRelRotEuler?: [number, number, number];
+  /** Optional left-hand finger curl factor for wrapping handguard */
+  leftFingerCurl?: number;
   /** Optional ring-spin pivot centroid in normalized weapon local space (Karambit) */
   ringPivotLocal?: [number, number, number];
   clips: WeaponClipSet;
@@ -43,12 +45,13 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localPos: [-0.0424, 0.4247, -0.1323],
     localRotEuler: [-1.7183, -0.1314, 3.0204],
     localScale: 1.004,
-    armsScale: 0.44,
-    armsOffset: [0.064, -0.212, -0.052],
+    armsScale: 0.38,
+    armsOffset: [0.072, -0.168, -0.048],
     muzzleLocalPos: [0.0089, 0.06, -0.6078],
     requiresPBodyRest: false,
-    leftHandAnchorLocal: [-0.046, 0.004, -0.435],
+    leftHandAnchorLocal: [0.000, -0.018, -0.235],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
+    leftFingerCurl: 0.85,
     clips: {
       idle: 'AK_Idle',
       walk: 'AK_Walk',
@@ -61,18 +64,19 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'vanguard-m4': {
     socketBone: 'Rif',
     modelPath: '/models/m4a1s.glb',
-    targetLength: 0.82,
+    targetLength: 0.80,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
     localPos: [0.0258, -0.0616, 0.2806],
     localRotEuler: [0.0327, 0.3605, -1.6931],
     localScale: 1.004,
-    armsScale: 0.44,
-    armsOffset: [0.058, -0.232, -0.042],
+    armsScale: 0.38,
+    armsOffset: [0.068, -0.172, -0.042],
     muzzleLocalPos: [0.007, 0.081, -0.6525],
     requiresPBodyRest: true,
-    leftHandAnchorLocal: [-0.030, 0.012, -0.315],
+    leftHandAnchorLocal: [0.002, 0.032, -0.245],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
+    leftFingerCurl: 0.85,
     clips: {
       idle: 'M4_Idle',
       walk: 'M4_Walk',
@@ -86,18 +90,19 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'sovereign-awp': {
     socketBone: 'Rif',
     modelPath: '/models/awp.glb',
-    targetLength: 0.80,
+    targetLength: 0.82,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [-0.0859, 0.0405, 0.0958],
-    localRotEuler: [-0.957, -0.0551, 3.043],
+    localPos: [-0.082, 0.038, 0.092],
+    localRotEuler: [-0.985, -0.062, 3.025],
     localScale: 1.004,
-    armsScale: 0.43,
-    armsOffset: [0.082, -0.242, -0.072],
+    armsScale: 0.38,
+    armsOffset: [0.075, -0.170, -0.055],
     muzzleLocalPos: [0.0114, 0.114, -0.8357],
     requiresPBodyRest: false,
-    leftHandAnchorLocal: [-0.032, -0.024, -0.300],
+    leftHandAnchorLocal: [0.000, 0.022, -0.255],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
+    leftFingerCurl: 0.85,
     clips: {
       idle: 'SRifle_Idle',
       walk: 'SRifle_Walk',
@@ -109,17 +114,19 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'desert-eagle': {
     socketBone: 'Rif',
     modelPath: '/models/deagle.glb',
-    targetLength: 0.21,
+    targetLength: 0.22,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
     localPos: [-0.1433, 0.0041, -0.0161],
     localRotEuler: [1.3226, -1.4991, 2.6492],
     localScale: 1.004,
-    armsScale: 0.44,
-    armsOffset: [0.052, -0.178, -0.068],
+    armsScale: 0.42,
+    armsOffset: [0.052, -0.118, -0.065],
     muzzleLocalPos: [0.0001, 0.064, -0.2348],
     requiresPBodyRest: false,
-    leftHandAnchorLocal: [-0.030, -0.056, -0.004],
+    leftHandAnchorLocal: [-0.014, -0.018, 0.002],
+    leftHandRelRotEuler: [0.25, 0.12, -0.45],
+    leftFingerCurl: 0.9,
     clips: {
       idle: 'Pistol_Idle',
       walk: 'Pistol_Walk',
@@ -133,14 +140,14 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     modelPath: '/models/karambit.glb',
     targetLength: 0.23,
     rotationEuler: [0, 0, 0],
-    localPos: [-0.0001, 0.0276, -0.0283],
-    localRotEuler: [0.6463, -0.1043, 2.2079],
+    localPos: [0.015, 0.035, -0.018],
+    localRotEuler: [-3.142, -3.142, -2.742],
     localScale: 1.08,
     armsScale: 0.44,
-    armsOffset: [0.082, -0.208, -0.052],
+    armsOffset: [0.035, -0.115, -0.052],
     muzzleLocalPos: [0, -0.0427, -0.115],
     requiresPBodyRest: true,
-    ringPivotLocal: [0, 0.0224, 0.095],
+    ringPivotLocal: [0, 0.02, 0.085],
     clips: {
       idle: 'Karambit_Idle',
       walk: 'Karambit_Walk',
@@ -275,8 +282,8 @@ export function buildKarambitAnimationClips(
     }
   }
 
-  // Position left hand in CQC knife guard further left so the Karambit blade sweeps cleanly in between
-  basePos.set('IK_Hand_Cntrl_L', [0.165, 0.015, 0.22]);
+  // Position left hand in low-left tactical CQC guard so it stays clear of HUD and center screen
+  basePos.set('IK_Hand_Cntrl_L', [0.180, 0.160, 0.100]);
   baseQuats.set('IK_Hand_Cntrl_L', [-0.14, 0.05, 0.97, -0.18]);
   // Position right hand on the right side for crisp reverse-grip Karambit framing
   basePos.set('IK_Hand_Cntrl_R', [-0.135, 0.095, 0.225]);

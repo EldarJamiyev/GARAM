@@ -66,7 +66,7 @@ export class GaramGame {
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 0.95;
     this.renderer.autoClear = false;
 
     this.sceneManager = new SceneManager(this.renderer);
