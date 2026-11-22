@@ -3,14 +3,23 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 export interface ModelNormalizationOptions {
-  targetLength?: number; // Target dimension on longest axis (for weapons/props)
-  targetHeight?: number; // Target dimension on Y axis (for characters)
-  centerAtFeet?: boolean; // Aligns bounding box bottom at Y = 0 and centers X/Z
-  centerPivot?: boolean; // Centers bounding box at (0, 0, 0)
+  targetLength?: number;              // Target dimension on longest axis (for weapons/props)
+  targetHeight?: number;              // Target dimension on Y axis (for characters)
+  anchorBoneName?: string;            // Translates inner so first matching bone sits at (0,0,0) of wrapper
+  centerAtFeet?: boolean;             // Aligns bounding box bottom at Y = 0 and centers X/Z
+  centerPivot?: boolean;              // Centers bounding box at (0, 0, 0)
   rotationEuler?: [number, number, number]; // Pre-normalization rotation in radians [x, y, z]
   envMapIntensity?: number;
   castShadow?: boolean;
   receiveShadow?: boolean;
+}
+
+export interface NormalizedModelUserData {
+  normalizationScale: number;
+  normalizedBounds: THREE.Box3;
+  barrelAxisLocal: THREE.Vector3;
+  muzzleTipLocal: THREE.Vector3;
+  anchorBoneFound: boolean;
 }
 
 interface CachedAssetEntry {
@@ -45,6 +54,23 @@ export class AssetManager {
     return this.maxAnisotropy;
   }
 
+  public static disposeObject3D(obj: THREE.Object3D): void {
+    obj.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        if (mesh.geometry) {
+          mesh.geometry.dispose();
+        }
+        if (mesh.material) {
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (let i = 0; i < mats.length; i++) {
+            mats[i].dispose();
+          }
+        }
+      }
+    });
+  }
+
   /**
    * Asynchronously loads a .glb / .gltf model with in-flight deduplication and graceful fallback.
    * Returns a normalized wrapper Group containing a SkeletonUtils-cloned model, or null on failure.
@@ -74,8 +100,10 @@ export class AssetManager {
 
       // Safe clone preserving SkinnedMesh skeletons and independent bone hierarchies
       const cloned = SkeletonUtils.clone(entry.scene);
+
       const castShadow = options.castShadow ?? true;
       const receiveShadow = options.receiveShadow ?? true;
+      const envIntensity = options.envMapIntensity ?? 1.6;
 
       cloned.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
@@ -90,7 +118,8 @@ export class AssetManager {
               const mat = mats[i];
               if ((mat as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
                 const std = mat as THREE.MeshStandardMaterial;
-                std.envMapIntensity = options.envMapIntensity ?? 1.5;
+                std.envMapIntensity = envIntensity;
+                this.applyTextureAnisotropy(std);
                 std.needsUpdate = true;
               }
             }
@@ -108,7 +137,8 @@ export class AssetManager {
         );
       }
       wrapper.add(cloned);
-      this.normalizeGLB(wrapper, cloned, options);
+
+      AssetManager.normalizeGLB(wrapper, cloned, options);
       return { model: wrapper, animations: entry.animations };
     } catch {
       console.warn(`[AssetManager] Model at "${path}" failed to load. Falling back to procedural PBR mesh.`);
@@ -117,74 +147,83 @@ export class AssetManager {
     }
   }
 
+  private applyTextureAnisotropy(std: THREE.MeshStandardMaterial): void {
+    const texList: Array<THREE.Texture | null> = [
+      std.map,
+      std.normalMap,
+      std.roughnessMap,
+      std.metalnessMap,
+      std.aoMap,
+      std.emissiveMap,
+    ];
+    for (let i = 0; i < texList.length; i++) {
+      const tex = texList[i];
+      if (tex) {
+        tex.anisotropy = this.maxAnisotropy;
+      }
+    }
+  }
+
   private async getOrLoadTemplate(path: string): Promise<CachedAssetEntry | null> {
     const cached = this.cache.get(path);
     if (cached) return cached;
 
-    let pending = this.inflight.get(path);
-    if (!pending) {
-      pending = this.loader
-        .loadAsync(path)
-        .then((gltf) => {
+    const existingPromise = this.inflight.get(path);
+    if (existingPromise) return existingPromise;
+
+    const loadPromise = new Promise<CachedAssetEntry | null>((resolve) => {
+      this.loader.load(
+        path,
+        (gltf) => {
           const root = gltf.scene;
-          // Apply texture anisotropy and color-space hygiene once on the template
+          const animations = gltf.animations || [];
+
           root.traverse((child) => {
             if ((child as THREE.Mesh).isMesh) {
               const mesh = child as THREE.Mesh;
               const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
               for (const mat of mats) {
-                if (!mat) continue;
-                const std = mat as THREE.MeshStandardMaterial;
-                for (const tex of [std.map, std.normalMap, std.roughnessMap, std.metalnessMap, std.aoMap, std.emissiveMap]) {
-                  if (tex) {
-                    tex.anisotropy = this.maxAnisotropy;
-                    tex.needsUpdate = true;
-                  }
+                if ((mat as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
+                  const std = mat as THREE.MeshStandardMaterial;
+                  this.applyTextureAnisotropy(std);
+                  std.envMapIntensity = 1.6;
                 }
               }
             }
           });
-          const entry: CachedAssetEntry = { scene: root, animations: gltf.animations || [] };
+
+          const entry: CachedAssetEntry = { scene: root, animations };
           this.cache.set(path, entry);
           this.inflight.delete(path);
-          return entry;
-        })
-        .catch(() => {
+          resolve(entry);
+        },
+        undefined,
+        () => {
           this.failedPaths.add(path);
           this.inflight.delete(path);
-          return null;
-        });
-      this.inflight.set(path, pending);
-    }
-    return pending;
+          resolve(null);
+        }
+      );
+    });
+
+    this.inflight.set(path, loadPromise);
+    return loadPromise;
   }
 
   /**
-   * Computes accurate skinned or static world bounds, then normalizes scale and pivot inside wrapper.
+   * Scales an arbitrary GLB scene into realistic metric coordinates, optionally anchors
+   * a specific bone (e.g. 'weapon_hand_r') to wrapper (0,0,0), and writes deterministic
+   * normalization metadata (scale, bounds, barrelAxisLocal, muzzleTipLocal) to wrapper.userData.
    */
-  public normalizeGLB(
+  public static normalizeGLB(
     wrapper: THREE.Group,
     inner: THREE.Object3D,
     options: ModelNormalizationOptions
-  ): void {
-    const computeSkinnedBox = (target: THREE.Object3D): THREE.Box3 => {
-      target.updateMatrixWorld(true);
-      target.traverse((child) => {
-        if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
-          const sm = child as THREE.SkinnedMesh;
-          sm.skeleton?.update();
-          sm.computeBoundingBox();
-          sm.computeBoundingSphere();
-        }
-      });
-      return new THREE.Box3().setFromObject(target);
-    };
-
-    let box = computeSkinnedBox(wrapper);
+  ): NormalizedModelUserData {
+    wrapper.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(inner);
     const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
     box.getSize(size);
-    box.getCenter(center);
 
     let scaleFactor = 1.0;
     if (options.targetHeight && size.y > 0.0001) {
@@ -196,48 +235,98 @@ export class AssetManager {
       }
     }
 
-    if (Number.isFinite(scaleFactor) && scaleFactor > 0.0001 && scaleFactor !== 1.0) {
+    if (scaleFactor !== 1.0) {
       inner.scale.multiplyScalar(scaleFactor);
-      box = computeSkinnedBox(wrapper);
-      box.getSize(size);
-      box.getCenter(center);
+      wrapper.updateMatrixWorld(true);
     }
 
-    if (options.centerAtFeet) {
-      inner.position.x -= center.x;
-      inner.position.y -= box.min.y;
-      inner.position.z -= center.z;
-    } else if (options.centerPivot) {
-      inner.position.x -= center.x;
-      inner.position.y -= center.y;
-      inner.position.z -= center.z;
-    }
-    wrapper.updateMatrixWorld(true);
-  }
+    let anchorBoneFound = false;
+    if (options.anchorBoneName) {
+      const prefix = options.anchorBoneName.toLowerCase();
+      let anchorObj: THREE.Object3D | null = null;
+      inner.traverse((obj) => {
+        if (!anchorObj && obj.name && obj.name.toLowerCase().startsWith(prefix)) {
+          anchorObj = obj;
+        }
+      });
 
-  /**
-   * Deeply disposes non-shared procedural geometries, materials, and textures.
-   */
-  public static disposeObject3D(root: THREE.Object3D): void {
-    root.traverse((child) => {
-      const mesh = child as THREE.Mesh;
-      if (mesh.isMesh) {
-        if (mesh.geometry) {
-          mesh.geometry.dispose();
-        }
-        if (mesh.material) {
-          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-          mats.forEach((mat) => {
-            Object.keys(mat).forEach((prop) => {
-              const val = (mat as unknown as Record<string, unknown>)[prop];
-              if (val && typeof val === 'object' && 'isTexture' in val && (val as THREE.Texture).isTexture) {
-                (val as THREE.Texture).dispose();
-              }
-            });
-            mat.dispose();
-          });
-        }
+      if (anchorObj) {
+        const boneWorld = new THREE.Vector3();
+        (anchorObj as THREE.Object3D).getWorldPosition(boneWorld);
+        const boneInWrapper = wrapper.worldToLocal(boneWorld);
+        inner.position.sub(boneInWrapper);
+        wrapper.updateMatrixWorld(true);
+        anchorBoneFound = true;
       }
-    });
+    }
+
+    const scaledBox = new THREE.Box3().setFromObject(inner);
+    const center = new THREE.Vector3();
+    scaledBox.getCenter(center);
+
+    if (!anchorBoneFound) {
+      if (options.centerAtFeet) {
+        inner.position.x -= center.x;
+        inner.position.z -= center.z;
+        inner.position.y -= scaledBox.min.y;
+        wrapper.updateMatrixWorld(true);
+      } else if (options.centerPivot) {
+        inner.position.sub(center);
+        wrapper.updateMatrixWorld(true);
+      }
+    }
+
+    const finalBox = new THREE.Box3().setFromObject(inner);
+    const finalSize = new THREE.Vector3();
+    const finalCenter = new THREE.Vector3();
+    finalBox.getSize(finalSize);
+    finalBox.getCenter(finalCenter);
+
+    // Detect primary longitudinal barrel axis (longest bounding dimension)
+    // Sign points toward whichever bounding extreme is farther from the grip/origin (muzzle end > stock end)
+    const barrelAxisLocal = new THREE.Vector3(0, 0, -1);
+    const muzzleTipLocal = new THREE.Vector3(finalCenter.x, finalBox.min.y + finalSize.y * 0.68, finalCenter.z);
+
+    if (finalSize.z >= finalSize.x && finalSize.z >= finalSize.y) {
+      const forwardSign = Math.abs(finalBox.max.z) >= Math.abs(finalBox.min.z) ? 1 : -1;
+      barrelAxisLocal.set(0, 0, forwardSign);
+      muzzleTipLocal.set(
+        finalCenter.x,
+        finalBox.min.y + finalSize.y * 0.68,
+        forwardSign > 0 ? finalBox.max.z : finalBox.min.z
+      );
+    } else if (finalSize.x >= finalSize.y && finalSize.x >= finalSize.z) {
+      const forwardSign = Math.abs(finalBox.max.x) >= Math.abs(finalBox.min.x) ? 1 : -1;
+      barrelAxisLocal.set(forwardSign, 0, 0);
+      muzzleTipLocal.set(
+        forwardSign > 0 ? finalBox.max.x : finalBox.min.x,
+        finalBox.min.y + finalSize.y * 0.68,
+        finalCenter.z
+      );
+    } else {
+      const forwardSign = Math.abs(finalBox.max.y) >= Math.abs(finalBox.min.y) ? 1 : -1;
+      barrelAxisLocal.set(0, forwardSign, 0);
+      muzzleTipLocal.set(
+        finalCenter.x,
+        forwardSign > 0 ? finalBox.max.y : finalBox.min.y,
+        finalCenter.z
+      );
+    }
+
+    const meta: NormalizedModelUserData = {
+      normalizationScale: scaleFactor,
+      normalizedBounds: finalBox,
+      barrelAxisLocal,
+      muzzleTipLocal,
+      anchorBoneFound,
+    };
+
+    wrapper.userData.normalizationScale = meta.normalizationScale;
+    wrapper.userData.normalizedBounds = meta.normalizedBounds;
+    wrapper.userData.barrelAxisLocal = meta.barrelAxisLocal;
+    wrapper.userData.muzzleTipLocal = meta.muzzleTipLocal;
+    wrapper.userData.anchorBoneFound = meta.anchorBoneFound;
+
+    return meta;
   }
 }

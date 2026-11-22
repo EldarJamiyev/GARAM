@@ -124,9 +124,9 @@ export function stepGrenadePhysics(
     }
   }
 
-  // Clamp inside arena bounds
-  pos.x = Math.max(-58.2, Math.min(58.2, pos.x));
-  pos.z = Math.max(-58.2, Math.min(58.2, pos.z));
+  // Clamp inside DE_MERIDIAN arena bounds (94m x 90m)
+  pos.x = Math.max(-46.8, Math.min(46.8, pos.x));
+  pos.z = Math.max(-44.8, Math.min(44.8, pos.z));
 
   return { bounced, hitGround };
 }

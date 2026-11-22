@@ -245,7 +245,7 @@ export class GameRoom {
     for (let i = 0; i < 5; i++) {
       const vCtrl = new KinematicPlayerController(
         SPAWN_POINTS.VANGUARD_CT.x + (i - 2) * 2,
-        0,
+        SPAWN_POINTS.VANGUARD_CT.y,
         SPAWN_POINTS.VANGUARD_CT.z
       );
       this.bots.push({
@@ -263,16 +263,16 @@ export class GameRoom {
         deaths: 0,
         waypointIndex: 0,
         waypoints: [
-          { x: -32, y: 0, z: -30 },
-          { x: 0, y: 0, z: 0 },
-          { x: 35, y: 0, z: -32 },
+          { x: -25, y: 2.1, z: -20 },
+          { x: 0, y: 2.1, z: -4 },
+          { x: 29, y: 2.1, z: -20 },
         ],
         burnDamageAccum: 0,
       });
 
       const sCtrl = new KinematicPlayerController(
         SPAWN_POINTS.OBSIDIAN_T.x + (i - 2) * 2,
-        0,
+        SPAWN_POINTS.OBSIDIAN_T.y,
         SPAWN_POINTS.OBSIDIAN_T.z
       );
       this.bots.push({
@@ -290,9 +290,9 @@ export class GameRoom {
         deaths: 0,
         waypointIndex: 0,
         waypoints: [
-          { x: 0, y: 0, z: 0 },
-          { x: -32, y: 0, z: -30 },
-          { x: 35, y: 0, z: -32 },
+          { x: 0, y: 2.1, z: 22 },
+          { x: -25, y: 2.1, z: -20 },
+          { x: 29, y: 2.1, z: -20 },
         ],
         burnDamageAccum: 0,
       });

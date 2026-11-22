@@ -156,5 +156,68 @@ describe('Shared MatchSimulation & Grandmaster BotBrain Suite', () => {
     expect(sim.ctLossStreak).toBe(0);
     expect(sim.tLossStreak).toBe(0);
   });
+
+  it('bounces grenades and detonates Molotovs cleanly on DE_MERIDIAN y=2.1m Main Deck and y=4.9m Overlooks', async () => {
+    const { DE_CITADEL_BLOCKS, SPAWN_POINTS, simulateGrenadeTrajectory, SpatialGrid } = await import('../index.js');
+    const grid = new SpatialGrid(DE_CITADEL_BLOCKS, 10);
+
+    // 1. Main Deck (CT Spawn, y = 2.1m): smoke bounces on top of deck slab and never sinks to y = 0.08
+    const mainDeckSmoke = simulateGrenadeTrajectory(
+      { x: SPAWN_POINTS.VANGUARD_CT.x, y: SPAWN_POINTS.VANGUARD_CT.y + 1.5, z: SPAWN_POINTS.VANGUARD_CT.z + 2.0 },
+      { x: 0, y: 1.0, z: 3.5 },
+      1.6,
+      DE_CITADEL_BLOCKS,
+      false,
+      1 / 64,
+      grid
+    );
+    expect(mainDeckSmoke.bounces).toBeGreaterThanOrEqual(1);
+    expect(mainDeckSmoke.finalPos.y).toBeGreaterThanOrEqual(2.1);
+
+    // 2. Main Deck Molotov: detonates right on y = 2.1m deck surface (hitGround = true)
+    const mainDeckMolo = simulateGrenadeTrajectory(
+      { x: -25, y: 2.1 + 1.5, z: -20 },
+      { x: 0, y: -1.0, z: 2.0 },
+      5.0,
+      DE_CITADEL_BLOCKS,
+      true,
+      1 / 64,
+      grid
+    );
+    expect(mainDeckMolo.finalPos.y).toBeGreaterThanOrEqual(2.1);
+    expect(mainDeckMolo.finalPos.y).toBeLessThan(2.5);
+
+    // 3. Upper Overlook (A Heaven, y = 4.9m, around x=-21, z=-28): Molotov detonates on y = 4.9m slab
+    const heavenMolo = simulateGrenadeTrajectory(
+      { x: -21, y: 4.9 + 1.2, z: -28 },
+      { x: 0, y: -1.5, z: 0 },
+      5.0,
+      DE_CITADEL_BLOCKS,
+      true,
+      1 / 64,
+      grid
+    );
+    expect(heavenMolo.finalPos.y).toBeGreaterThanOrEqual(4.9);
+    expect(heavenMolo.finalPos.y).toBeLessThan(5.3);
+  });
+
+  it('keeps B Market wood door wallbangable (WOOD_THIN) while preserving >= 1.8m walkable doorway clearance', async () => {
+    const { DE_CITADEL_BLOCKS } = await import('../index.js');
+    const door = DE_CITADEL_BLOCKS.find((b) => b.id === 'b_market_wood_door');
+    const northWall = DE_CITADEL_BLOCKS.find((b) => b.id === 'ct_east_bldg');
+    const southBooth = DE_CITADEL_BLOCKS.find((b) => b.id === 'b_control_booth');
+
+    expect(door).toBeDefined();
+    expect(door!.material).toBe('WOOD_THIN');
+    expect(northWall).toBeDefined();
+    expect(southBooth).toBeDefined();
+
+    // Gap north of door leaf (between ct_east_bldg.maxZ and door.minZ) and south of door leaf must both be >= 1.8m
+    const northGap = door!.minZ - northWall!.maxZ;
+    const southGap = southBooth!.minZ - door!.maxZ;
+    expect(northGap).toBeGreaterThanOrEqual(1.8);
+    expect(southGap).toBeGreaterThanOrEqual(1.8);
+  });
 });
+
 

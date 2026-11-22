@@ -5,6 +5,7 @@ import {
   SmokeOccluder,
   SpatialGrid,
   hasLineOfSight,
+  stepGrenadePhysics,
 } from '@garam/shared';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
@@ -94,7 +95,8 @@ export interface UtilityCallbacks {
 const _camForward = new THREE.Vector3();
 const _toFlash = new THREE.Vector3();
 const _botEye = new THREE.Vector3();
-const _nextPos = new THREE.Vector3();
+const _stepPos = { x: 0, y: 0, z: 0 };
+const _stepVel = { x: 0, y: 0, z: 0 };
 
 export class UtilityManager {
   private scene: THREE.Scene;
@@ -260,7 +262,7 @@ export class UtilityManager {
 
   public update(
     dt: number,
-    colliders: AABBCollider[],
+    _colliders: AABBCollider[],
     blocks: MapBlockCollider[],
     playerPos: THREE.Vector3,
     camera: THREE.PerspectiveCamera,
@@ -269,64 +271,46 @@ export class UtilityManager {
   ): void {
     const now = performance.now();
 
-    // 1. Simulate Thrown Grenades
+    // 1. Simulate Thrown Grenades via shared 3D closest-point AABB physics (multi-tier y=0.0, 2.1, 4.9 parity)
     for (let i = this.thrownGrenades.length - 1; i >= 0; i--) {
       const g = this.thrownGrenades[i];
       g.fuseTime -= dt;
 
-      g.velocity.y -= 15.5 * dt;
-      g.velocity.x *= 1 - 0.25 * dt;
-      g.velocity.z *= 1 - 0.25 * dt;
+      // Subtle aerodynamic drag matching CS2 throw arc feel
+      const drag = Math.max(0.5, 1 - 0.14 * dt);
+      _stepPos.x = g.position.x;
+      _stepPos.y = g.position.y;
+      _stepPos.z = g.position.z;
+      _stepVel.x = g.velocity.x * drag;
+      _stepVel.y = g.velocity.y;
+      _stepVel.z = g.velocity.z * drag;
 
-      _nextPos.copy(g.position).addScaledVector(g.velocity, dt);
-      let didBounce = false;
+      const stepRes = stepGrenadePhysics(
+        _stepPos,
+        _stepVel,
+        dt,
+        blocks,
+        0.08,
+        0.45,
+        15.5,
+        spatialGrid
+      );
 
-      if (_nextPos.y <= 0.08) {
-        _nextPos.y = 0.08;
-        g.velocity.y = -g.velocity.y * 0.42;
-        g.velocity.x *= 0.72;
-        g.velocity.z *= 0.72;
-        didBounce = true;
+      g.position.set(_stepPos.x, _stepPos.y, _stepPos.z);
+      g.velocity.set(_stepVel.x, _stepVel.y, _stepVel.z);
 
-        if (g.type === 'molotov') {
-          this.detonateMolotov(_nextPos);
-          this.scene.remove(g.mesh);
-          this.thrownGrenades.splice(i, 1);
-          continue;
-        }
+      if (stepRes.hitGround && g.type === 'molotov') {
+        this.detonateMolotov(g.position);
+        this.scene.remove(g.mesh);
+        this.thrownGrenades.splice(i, 1);
+        continue;
       }
 
-      for (const b of colliders) {
-        if (
-          _nextPos.x >= b.minX - 0.08 &&
-          _nextPos.x <= b.maxX + 0.08 &&
-          _nextPos.y >= b.minY &&
-          _nextPos.y <= b.maxY &&
-          _nextPos.z >= b.minZ - 0.08 &&
-          _nextPos.z <= b.maxZ + 0.08
-        ) {
-          const dxMin = Math.abs(_nextPos.x - b.minX);
-          const dxMax = Math.abs(_nextPos.x - b.maxX);
-          const dzMin = Math.abs(_nextPos.z - b.minZ);
-          const dzMax = Math.abs(_nextPos.z - b.maxZ);
-          const min = Math.min(dxMin, dxMax, dzMin, dzMax);
-
-          if (min === dxMin || min === dxMax) {
-            g.velocity.x = -g.velocity.x * 0.45;
-          } else {
-            g.velocity.z = -g.velocity.z * 0.45;
-          }
-          didBounce = true;
-          break;
-        }
-      }
-
-      if (didBounce && g.bounces < 4) {
+      if (stepRes.bounced && g.bounces < 4) {
         g.bounces++;
         this.audio.playFootstep();
       }
 
-      g.position.copy(_nextPos);
       g.mesh.position.copy(g.position);
       g.mesh.rotation.x += g.velocity.z * dt * 2.5;
       g.mesh.rotation.z += g.velocity.x * dt * 2.5;

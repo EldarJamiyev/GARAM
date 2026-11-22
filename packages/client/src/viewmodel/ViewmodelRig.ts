@@ -15,6 +15,7 @@ export interface WeaponSocketConfig {
   socketBone: 'Rif' | 'Hand_R';
   modelPath: string;
   targetLength: number;
+  anchorBoneName?: string;
   rotationEuler: [number, number, number];
   localPos: [number, number, number];
   localRotEuler: [number, number, number];
@@ -30,19 +31,20 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'garam-47': {
     socketBone: 'Rif',
     modelPath: '/models/garam47.glb',
-    targetLength: 0.86,
+    targetLength: 0.75,
+    anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [-0.0347, 0.1871, -0.128],
+    localPos: [-0.0424, 0.4247, -0.1323],
     localRotEuler: [-1.7183, -0.1314, 3.0204],
     localScale: 1.004,
-    armsScale: 0.255,
-    armsOffset: [0.082, -0.218, -0.255],
-    muzzleLocalPos: [0, 0.025, -0.43],
+    armsScale: 0.44,
+    armsOffset: [0.062, -0.220, -0.045],
+    muzzleLocalPos: [0.0089, 0.06, -0.6078],
     requiresPBodyRest: false,
     clips: {
       idle: 'AK_Idle',
       walk: 'AK_Walk',
-      draw: 'AK_Idle',
+      draw: 'AK_Draw',
       fire: 'AK_Shot',
       reload: 'AK_Reload',
       reloadFull: 'AK_Reload_full',
@@ -51,19 +53,20 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'vanguard-m4': {
     socketBone: 'Rif',
     modelPath: '/models/m4a1s.glb',
-    targetLength: 0.92,
+    targetLength: 0.82,
+    anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [-0.0705, -0.024, 0.0249],
+    localPos: [0.0258, -0.0616, 0.2806],
     localRotEuler: [0.0327, 0.3605, -1.6931],
     localScale: 1.004,
-    armsScale: 0.275,
-    armsOffset: [0.095, -0.238, -0.235],
-    muzzleLocalPos: [0, 0.02, -0.46],
+    armsScale: 0.44,
+    armsOffset: [0.055, -0.245, -0.035],
+    muzzleLocalPos: [0.007, 0.081, -0.6525],
     requiresPBodyRest: true,
     clips: {
       idle: 'M4_Idle',
       walk: 'M4_Walk',
-      draw: 'M4_Idle',
+      draw: 'M4_Draw',
       fire: 'M4_Shoot',
       reload: 'M4_Reload_Fast',
       reloadFull: 'M4_Reload_Fast',
@@ -73,14 +76,15 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'sovereign-awp': {
     socketBone: 'Rif',
     modelPath: '/models/awp.glb',
-    targetLength: 1.10,
+    targetLength: 0.80,
+    anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [-0.0019, -0.2244, -0.1474],
+    localPos: [-0.0859, 0.0405, 0.0958],
     localRotEuler: [-0.8092, -0.2297, 3.0691],
     localScale: 1.004,
-    armsScale: 0.255,
-    armsOffset: [0.115, -0.268, -0.34],
-    muzzleLocalPos: [0, 0.025, -0.55],
+    armsScale: 0.43,
+    armsOffset: [0.088, -0.278, -0.070],
+    muzzleLocalPos: [0.0114, 0.114, -0.8357],
     requiresPBodyRest: false,
     clips: {
       idle: 'SRifle_Idle',
@@ -93,14 +97,15 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'desert-eagle': {
     socketBone: 'Rif',
     modelPath: '/models/deagle.glb',
-    targetLength: 0.27,
+    targetLength: 0.21,
+    anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [0.0188, 0.0369, -0.0437],
+    localPos: [-0.1433, 0.0041, -0.0161],
     localRotEuler: [1.3226, -1.4991, 2.6492],
     localScale: 1.004,
-    armsScale: 0.33,
-    armsOffset: [0.085, -0.19, -0.18],
-    muzzleLocalPos: [0, 0.035, -0.135],
+    armsScale: 0.44,
+    armsOffset: [0.056, -0.218, -0.046],
+    muzzleLocalPos: [0.0001, 0.064, -0.2348],
     requiresPBodyRest: false,
     clips: {
       idle: 'Pistol_Idle',
@@ -113,19 +118,19 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'garam-karambit': {
     socketBone: 'Hand_R',
     modelPath: '/models/karambit.glb',
-    targetLength: 0.24,
+    targetLength: 0.22,
     rotationEuler: [0, 0, 0],
     localPos: [0.012, 0.205, 0.018],
     localRotEuler: [2.38, -0.45, 0.35],
     localScale: 1.004,
-    armsScale: 0.32,
-    armsOffset: [0.055, -0.155, -0.14],
+    armsScale: 0.44,
+    armsOffset: [0.050, -0.215, -0.038],
     muzzleLocalPos: [0, 0, -0.11],
     requiresPBodyRest: true,
     clips: {
       idle: 'Karambit_Idle',
       walk: 'Karambit_Walk',
-      draw: 'Karambit_Idle',
+      draw: 'Karambit_Draw',
       fire: 'Karambit_Slash',
       altFire: 'Karambit_Stab',
       reload: 'Karambit_Idle',
@@ -556,3 +561,49 @@ export function buildKarambitAnimationClips(
 
   return [clipIdle, clipWalk, clipDraw, clipSlash, clipStab, clipInspect];
 }
+
+/**
+ * Patches `M4_Idle` on load by injecting missing `Hand_L` quaternion and left-finger curl
+ * (`Bone_L*`) tracks sampled from `M4_Walk` frame 0 so the left hand cups the M4 handguard
+ * instead of freezing in flat bind pose.
+ */
+export function patchM4IdleClip(clips: THREE.AnimationClip[]): number {
+  const m4Idle = clips.find((c) => c.name === 'M4_Idle');
+  const m4Walk = clips.find((c) => c.name === 'M4_Walk');
+  if (!m4Idle || !m4Walk) return 0;
+
+  const existingTrackNames = new Set(m4Idle.tracks.map((t) => t.name));
+  const dur = Math.max(0.1, m4Idle.duration);
+  let patchedCount = 0;
+
+  for (const walkTrack of m4Walk.tracks) {
+    if (existingTrackNames.has(walkTrack.name)) continue;
+    const isLeftHandOrFinger =
+      walkTrack.name.startsWith('Hand_L.') ||
+      walkTrack.name.startsWith('IK_Hand_Cntrl_L.') ||
+      /^Bone_L/.test(walkTrack.name);
+    if (!isLeftHandOrFinger) continue;
+
+    if (walkTrack.name.endsWith('.quaternion') && walkTrack.values.length >= 4) {
+      const q0 = [
+        walkTrack.values[0],
+        walkTrack.values[1],
+        walkTrack.values[2],
+        walkTrack.values[3],
+      ];
+      m4Idle.tracks.push(
+        new THREE.QuaternionKeyframeTrack(walkTrack.name, [0, dur], [...q0, ...q0])
+      );
+      patchedCount++;
+    } else if (walkTrack.name.endsWith('.position') && walkTrack.values.length >= 3) {
+      const p0 = [walkTrack.values[0], walkTrack.values[1], walkTrack.values[2]];
+      m4Idle.tracks.push(
+        new THREE.VectorKeyframeTrack(walkTrack.name, [0, dur], [...p0, ...p0])
+      );
+      patchedCount++;
+    }
+  }
+
+  return patchedCount;
+}
+

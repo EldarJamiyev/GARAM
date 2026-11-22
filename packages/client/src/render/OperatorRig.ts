@@ -1,12 +1,31 @@
 import * as THREE from 'three';
 import { settingsStore } from '../core/SettingsStore.js';
 import { AssetManager } from './AssetManager.js';
+import { solveTwoBoneIK, extractYTwistAngle } from '../viewmodel/ArmIKSolver.js';
 
 const _headWorld = new THREE.Vector3();
 const _chestWorld = new THREE.Vector3();
 const _stomWorld = new THREE.Vector3();
+const _leftTargetWorld = new THREE.Vector3();
+const _leftPoleWorld = new THREE.Vector3();
+const _socketScale = new THREE.Vector3();
 const _qDelta = new THREE.Quaternion();
+const _qSocketWorld = new THREE.Quaternion();
+const _qDesiredWorld = new THREE.Quaternion();
+const _qForearmWorld = new THREE.Quaternion();
+const _qHandWorld = new THREE.Quaternion();
+const _qTwistRel = new THREE.Quaternion();
+const _qTwistOut = new THREE.Quaternion();
+const _vAxisY = new THREE.Vector3(0, 1, 0);
 const _euler = new THREE.Euler();
+
+const WORLD_WEAPON_SPECS: Record<string, { path: string; length: number; forendZ: number; isMelee?: boolean }> = {
+  'garam-47': { path: '/models/garam47.glb', length: 0.88, forendZ: 0.30 },
+  'vanguard-m4': { path: '/models/m4a1s.glb', length: 0.92, forendZ: 0.31 },
+  'sovereign-awp': { path: '/models/awp.glb', length: 1.12, forendZ: 0.34 },
+  'desert-eagle': { path: '/models/deagle.glb', length: 0.28, forendZ: 0.04 },
+  'garam-karambit': { path: '/models/karambit.glb', length: 0.24, forendZ: 0.0, isMelee: true },
+};
 
 export interface OperatorVisualState {
   isMoving: boolean;
@@ -42,7 +61,13 @@ interface OperatorSkeletonRig {
   armLowerL?: SkeletalBoneBinding;
   armUpperR?: SkeletalBoneBinding;
   armLowerR?: SkeletalBoneBinding;
+  handL?: SkeletalBoneBinding;
   handR?: SkeletalBoneBinding;
+  weaponHandR?: THREE.Object3D;
+  armLowerTwistL: THREE.Object3D[];
+  armLowerTwistR: THREE.Object3D[];
+  armUpperTwistL: THREE.Object3D[];
+  armUpperTwistR: THREE.Object3D[];
   legUpperL?: SkeletalBoneBinding;
   legLowerL?: SkeletalBoneBinding;
   legUpperR?: SkeletalBoneBinding;
@@ -135,6 +160,11 @@ export class OperatorRig {
   // High-Fidelity CS2 GLB Operator Rig & World Rifle
   private glbRig: OperatorSkeletonRig | null = null;
   private glbWeaponHolder: THREE.Group | null = null;
+  private glbWeaponModel: THREE.Object3D | null = null;
+  private leftHandTarget: THREE.Object3D | null = null;
+  private holderBasePos = new THREE.Vector3();
+  private holderBaseQuat = new THREE.Quaternion();
+  private currentWorldWeaponId = 'garam-47';
   private worldMuzzleFlash: THREE.Group | null = null;
   private muzzleFlashTimer = 0;
   private fireRecoilTimer = 0;
@@ -363,7 +393,9 @@ export class OperatorRig {
     const assetManager = AssetManager.getInstance();
     const modelPath =
       team === 'Vanguard' ? '/models/operator_vanguard.glb' : '/models/operator_syndicate.glb';
-    const weaponPath = team === 'Vanguard' ? '/models/m4a1s.glb' : '/models/garam47.glb';
+    const initialWeaponId = team === 'Vanguard' ? 'vanguard-m4' : 'garam-47';
+    this.currentWorldWeaponId = initialWeaponId;
+    const spec = WORLD_WEAPON_SPECS[initialWeaponId];
 
     const [agentModel, rifleModel] = await Promise.all([
       assetManager.loadModel(modelPath, {
@@ -373,9 +405,10 @@ export class OperatorRig {
         castShadow: true,
         receiveShadow: true,
       }),
-      assetManager.loadModel(weaponPath, {
-        targetLength: team === 'Vanguard' ? 0.92 : 0.88,
-        centerPivot: true,
+      assetManager.loadModel(spec.path, {
+        targetLength: spec.length,
+        anchorBoneName: 'weapon_hand_r',
+        centerPivot: false,
         envMapIntensity: 1.6,
         castShadow: true,
         receiveShadow: true,
@@ -386,7 +419,14 @@ export class OperatorRig {
 
     // Compute rest parent world quaternions while agentModel is detached at identity (pure character-local space)
     agentModel.updateMatrixWorld(true);
-    const rig: OperatorSkeletonRig = { root: agentModel, baseRootY: agentModel.position.y };
+    const rig: OperatorSkeletonRig = {
+      root: agentModel,
+      baseRootY: agentModel.position.y,
+      armLowerTwistL: [],
+      armLowerTwistR: [],
+      armUpperTwistL: [],
+      armUpperTwistR: [],
+    };
     const bindBone = (node: THREE.Object3D): SkeletalBoneBinding => {
       const parentRestQuat = new THREE.Quaternion();
       if (node.parent) {
@@ -403,7 +443,14 @@ export class OperatorRig {
 
     agentModel.traverse((node) => {
       const n = node.name.toLowerCase();
-      if (n.includes('twist') || n.includes('helper')) return;
+      if (n.includes('helper')) return;
+      if (n.includes('twist')) {
+        if (n.startsWith('arm_lower_l_twist')) rig.armLowerTwistL.push(node);
+        else if (n.startsWith('arm_lower_r_twist')) rig.armLowerTwistR.push(node);
+        else if (n.startsWith('arm_upper_l_twist')) rig.armUpperTwistL.push(node);
+        else if (n.startsWith('arm_upper_r_twist')) rig.armUpperTwistR.push(node);
+        return;
+      }
       if (n.startsWith('pelvis')) rig.pelvis = bindBone(node);
       else if (n.startsWith('spine_0')) rig.spine0 = bindBone(node);
       else if (n.startsWith('spine_1')) rig.spine1 = bindBone(node);
@@ -414,19 +461,47 @@ export class OperatorRig {
       else if (n.startsWith('arm_lower_l')) rig.armLowerL = bindBone(node);
       else if (n.startsWith('arm_upper_r')) rig.armUpperR = bindBone(node);
       else if (n.startsWith('arm_lower_r')) rig.armLowerR = bindBone(node);
+      else if (n.startsWith('hand_l')) rig.handL = bindBone(node);
       else if (n.startsWith('hand_r')) rig.handR = bindBone(node);
+      else if (n.startsWith('weapon_hand_r')) rig.weaponHandR = node;
       else if (n.startsWith('leg_upper_l')) rig.legUpperL = bindBone(node);
       else if (n.startsWith('leg_lower_l')) rig.legLowerL = bindBone(node);
       else if (n.startsWith('leg_upper_r')) rig.legUpperR = bindBone(node);
       else if (n.startsWith('leg_lower_r')) rig.legLowerR = bindBone(node);
     });
 
-    // Mount real CS2 world rifle aligned directly between right pistol-grip hand and left support hand
+    // Sort twist bones proximal -> distal by local Y offset along forearm
+    const sortByLocalY = (a: THREE.Object3D, b: THREE.Object3D) => a.position.y - b.position.y;
+    rig.armLowerTwistL.sort(sortByLocalY);
+    rig.armLowerTwistR.sort(sortByLocalY);
+    rig.armUpperTwistL.sort(sortByLocalY);
+    rig.armUpperTwistR.sort(sortByLocalY);
+
+    this.glbRig = rig;
+    this.proceduralGroup.visible = false;
+    this.root.add(agentModel);
+
+    // Apply neutral combat stance first so right-hand socket world orientation is calibrated
+    this.applySkeletalPose(0, false, false, 0, 0, 0);
+
+    // Mount real CS2 world rifle directly onto weapon_hand_r (Vanguard) or hand_r (Syndicate)
     if (rifleModel) {
+      this.mountWorldWeapon(rifleModel, spec.forendZ);
+    }
+
+    // Re-run pose with left-hand 2-bone IK targeting the mounted rifle forend
+    this.applySkeletalPose(0, false, false, 0, 0, 0);
+  }
+
+  private mountWorldWeapon(weaponModel: THREE.Object3D, forendZ: number): void {
+    const rig = this.glbRig;
+    if (!rig) return;
+
+    const socketBone = rig.weaponHandR ?? rig.handR?.bone ?? null;
+
+    if (!this.glbWeaponHolder) {
       const holder = new THREE.Group();
-      holder.position.set(-0.08, 1.29, 0.34);
-      holder.rotation.set(0.03, 0.22, 0);
-      holder.add(rifleModel);
+      holder.name = 'operator_weapon_holder';
 
       // 3D Cross-Plane Volumetric Muzzle Flash at rifle barrel tip
       const flashMat = new THREE.MeshBasicMaterial({
@@ -445,21 +520,89 @@ export class OperatorRig {
       const fp3 = new THREE.Mesh(geoBotFlashPlane, flashMat);
       fp3.rotation.x = Math.PI / 2;
       flashGroup.add(fp1, fp2, fp3);
-      flashGroup.position.set(0, 0.04, team === 'Vanguard' ? 0.50 : 0.48);
       flashGroup.visible = false;
       holder.add(flashGroup);
       this.worldMuzzleFlash = flashGroup;
 
+      const leftTarget = new THREE.Object3D();
+      leftTarget.name = 'left_hand_forend_target';
+      holder.add(leftTarget);
+      this.leftHandTarget = leftTarget;
+
+      if (socketBone) {
+        this.root.updateMatrixWorld(true);
+        socketBone.getWorldScale(_socketScale);
+        const invScale = 1 / Math.max(0.002, _socketScale.x);
+        holder.scale.setScalar(invScale);
+
+        // On Syndicate (no weapon_hand_r child bone), place grip at Vanguard's exact Source2 palm offset inside hand_r
+        if (!rig.weaponHandR && rig.handR) {
+          holder.position.set(0.2954, 2.791, -1.1238);
+        } else {
+          holder.position.set(0, 0, 0);
+        }
+
+        // Align holder in socket-local space so weapon barrel (+Z) points cleanly forward in neutral combat stance
+        socketBone.getWorldQuaternion(_qSocketWorld);
+        this.root.getWorldQuaternion(_qDesiredWorld);
+        _euler.set(0.02, 0.16, 0, 'XYZ');
+        _qDelta.setFromEuler(_euler);
+        _qDesiredWorld.multiply(_qDelta);
+        holder.quaternion.copy(_qSocketWorld).invert().multiply(_qDesiredWorld).normalize();
+
+        this.holderBasePos.copy(holder.position);
+        this.holderBaseQuat.copy(holder.quaternion);
+        socketBone.add(holder);
+      } else {
+        holder.position.set(-0.08, 1.29, 0.34);
+        holder.rotation.set(0.03, 0.22, 0);
+        this.holderBasePos.copy(holder.position);
+        this.holderBaseQuat.copy(holder.quaternion);
+        this.root.add(holder);
+      }
+
       this.glbWeaponHolder = holder;
-      this.root.add(holder);
     }
 
-    this.glbRig = rig;
-    this.proceduralGroup.visible = false;
-    this.root.add(agentModel);
+    if (this.glbWeaponModel && this.glbWeaponHolder) {
+      this.glbWeaponHolder.remove(this.glbWeaponModel);
+    }
+    this.glbWeaponModel = weaponModel;
+    this.glbWeaponHolder.add(weaponModel);
 
-    // Immediately apply tactical combat rifle stance so agent never renders in A-pose
-    this.applySkeletalPose(0, false, false, 0, 0, 0);
+    if (this.leftHandTarget) {
+      this.leftHandTarget.position.set(0, 0.02, forendZ);
+    }
+
+    if (this.worldMuzzleFlash) {
+      const tip = weaponModel.userData.muzzleTipLocal;
+      if (tip instanceof THREE.Vector3) {
+        this.worldMuzzleFlash.position.copy(tip);
+      } else {
+        this.worldMuzzleFlash.position.set(0, 0.04, 0.50);
+      }
+    }
+  }
+
+  /**
+   * Swaps the bot's visible 3P world weapon GLB via cached AssetManager clones.
+   */
+  public async setWeapon(weaponId: string): Promise<void> {
+    if (this.currentWorldWeaponId === weaponId || this.isDisposed) return;
+    const spec = WORLD_WEAPON_SPECS[weaponId];
+    if (!spec) return;
+    this.currentWorldWeaponId = weaponId;
+
+    const loaded = await AssetManager.getInstance().loadModel(spec.path, {
+      targetLength: spec.length,
+      anchorBoneName: spec.isMelee ? undefined : 'weapon_hand_r',
+      centerPivot: !!spec.isMelee,
+      envMapIntensity: 1.6,
+      castShadow: true,
+      receiveShadow: true,
+    });
+    if (!loaded || this.isDisposed || this.currentWorldWeaponId !== weaponId) return;
+    this.mountWorldWeapon(loaded, spec.forendZ);
   }
 
   /**
@@ -475,6 +618,28 @@ export class OperatorRig {
       .multiply(_qDelta)
       .multiply(binding.parentRestQuat)
       .multiply(binding.baseQuat);
+  }
+
+  /**
+   * Distributes forearm roll across sibling `arm_lower_*_twist` / `twist1` bones (50% average roll)
+   * to prevent pinched elbows and wrists on Source2 skeletal rigs.
+   */
+  private applySiblingForearmTwist(
+    forearm: SkeletalBoneBinding | undefined,
+    hand: SkeletalBoneBinding | undefined,
+    twistBones: THREE.Object3D[]
+  ): void {
+    if (!forearm || !hand || twistBones.length === 0) return;
+    forearm.bone.getWorldQuaternion(_qForearmWorld);
+    hand.bone.getWorldQuaternion(_qHandWorld);
+    _qTwistRel.copy(_qForearmWorld).invert().multiply(_qHandWorld).normalize();
+    const twistAngle = Math.max(-1.6, Math.min(1.6, extractYTwistAngle(_qTwistRel)));
+
+    for (let i = 0; i < twistBones.length; i++) {
+      const weight = twistBones.length === 1 ? 0.5 : (i + 1) / (twistBones.length + 1);
+      _qTwistOut.setFromAxisAngle(_vAxisY, twistAngle * weight);
+      twistBones[i].quaternion.copy(_qTwistOut);
+    }
   }
 
   private applySkeletalPose(
@@ -501,11 +666,52 @@ export class OperatorRig {
     this.applyCharSpaceDelta(rig.spine2, -aimPitch * 0.14, 0.08, 0);
     this.applyCharSpaceDelta(rig.head, -aimPitch * 0.35 - flinchOffset * 0.7, aimYaw * 0.45 - 0.16, 0);
 
-    // 3. Tactical 2-Handed Rifle Stance (verified character-space kinematics: brings arms tightly out of A-pose)
-    this.applyCharSpaceDelta(rig.armUpperR, -0.18 - aimPitch * 0.25, 0.82, 0.58);
-    this.applyCharSpaceDelta(rig.armLowerR, -0.78, 0.32, -0.22);
+    // 3. Tactical 2-Handed Rifle Stance (right arm drives weapon socket; left arm refined via 2-bone IK)
+    const recoilKick = this.fireRecoilTimer > 0 ? Math.sin((this.fireRecoilTimer / 0.09) * Math.PI) : 0;
+    this.applyCharSpaceDelta(rig.armUpperR, -0.18 - aimPitch * 0.28 - recoilKick * 0.08, 0.82, 0.58);
+    this.applyCharSpaceDelta(rig.armLowerR, -0.78 - recoilKick * 0.10, 0.32, -0.22);
     this.applyCharSpaceDelta(rig.armUpperL, -0.55 - aimPitch * 0.25, -1.32, -0.48);
     this.applyCharSpaceDelta(rig.armLowerL, -0.42, -0.35, 0.15);
+
+    // Apply subtle weapon recoil kick directly on the hand-parented weapon holder
+    if (this.glbWeaponHolder) {
+      this.glbWeaponHolder.position.copy(this.holderBasePos);
+      this.glbWeaponHolder.quaternion.copy(this.holderBaseQuat);
+      if (recoilKick > 0.001) {
+        _euler.set(-recoilKick * 0.12, 0, 0, 'XYZ');
+        _qDelta.setFromEuler(_euler);
+        this.glbWeaponHolder.quaternion.multiply(_qDelta);
+      }
+    }
+
+    // Lock left support hand onto rifle forend via zero-allocation 2-bone analytical IK
+    const spec = WORLD_WEAPON_SPECS[this.currentWorldWeaponId];
+    if (
+      rig.armUpperL &&
+      rig.armLowerL &&
+      rig.handL &&
+      this.leftHandTarget &&
+      spec &&
+      !spec.isMelee &&
+      spec.forendZ > 0.05
+    ) {
+      this.root.updateMatrixWorld(true);
+      this.leftHandTarget.getWorldPosition(_leftTargetWorld);
+      // Pole vector outward-left & downward relative to operator root so left elbow bends naturally
+      _leftPoleWorld.set(0.75, 0.75 + crouchDrop, 0.15).applyMatrix4(this.root.matrixWorld);
+      solveTwoBoneIK(
+        rig.armUpperL.bone,
+        rig.armLowerL.bone,
+        rig.handL.bone,
+        _leftTargetWorld,
+        _leftPoleWorld,
+        false
+      );
+    }
+
+    // Distribute forearm twist smoothly across arm_lower_*_twist helper bones
+    this.applySiblingForearmTwist(rig.armLowerL, rig.handL, rig.armLowerTwistL);
+    this.applySiblingForearmTwist(rig.armLowerR, rig.handR, rig.armLowerTwistR);
 
     // 4. Leg Locomotion & Crouch Knee Flex (-X swings thigh forward, +X bends knee backward)
     if (isMoving) {
@@ -527,13 +733,6 @@ export class OperatorRig {
       this.applyCharSpaceDelta(rig.legLowerL, 0.10, 0, 0);
       this.applyCharSpaceDelta(rig.legUpperR, 0.05, -0.04, 0);
       this.applyCharSpaceDelta(rig.legLowerR, 0.08, 0, 0);
-    }
-
-    if (this.glbWeaponHolder) {
-      const recoilKick = this.fireRecoilTimer > 0 ? Math.sin((this.fireRecoilTimer / 0.09) * Math.PI) : 0;
-      this.glbWeaponHolder.position.y = (isCrouching ? 0.95 : 1.29) + walkBob + recoilKick * 0.015;
-      this.glbWeaponHolder.position.z = 0.34 - recoilKick * 0.055;
-      this.glbWeaponHolder.rotation.x = 0.03 - aimPitch * 0.45 - recoilKick * 0.14;
     }
   }
 
@@ -582,13 +781,15 @@ export class OperatorRig {
     }
     this.ownedMaterials = [];
     this.ownedGeometries = [];
+    if (this.glbWeaponHolder) {
+      this.glbWeaponHolder.removeFromParent();
+      this.glbWeaponHolder = null;
+    }
+    this.glbWeaponModel = null;
+    this.leftHandTarget = null;
     if (this.glbRig) {
       this.root.remove(this.glbRig.root);
       this.glbRig = null;
-    }
-    if (this.glbWeaponHolder) {
-      this.root.remove(this.glbWeaponHolder);
-      this.glbWeaponHolder = null;
     }
   }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { AssetManager } from '../render/AssetManager.js';
+import { ArmIKSolver } from './ArmIKSolver.js';
 import {
   WEAPON_SOCKET_CONFIGS,
   getWeaponSocketConfig,
@@ -7,11 +8,44 @@ import {
   captureBindPose,
   restoreBindPose,
   buildKarambitAnimationClips,
+  patchM4IdleClip,
   BoneTransformSnapshot,
 } from './ViewmodelRig.js';
 
 const _muzzleWorld = new THREE.Vector3();
 const _muzzleLocal = new THREE.Vector3();
+const _mat4Inv = new THREE.Matrix4();
+const _mat4Rel = new THREE.Matrix4();
+const _mat3Lin = new THREE.Matrix3();
+
+/**
+ * Computes the local translation vector in `part.parent` space that produces exactly
+ * 1.0 meter of displacement along `rearAxisWrapper` in `wrapper` space.
+ * Automatically compensates for both `AssetManager` normalizationScale and Source2
+ * inch-scale / rotated bone hierarchies so blowback never explodes or moves sideways.
+ */
+export function computeRecoilStepPerMeter(
+  wrapper: THREE.Object3D,
+  part: THREE.Object3D,
+  rearAxisWrapper: THREE.Vector3
+): THREE.Vector3 {
+  wrapper.updateMatrixWorld(true);
+  if (part.parent) {
+    _mat4Inv.copy(wrapper.matrixWorld).invert();
+    _mat4Rel.multiplyMatrices(_mat4Inv, part.parent.matrixWorld);
+    _mat3Lin.setFromMatrix4(_mat4Rel);
+    if (Math.abs(_mat3Lin.determinant()) > 1e-10) {
+      _mat3Lin.invert();
+      return rearAxisWrapper.clone().applyMatrix3(_mat3Lin);
+    }
+  }
+  const normScale =
+    typeof wrapper.userData.normalizationScale === 'number' &&
+    wrapper.userData.normalizationScale > 1e-4
+      ? wrapper.userData.normalizationScale
+      : 1.0;
+  return rearAxisWrapper.clone().divideScalar(normScale);
+}
 
 export class WeaponViewmodel {
   public mesh: THREE.Group;
@@ -42,6 +76,7 @@ export class WeaponViewmodel {
   private armsContainer: THREE.Group;
   private armsRoot: THREE.Object3D | null = null;
   private armsMixer: THREE.AnimationMixer | null = null;
+  private armIKSolver: ArmIKSolver | null = null;
   private armsActions: Map<string, THREE.AnimationAction> = new Map();
   private bindPoseSnapshot: Map<string, BoneTransformSnapshot> = new Map();
   private rifSocket: THREE.Object3D | null = null;
@@ -333,12 +368,14 @@ export class WeaponViewmodel {
 
         const mixer = new THREE.AnimationMixer(armsModel);
         this.armsMixer = mixer;
+        this.armIKSolver = new ArmIKSolver(armsModel);
         this.armsActions.clear();
 
         const allClips = [
           ...armsRes.animations,
           ...buildKarambitAnimationClips(armsRes.animations),
         ];
+        patchM4IdleClip(allClips);
 
         for (const clip of allClips) {
           const action = mixer.clipAction(clip);
@@ -368,7 +405,8 @@ export class WeaponViewmodel {
         try {
           const loadedModel = await assetManager.loadModel(cfg.modelPath, {
             targetLength: cfg.targetLength,
-            centerPivot: true,
+            anchorBoneName: cfg.anchorBoneName,
+            centerPivot: !cfg.anchorBoneName,
             rotationEuler: cfg.rotationEuler,
             envMapIntensity: 1.85,
             castShadow: false,
@@ -377,37 +415,53 @@ export class WeaponViewmodel {
 
           if (!loadedModel) return;
 
-          // Hook animated weapon sub-nodes (slide, bolt, clip/mag) preserving rest offsets
+          const barrelAxis =
+            loadedModel.userData.barrelAxisLocal instanceof THREE.Vector3
+              ? loadedModel.userData.barrelAxisLocal.clone().normalize()
+              : new THREE.Vector3(0, 0, -1);
+          const rearAxisWrapper = barrelAxis.clone().negate();
+
+          // Hook animated weapon sub-nodes (slide, bolt, clip/mag) with exact scale & axis compensation
           loadedModel.traverse((node) => {
             const nameLower = node.name.toLowerCase();
             if (nameLower.includes('slide')) {
-              node.userData.baseX = node.position.x;
-              node.userData.baseY = node.position.y;
-              node.userData.baseZ = node.position.z;
+              node.userData.basePos = node.position.clone();
+              node.userData.recoilStepPerMeter = computeRecoilStepPerMeter(
+                loadedModel,
+                node,
+                rearAxisWrapper
+              );
               this.slideMeshes.set(weaponId, node);
             } else if (
               nameLower.includes('bolt_action') ||
               (nameLower.includes('bolt') && !nameLower.includes('rail'))
             ) {
-              node.userData.baseX = node.position.x;
-              node.userData.baseY = node.position.y;
-              node.userData.baseZ = node.position.z;
+              node.userData.basePos = node.position.clone();
+              node.userData.recoilStepPerMeter = computeRecoilStepPerMeter(
+                loadedModel,
+                node,
+                rearAxisWrapper
+              );
               this.boltMeshes.set(weaponId, node);
             } else if (nameLower.includes('clip') || nameLower.includes('mag')) {
-              node.userData.baseX = node.position.x;
+              node.userData.basePos = node.position.clone();
               node.userData.baseY = node.position.y;
-              node.userData.baseZ = node.position.z;
               this.magMeshes.set(weaponId, node);
             }
           });
 
-          // Attach a muzzle tip helper inside the normalized weapon so muzzle flash & gunsmoke track the barrel
+          // Attach muzzle tip helper directly from normalized barrel bounding extreme
           const muzzleHelper = new THREE.Object3D();
-          muzzleHelper.position.set(
-            cfg.muzzleLocalPos[0],
-            cfg.muzzleLocalPos[1],
-            cfg.muzzleLocalPos[2]
-          );
+          const detectedMuzzle = loadedModel.userData.muzzleTipLocal;
+          if (detectedMuzzle instanceof THREE.Vector3) {
+            muzzleHelper.position.copy(detectedMuzzle);
+          } else {
+            muzzleHelper.position.set(
+              cfg.muzzleLocalPos[0],
+              cfg.muzzleLocalPos[1],
+              cfg.muzzleLocalPos[2]
+            );
+          }
           loadedModel.add(muzzleHelper);
           this.muzzleHelpers.set(weaponId, muzzleHelper);
 
@@ -449,7 +503,7 @@ export class WeaponViewmodel {
           this.glbLoadedWeapons.add(weaponId);
           if (weaponId === this.currentWeaponId) {
             this.syncArmVisibility();
-            this.playWeaponAnimation('draw');
+            this.playWeaponAnimation('idle', 1.0);
           }
         } catch {
           console.warn(`[WeaponViewmodel] Failed to load GLB for ${weaponId}, retaining procedural fallback.`);
@@ -459,7 +513,7 @@ export class WeaponViewmodel {
 
     if (this.armsLoaded) {
       this.syncArmVisibility();
-      this.playWeaponAnimation('draw');
+      this.playWeaponAnimation('idle', 1.0);
     }
   }
 
@@ -486,6 +540,7 @@ export class WeaponViewmodel {
     action.setEffectiveTimeScale(timeScale);
     action.play();
     this.armsMixer.update(0.001);
+    this.armIKSolver?.solve();
 
     const isLoopClip = clipName.endsWith('_Idle') || clipName.endsWith('_Walk');
     const isOneShot =
@@ -596,7 +651,7 @@ export class WeaponViewmodel {
       cfg.armsOffset[2]
     );
     this.syncArmVisibility();
-    this.playWeaponAnimation(cfg.clips.draw ? 'draw' : 'idle', 1.15);
+    this.playWeaponAnimation(cfg.clips.draw ? 'draw' : 'idle', 1.8);
   }
 
   private syncMuzzleTipPosition(): void {
@@ -769,10 +824,11 @@ export class WeaponViewmodel {
     this.recoilZ += zKick;
 
     if (this.currentWeaponId === 'desert-eagle') {
-      this.slideKick = 0.045;
-    }
-    if (this.currentWeaponId === 'sovereign-awp') {
-      this.boltKick = 0.085;
+      this.slideKick = 0.035; // 3.5 cm true metric slide blowback
+    } else if (this.currentWeaponId === 'sovereign-awp') {
+      this.boltKick = 0.065; // 6.5 cm true metric bolt throw
+    } else if (this.currentWeaponId === 'garam-47' || this.currentWeaponId === 'vanguard-m4') {
+      this.boltKick = 0.055; // 5.5 cm rifle bolt carrier cycling
     }
 
     // Play skeletal fire animation on unified FPS arms
@@ -900,6 +956,7 @@ export class WeaponViewmodel {
       }
 
       this.armsMixer.update(safeDt);
+      this.armIKSolver?.solve();
     } else {
       this.wasReloading = this.isReloading;
     }
@@ -933,20 +990,32 @@ export class WeaponViewmodel {
       }
     }
 
-    // Slide blowback recovery (relative to node's rest position)
+    // Scale- & axis-compensated slide blowback recovery (zero allocations)
     const slide = this.slideMeshes.get(this.currentWeaponId);
     if (slide) {
       this.slideKick += (0 - this.slideKick) * (1 - Math.exp(-32 * safeDt));
-      const baseZ = typeof slide.userData.baseZ === 'number' ? slide.userData.baseZ : -0.05;
-      slide.position.z = baseZ + this.slideKick;
+      const basePos = slide.userData.basePos as THREE.Vector3 | undefined;
+      const step = slide.userData.recoilStepPerMeter as THREE.Vector3 | undefined;
+      if (basePos && step) {
+        slide.position.copy(basePos).addScaledVector(step, this.slideKick);
+      } else {
+        const baseZ = typeof slide.userData.baseZ === 'number' ? slide.userData.baseZ : -0.05;
+        slide.position.z = baseZ + this.slideKick;
+      }
     }
 
-    // Bolt handle recovery (relative to node's rest position)
+    // Scale- & axis-compensated bolt blowback recovery (zero allocations)
     const bolt = this.boltMeshes.get(this.currentWeaponId);
     if (bolt) {
-      this.boltKick += (0 - this.boltKick) * (1 - Math.exp(-14 * safeDt));
-      const baseZ = typeof bolt.userData.baseZ === 'number' ? bolt.userData.baseZ : 0.08;
-      bolt.position.z = baseZ + this.boltKick;
+      this.boltKick += (0 - this.boltKick) * (1 - Math.exp(-18 * safeDt));
+      const basePos = bolt.userData.basePos as THREE.Vector3 | undefined;
+      const step = bolt.userData.recoilStepPerMeter as THREE.Vector3 | undefined;
+      if (basePos && step) {
+        bolt.position.copy(basePos).addScaledVector(step, this.boltKick);
+      } else {
+        const baseZ = typeof bolt.userData.baseZ === 'number' ? bolt.userData.baseZ : 0.08;
+        bolt.position.z = baseZ + this.boltKick;
+      }
     }
 
     // Melee timers & fallback arc
