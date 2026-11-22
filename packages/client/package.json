@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@garam/shared": "*",
+    "n8ao": "^2.1.0",
+    "postprocessing": "^6.39.6",
     "three": "^0.174.0"
   },
   "devDependencies": {
