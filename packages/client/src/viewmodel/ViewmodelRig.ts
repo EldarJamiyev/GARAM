@@ -144,7 +144,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-3.142, -3.142, -2.742],
     localScale: 1.08,
     armsScale: 0.40,
-    armsOffset: [0.050, -0.27, -0.35],
+    armsOffset: [0.050, -0.21, -0.35],
     muzzleLocalPos: [0, -0.0427, -0.115],
     requiresPBodyRest: true,
     ringPivotLocal: [0, 0.02, 0.085],
