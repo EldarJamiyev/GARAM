@@ -19,6 +19,8 @@ const _mat4Rel = new THREE.Matrix4();
 const _mat3Lin = new THREE.Matrix3();
 const _vA = new THREE.Vector3();
 const _vB = new THREE.Vector3();
+const _vC = new THREE.Vector3();
+const _vD = new THREE.Vector3();
 const _euler = new THREE.Euler();
 const _qDelta = new THREE.Quaternion();
 
@@ -380,7 +382,7 @@ export class WeaponViewmodel {
 
         this.fingerBones.clear();
         armsModel.traverse((node) => {
-          if (node.name && node.name.startsWith('Bone_L.')) {
+          if (node.name && (node.name.startsWith('Bone_L.') || node.name.startsWith('Bone_L0'))) {
             this.fingerBones.set(node.name, node);
           }
         });
@@ -393,7 +395,7 @@ export class WeaponViewmodel {
             if (track.name.endsWith('.quaternion') && track.values.length >= 4) {
               const dot = track.name.lastIndexOf('.');
               const boneName = track.name.slice(0, dot);
-              if (boneName.startsWith('Bone_L.')) {
+              if (boneName.startsWith('Bone_L.') || boneName.startsWith('Bone_L0')) {
                 this.akFingerPose.set(
                   boneName,
                   new THREE.Quaternion(
