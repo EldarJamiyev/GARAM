@@ -396,14 +396,14 @@ export class ArmIKSolver {
       polePos = _vPole;
     }
 
-    // Solve 2-bone IK first, then distribute forearm twist (pure local Y rotation preserves wrist position)
+    // Solve 2-bone IK first (disallow clavicle slack so shoulder stays anchored to torso)
     const gap = solveTwoBoneIK(
       chain.upper,
       chain.lower,
       chain.effector,
       _vTarget,
       polePos,
-      true,
+      false,
       chain.upperBindLocalPos,
       chain.fallbackPoleDir
     );

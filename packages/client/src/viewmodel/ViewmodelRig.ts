@@ -44,14 +44,14 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     rotationEuler: [0, Math.PI, 0],
     localPos: [-0.038, 0.395, -0.125],
     localRotEuler: [-1.710, -0.095, 3.060],
-    localScale: 0.92,
-    armsScale: 0.36,
-    armsOffset: [0.092, -0.28, -0.37],
+    localScale: 0.90,
+    armsScale: 0.40,
+    armsOffset: [0.055, -0.32, -0.34],
     muzzleLocalPos: [0.008, 0.058, -0.565],
     requiresPBodyRest: false,
-    leftHandAnchorLocal: [0.000, -0.018, -0.215],
+    leftHandAnchorLocal: [0.000, -0.016, -0.210],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
-    leftFingerCurl: 0.85,
+    leftFingerCurl: 0.90,
     clips: {
       idle: 'AK_Idle',
       walk: 'AK_Walk',
@@ -64,19 +64,19 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'vanguard-m4': {
     socketBone: 'Rif',
     modelPath: '/models/m4a1s.glb',
-    targetLength: 0.80,
+    targetLength: 0.78,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
     localPos: [0.0258, -0.0616, 0.2806],
     localRotEuler: [0.0327, 0.3605, -1.6931],
-    localScale: 1.004,
-    armsScale: 0.38,
-    armsOffset: [0.088, -0.28, -0.36],
+    localScale: 0.94,
+    armsScale: 0.40,
+    armsOffset: [0.055, -0.32, -0.34],
     muzzleLocalPos: [0.007, 0.081, -0.6525],
     requiresPBodyRest: true,
-    leftHandAnchorLocal: [0.002, 0.032, -0.245],
+    leftHandAnchorLocal: [0.002, 0.028, -0.240],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
-    leftFingerCurl: 0.85,
+    leftFingerCurl: 0.90,
     clips: {
       idle: 'M4_Idle',
       walk: 'M4_Walk',
@@ -90,19 +90,19 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'sovereign-awp': {
     socketBone: 'Rif',
     modelPath: '/models/awp.glb',
-    targetLength: 0.82,
+    targetLength: 0.80,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
     localPos: [-0.082, 0.038, 0.092],
     localRotEuler: [-0.985, -0.015, 3.045],
-    localScale: 1.004,
-    armsScale: 0.38,
-    armsOffset: [0.065, -0.27, -0.36],
+    localScale: 0.92,
+    armsScale: 0.40,
+    armsOffset: [0.045, -0.31, -0.33],
     muzzleLocalPos: [0.0114, 0.114, -0.8357],
     requiresPBodyRest: false,
-    leftHandAnchorLocal: [0.000, 0.022, -0.255],
+    leftHandAnchorLocal: [0.000, 0.020, -0.250],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
-    leftFingerCurl: 0.85,
+    leftFingerCurl: 0.90,
     clips: {
       idle: 'SRifle_Idle',
       walk: 'SRifle_Walk',
@@ -119,14 +119,14 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     rotationEuler: [0, Math.PI, 0],
     localPos: [-0.1433, 0.0041, -0.0161],
     localRotEuler: [1.3226, -1.4991, 2.6492],
-    localScale: 1.004,
+    localScale: 0.95,
     armsScale: 0.40,
-    armsOffset: [0.045, -0.26, -0.34],
+    armsOffset: [0.025, -0.31, -0.32],
     muzzleLocalPos: [0.0001, 0.064, -0.2348],
     requiresPBodyRest: false,
     leftHandAnchorLocal: [-0.014, -0.018, 0.002],
     leftHandRelRotEuler: [0.25, 0.12, -0.45],
-    leftFingerCurl: 0.9,
+    leftFingerCurl: 0.95,
     clips: {
       idle: 'Pistol_Idle',
       walk: 'Pistol_Walk',
@@ -138,13 +138,13 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'garam-karambit': {
     socketBone: 'Hand_R',
     modelPath: '/models/karambit.glb',
-    targetLength: 0.23,
+    targetLength: 0.22,
     rotationEuler: [0, 0, 0],
     localPos: [0.015, 0.035, -0.018],
     localRotEuler: [-3.05, -3.12, -2.58],
-    localScale: 1.08,
-    armsScale: 0.38,
-    armsOffset: [0.025, -0.21, -0.35],
+    localScale: 1.02,
+    armsScale: 0.40,
+    armsOffset: [0.020, -0.30, -0.32],
     muzzleLocalPos: [0, -0.0427, -0.115],
     requiresPBodyRest: true,
     ringPivotLocal: [0, 0.02, 0.085],
@@ -263,30 +263,11 @@ export function buildKarambitAnimationClips(
     }
   }
 
-  // Override left arm chain with AK_Idle's outer-left elbow posture + lowered tactical CQC guard hand
-  if (akIdle) {
-    for (const track of akIdle.tracks) {
-      const dot = track.name.lastIndexOf('.');
-      const boneName = track.name.slice(0, dot);
-      const prop = track.name.slice(dot + 1);
-      if (boneName === 'UpArm_L' || boneName === 'Forearm_L') {
-        if (prop === 'quaternion' && track.values.length >= 4) {
-          baseQuats.set(boneName, [
-            track.values[0],
-            track.values[1],
-            track.values[2],
-            track.values[3],
-          ]);
-        }
-      }
-    }
-  }
-
-  // Position left hand in low-left tactical CQC guard so it stays clear of HUD and center screen (ndcY <= -0.80)
-  basePos.set('IK_Hand_Cntrl_L', [0.260, -0.040, 0.140]);
-  baseQuats.set('IK_Hand_Cntrl_L', [-0.14, 0.05, 0.97, -0.18]);
+  // Position left hand in low-left tactical CQC guard so it stays clear of HUD and center screen (ndcY <= -0.85)
+  basePos.set('IK_Hand_Cntrl_L', [0.320, -0.060, 0.280]);
+  baseQuats.set('IK_Hand_Cntrl_L', [-0.05, 0.12, 0.85, 0.51]);
   // Position right hand on the right side for crisp reverse-grip Karambit framing
-  basePos.set('IK_Hand_Cntrl_R', [-0.200, 0.090, 0.225]);
+  basePos.set('IK_Hand_Cntrl_R', [-0.200, 0.080, 0.230]);
 
   const ikRPos = basePos.get('IK_Hand_Cntrl_R') || [-0.088, 0.036, 0.225];
   const ikRQuat = baseQuats.get('IK_Hand_Cntrl_R') || [-0.0572, 0.0106, 0.5295, 0.8463];
