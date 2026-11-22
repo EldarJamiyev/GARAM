@@ -408,10 +408,6 @@ async function runVisualAudit() {
   console.log('\n[Capture 19] Inspecting 3rd-Person Operator Bot & CSM Directional Ground Shadows...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 600, movementY: -100, bubbles: true }));
-      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
-    })()`,
-  });
       window.dispatchEvent(new MouseEvent('mousemove', { movementX: 750, movementY: 50, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
     })()`,
