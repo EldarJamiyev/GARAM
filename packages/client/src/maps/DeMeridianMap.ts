@@ -186,29 +186,61 @@ function createProceduralSurface(
     cCtx.fillRect(96, 0, 18, size);
     cCtx.fillRect(360, 0, 14, size);
   } else if (kind === 'deck_paving') {
-    // Sun-baked Mediterranean warm sandy stone courtyard paving (NEVER blinding white!)
-    cCtx.fillStyle = '#b39f84';
+    // Sun-baked Mediterranean running-bond limestone slabs with sand drifts (CS2 Dust2/Inferno style)
+    cCtx.fillStyle = '#a69074';
     cCtx.fillRect(0, 0, size, size);
-    bCtx.fillStyle = '#8c8c8c';
+    bCtx.fillStyle = '#787878';
     bCtx.fillRect(0, 0, size, size);
 
-    const tile = 128;
-    for (let ty = 0; ty < size; ty += tile) {
-      for (let tx = 0; tx < size; tx += tile) {
-        const shade = Math.floor((rand() - 0.5) * 16);
-        cCtx.fillStyle = `rgb(${179 + shade}, ${159 + shade}, ${132 + shade})`;
-        cCtx.fillRect(tx + 3, ty + 3, tile - 6, tile - 6);
-        bCtx.fillStyle = `rgb(${145 + shade}, ${145 + shade}, ${145 + shade})`;
-        bCtx.fillRect(tx + 3, ty + 3, tile - 6, tile - 6);
+    const slabW = 128;
+    const slabH = 64;
+    let rowIdx = 0;
+    for (let ty = 0; ty < size; ty += slabH) {
+      const offsetX = (rowIdx % 2) * (slabW / 2);
+      for (let tx = -slabW; tx < size + slabW; tx += slabW) {
+        const x0 = tx + offsetX;
+        const shade = Math.floor((rand() - 0.5) * 24);
+        const warmR = Math.min(255, Math.max(0, 182 + shade));
+        const warmG = Math.min(255, Math.max(0, 162 + shade));
+        const warmB = Math.min(255, Math.max(0, 134 + shade));
+
+        // Slab base
+        cCtx.fillStyle = `rgb(${warmR}, ${warmG}, ${warmB})`;
+        cCtx.fillRect(x0 + 2, ty + 2, slabW - 4, slabH - 4);
+
+        // Weathered stone micro-grain
+        for (let s = 0; s < 4; s++) {
+          const sx = x0 + 6 + rand() * (slabW - 16);
+          const sy = ty + 6 + rand() * (slabH - 16);
+          const sw = 10 + rand() * 22;
+          const sh = 4 + rand() * 10;
+          cCtx.fillStyle = `rgba(142, 122, 98, ${0.12 + rand() * 0.14})`;
+          cCtx.fillRect(sx, sy, sw, sh);
+        }
+
+        // Bump map relief
+        const bumpVal = Math.min(255, Math.max(0, 142 + shade));
+        bCtx.fillStyle = `rgb(${bumpVal}, ${bumpVal}, ${bumpVal})`;
+        bCtx.fillRect(x0 + 2, ty + 2, slabW - 4, slabH - 4);
       }
+      rowIdx++;
     }
-    // Sand-filled grout lines
-    cCtx.fillStyle = '#7a6b57';
-    for (let x = 0; x <= size; x += tile) cCtx.fillRect(x - 2, 0, 4, size);
-    for (let y = 0; y <= size; y += tile) cCtx.fillRect(0, y - 2, size, 4);
-    bCtx.fillStyle = '#262626';
-    for (let x = 0; x <= size; x += tile) bCtx.fillRect(x - 2, 0, 4, size);
-    for (let y = 0; y <= size; y += tile) bCtx.fillRect(0, y - 2, size, 4);
+
+    // Sand-drifted irregular recessed joint crevices
+    cCtx.fillStyle = '#6e5d48';
+    bCtx.fillStyle = '#1c1c1c';
+    rowIdx = 0;
+    for (let ty = 0; ty < size; ty += slabH) {
+      cCtx.fillRect(0, ty - 1, size, 3);
+      bCtx.fillRect(0, ty - 1, size, 3);
+      const offsetX = (rowIdx % 2) * (slabW / 2);
+      for (let tx = -slabW; tx < size + slabW; tx += slabW) {
+        const x0 = tx + offsetX;
+        cCtx.fillRect(x0 - 1, ty, 3, slabH);
+        bCtx.fillRect(x0 - 1, ty, 3, slabH);
+      }
+      rowIdx++;
+    }
   } else if (kind === 'wood') {
     // Heavy sun-bleached oak timber planks with wrought-iron hinge straps & studs
     cCtx.fillStyle = '#785333';
@@ -438,9 +470,9 @@ export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
     deck: new THREE.MeshStandardMaterial({
       map: deckPair.map,
       bumpMap: deckPair.bumpMap,
-      bumpScale: 0.04,
-      roughness: 0.86,
-      metalness: 0.03,
+      bumpScale: 0.05,
+      roughness: 0.92,
+      metalness: 0.02,
     }),
     sanctum: new THREE.MeshStandardMaterial({
       map: sanctumPair.map,
@@ -675,6 +707,18 @@ export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
   canopySlab.translate(0, 8.5, -16.35);
   watchtowerGeos.push(canopySlab);
 
+  // Pitched Terracotta Roof Eaves along Watchtower Ridge (Asymmetric Mediterranean Watchtower)
+  const eaveRidge = new THREE.BoxGeometry(10.6, 0.35, 7.2);
+  eaveRidge.translate(0, 8.85, -16.35);
+  watchtowerGeos.push(eaveRidge);
+
+  // Stone Machicolation / Support Corbels beneath Canopy
+  for (let cx = -4.5; cx <= 4.5; cx += 1.8) {
+    const corbel = new THREE.BoxGeometry(0.40, 0.55, 0.60);
+    corbel.translate(cx, 8.15, -13.0);
+    watchtowerGeos.push(corbel);
+  }
+
   // 4 Canopy Corner Columns
   for (const [px, pz] of [
     [-4.6, -19.2],
@@ -703,25 +747,45 @@ export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
 
   addMergedAccent(watchtowerGeos, 0x9e886c, 0.82, 0.05, true); // Weathered Ashlar Stone
 
-  // Overhead Wooden Pergola Beams Spanning CT Spawn -> A/B Approach (Casts Slatted Shadows)
+  // Overhead Wooden Pergola Trellises Flanking CT Spawn Walls (Open 8m Sky Center, Slatted Shadows)
   const pergolaGeos: THREE.BufferGeometry[] = [];
   const corbelGeos: THREE.BufferGeometry[] = [];
   for (const z of [-28.0, -26.5, -25.0, -23.5, -22.0]) {
-    const slat = new THREE.BoxGeometry(14.8, 0.22, 0.38);
-    slat.translate(0.0, 6.9, z);
-    pergolaGeos.push(slat);
+    // East / Foundry side cantilever slat (x in [4.0, 7.0])
+    const slatE = new THREE.BoxGeometry(3.0, 0.22, 0.36);
+    slatE.translate(5.5, 6.9, z);
+    pergolaGeos.push(slatE);
 
-    // Stone wall corbels/brackets supporting each slat at East (Sanctum x=-7.0) & West (Foundry x=+7.0) wall junctions
-    const corbelL = new THREE.BoxGeometry(0.55, 0.50, 0.42);
-    corbelL.translate(6.75, 6.55, z);
-    corbelGeos.push(corbelL);
+    // East diagonal timber knee-brace
+    const braceE = new THREE.BoxGeometry(1.35, 0.16, 0.16);
+    braceE.rotateZ(0.55);
+    braceE.translate(6.15, 6.35, z);
+    pergolaGeos.push(braceE);
 
-    const corbelR = new THREE.BoxGeometry(0.55, 0.50, 0.42);
-    corbelR.translate(-6.75, 6.55, z);
-    corbelGeos.push(corbelR);
+    // East stone corbel at wall
+    const corbelE = new THREE.BoxGeometry(0.50, 0.45, 0.40);
+    corbelE.translate(6.75, 6.55, z);
+    corbelGeos.push(corbelE);
+
+    // West / Sanctum side cantilever slat (x in [-7.0, -4.0])
+    const slatW = new THREE.BoxGeometry(3.0, 0.22, 0.36);
+    slatW.translate(-5.5, 6.9, z);
+    pergolaGeos.push(slatW);
+
+    // West diagonal timber knee-brace
+    const braceW = new THREE.BoxGeometry(1.35, 0.16, 0.16);
+    braceW.rotateZ(-0.55);
+    braceW.translate(-6.15, 6.35, z);
+    pergolaGeos.push(braceW);
+
+    // West stone corbel at wall
+    const corbelW = new THREE.BoxGeometry(0.50, 0.45, 0.40);
+    corbelW.translate(-6.75, 6.55, z);
+    corbelGeos.push(corbelW);
   }
-  for (const x of [-6.4, 6.4]) {
-    const runner = new THREE.BoxGeometry(0.32, 0.24, 7.2);
+  // Longitudinal outer and inner runners
+  for (const x of [-6.6, -4.15, 4.15, 6.6]) {
+    const runner = new THREE.BoxGeometry(0.24, 0.20, 7.2);
     runner.translate(x, 7.05, -25.0);
     pergolaGeos.push(runner);
   }

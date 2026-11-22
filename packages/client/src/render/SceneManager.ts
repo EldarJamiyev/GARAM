@@ -215,17 +215,19 @@ export class SceneManager {
         float wisp = sin(cloudUV * 2.1 + y * 9.0) * cos(cloudUV * 3.7 - y * 6.0) * 0.5 + 0.5;
         sky = mix(sky, vec3(0.95, 0.91, 0.85), cloudBand * smoothstep(0.62, 0.94, wisp) * 0.16);
 
-        // Soft Mie forward-scattering solar aureole (no harsh white disc)
+        // Realistic tight solar disc + crisp Mie corona (eliminating blown-out white sun blob)
         vec3 sunDir = normalize(sunPosition);
-        float cosTheta = max(dot(dir, sunDir), 0.0);
-        float mieCore = pow(cosTheta, 160.0) * 1.15;
-        float mieAureole = pow(cosTheta, 22.0) * 0.42;
-        float mieGlow = pow(cosTheta, 4.5) * 0.18;
+        float sunDot = max(dot(dir, sunDir), 0.0);
+        float solarDisc = smoothstep(0.9990, 0.9997, sunDot) * 1.8;
+        float mieCore = pow(sunDot, 180.0) * 0.45;
+        float mieAureole = pow(sunDot, 42.0) * 0.14;
+        float mieGlow = pow(sunDot, 14.0) * 0.06;
         float warmHorizon = pow(1.0 - clamp(abs(y), 0.0, 1.0), 5.0) * 0.16;
 
         vec3 finalColor = sky
-          + vec3(1.0, 0.95, 0.84) * mieCore
-          + vec3(1.0, 0.86, 0.66) * (mieAureole + mieGlow)
+          + vec3(1.0, 0.98, 0.90) * solarDisc
+          + vec3(1.0, 0.92, 0.78) * mieCore
+          + vec3(1.0, 0.84, 0.62) * (mieAureole + mieGlow)
           + vec3(0.94, 0.82, 0.68) * warmHorizon;
         gl_FragColor = vec4(finalColor, 1.0);
       }
