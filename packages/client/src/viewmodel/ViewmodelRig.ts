@@ -39,17 +39,17 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'garam-47': {
     socketBone: 'Rif',
     modelPath: '/models/garam47.glb',
-    targetLength: 0.75,
+    targetLength: 0.69,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [-0.0424, 0.4247, -0.1323],
-    localRotEuler: [-1.7183, -0.1314, 3.0204],
-    localScale: 1.004,
-    armsScale: 0.38,
-    armsOffset: [0.065, -0.27, -0.36],
-    muzzleLocalPos: [0.0089, 0.06, -0.6078],
+    localPos: [-0.038, 0.395, -0.125],
+    localRotEuler: [-1.710, -0.095, 3.060],
+    localScale: 0.92,
+    armsScale: 0.36,
+    armsOffset: [0.092, -0.28, -0.37],
+    muzzleLocalPos: [0.008, 0.058, -0.565],
     requiresPBodyRest: false,
-    leftHandAnchorLocal: [0.000, -0.018, -0.235],
+    leftHandAnchorLocal: [0.000, -0.018, -0.215],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     leftFingerCurl: 0.85,
     clips: {
@@ -71,7 +71,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [0.0327, 0.3605, -1.6931],
     localScale: 1.004,
     armsScale: 0.38,
-    armsOffset: [0.065, -0.28, -0.36],
+    armsOffset: [0.088, -0.28, -0.36],
     muzzleLocalPos: [0.007, 0.081, -0.6525],
     requiresPBodyRest: true,
     leftHandAnchorLocal: [0.002, 0.032, -0.245],
@@ -94,7 +94,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
     localPos: [-0.082, 0.038, 0.092],
-    localRotEuler: [-0.985, -0.062, 3.025],
+    localRotEuler: [-0.985, -0.015, 3.045],
     localScale: 1.004,
     armsScale: 0.38,
     armsOffset: [0.065, -0.27, -0.36],
@@ -141,7 +141,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     targetLength: 0.23,
     rotationEuler: [0, 0, 0],
     localPos: [0.015, 0.035, -0.018],
-    localRotEuler: [-3.142, -3.142, -2.742],
+    localRotEuler: [-3.05, -3.12, -2.58],
     localScale: 1.08,
     armsScale: 0.40,
     armsOffset: [0.050, -0.21, -0.35],
@@ -282,8 +282,8 @@ export function buildKarambitAnimationClips(
     }
   }
 
-  // Position left hand in low-left tactical CQC guard so it stays clear of HUD and center screen
-  basePos.set('IK_Hand_Cntrl_L', [0.180, 0.160, 0.100]);
+  // Position left hand in low-left tactical CQC guard so it stays clear of HUD and center screen (ndcY <= -0.80)
+  basePos.set('IK_Hand_Cntrl_L', [0.260, -0.010, 0.120]);
   baseQuats.set('IK_Hand_Cntrl_L', [-0.14, 0.05, 0.97, -0.18]);
   // Position right hand on the right side for crisp reverse-grip Karambit framing
   basePos.set('IK_Hand_Cntrl_R', [-0.135, 0.095, 0.225]);
