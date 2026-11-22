@@ -360,7 +360,7 @@ export class WeaponViewmodel {
     void this.loadExternalModels();
   }
 
-function sealArmSleeveCutoffs(sm: THREE.SkinnedMesh): void {
+  private sealArmSleeveCutoffs(sm: THREE.SkinnedMesh): void {
   const geom = sm.geometry;
   const pos = geom.attributes.position;
   const normal = geom.attributes.normal;
@@ -474,7 +474,7 @@ function sealArmSleeveCutoffs(sm: THREE.SkinnedMesh): void {
         const armsModel = armsRes.model;
         armsModel.traverse((node) => {
           if ((node as THREE.SkinnedMesh).isSkinnedMesh) {
-            sealArmSleeveCutoffs(node as THREE.SkinnedMesh);
+            this.sealArmSleeveCutoffs(node as THREE.SkinnedMesh);
           }
         });
         this.armsRoot = armsModel;
@@ -1167,16 +1167,33 @@ function sealArmSleeveCutoffs(sm: THREE.SkinnedMesh): void {
       }
 
       this.armsMixer.update(safeDt);
+      this.armsContainer.updateMatrixWorld(true);
 
       // Lock left hand to weapon handguard/forend underside anchor
       if (this.leftHandLockWeight > 0.001 && this.ikHandCtrlL) {
         const gripAnchor = this.leftHandGripAnchors.get(this.currentWeaponId);
         const cfg = getWeaponSocketConfig(this.currentWeaponId);
         if (gripAnchor) {
+          // 1. Curl fingers FIRST so knuckle world positions reflect the curled hand grip!
+          if (
+            this.akFingerPose.size > 0 &&
+            (this.currentWeaponId === 'vanguard-m4' ||
+              this.currentWeaponId === 'sovereign-awp' ||
+              this.currentWeaponId === 'desert-eagle')
+          ) {
+            this.akFingerPose.forEach((qTarget, boneName) => {
+              const bone = this.fingerBones.get(boneName);
+              if (bone) {
+                bone.quaternion.slerp(qTarget, this.leftHandLockWeight);
+              }
+            });
+            this.handL?.updateMatrixWorld(true);
+          }
+
           gripAnchor.updateMatrixWorld(true);
           gripAnchor.getWorldPosition(_vA);
 
-          // Compute palm centroid offset from Hand_L to eliminate float/detachment
+          // 2. Compute palm centroid offset from Hand_L to eliminate float/detachment
           const b5 = this.fingerBones.get('Bone_L005') || this.fingerBones.get('Bone_L.005');
           const b9 = this.fingerBones.get('Bone_L009') || this.fingerBones.get('Bone_L.009');
           const b13 = this.fingerBones.get('Bone_L013') || this.fingerBones.get('Bone_L.013');
@@ -1193,8 +1210,14 @@ function sealArmSleeveCutoffs(sm: THREE.SkinnedMesh): void {
           const upArm = this.armsRoot?.getObjectByName('UpArm_L');
           const upArmPos = upArm ? upArm.getWorldPosition(_vB) : null;
           const reachDist = upArmPos ? _vA.distanceTo(upArmPos) : 0.35;
-          const isGripValid = _vA.z < -0.18 && reachDist >= 0.12 && reachDist <= 0.65;
+          const isGripValid = reachDist >= 0.02 && reachDist <= 0.75;
           if (isGripValid) {
+            // Clamp target reach to prevent hyper-extension
+            const maxReach = 0.52 * cfg.armsScale;
+            if (upArmPos && reachDist > maxReach) {
+              _vA.sub(upArmPos).normalize().multiplyScalar(maxReach).add(upArmPos);
+            }
+
             if (this.ikHandCtrlL.parent) {
               this.ikHandCtrlL.parent.updateMatrixWorld(true);
               this.ikHandCtrlL.parent.worldToLocal(_vB.copy(_vA));
@@ -1204,20 +1227,14 @@ function sealArmSleeveCutoffs(sm: THREE.SkinnedMesh): void {
             }
             this.ikHandCtrlL.updateMatrixWorld(true);
             if (this.handL && cfg.leftHandRelRotEuler) {
-              _euler.set(cfg.leftHandRelRotEuler[0], cfg.leftHandRelRotEuler[1], cfg.leftHandRelRotEuler[2], 'XYZ');
+              _euler.set(
+                cfg.leftHandRelRotEuler[0],
+                cfg.leftHandRelRotEuler[1],
+                cfg.leftHandRelRotEuler[2],
+                'XYZ'
+              );
               _qDelta.setFromEuler(_euler);
               this.handL.quaternion.slerp(_qDelta, this.leftHandLockWeight);
-            }
-            if (
-              this.akFingerPose.size > 0 &&
-              (this.currentWeaponId === 'vanguard-m4' || this.currentWeaponId === 'sovereign-awp')
-            ) {
-              this.akFingerPose.forEach((qTarget, boneName) => {
-                const bone = this.fingerBones.get(boneName);
-                if (bone) {
-                  bone.quaternion.slerp(qTarget, this.leftHandLockWeight);
-                }
-              });
             }
           }
         }

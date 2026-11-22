@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { AssetManager } from './AssetManager.js';
+import { PostProcessPipeline } from './PostProcessPipeline.js';
 
 export class SceneManager {
   public worldScene: THREE.Scene;
@@ -12,6 +13,7 @@ export class SceneManager {
   public skyMesh: THREE.Mesh;
   public horizonMesh: THREE.InstancedMesh;
   public envMap: THREE.Texture;
+  public postProcess: PostProcessPipeline;
   private envRenderTarget: THREE.WebGLRenderTarget | null = null;
   private renderer: THREE.WebGLRenderer;
   public isSoftwareGl = false;
@@ -100,6 +102,9 @@ export class SceneManager {
     // 6. Distant Sunlit Mediterranean Skyline + Industrial Foundry Cranes (1 draw call)
     this.horizonMesh = this.buildDistantHorizon();
     this.worldScene.add(this.horizonMesh);
+
+    // 7. CS2 Post-Processing Optical Pipeline (GTAO crevice contact shadows + filmic bloom)
+    this.postProcess = new PostProcessPipeline(renderer, this.worldScene, this.worldCamera, this.isSoftwareGl);
   }
 
   private generateProceduralPMREM(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarget {
@@ -369,6 +374,20 @@ export class SceneManager {
     this.horizonMesh.position.set(cameraPos.x, 0, cameraPos.z);
   }
 
+  public onResize(w: number, h: number): void {
+    this.postProcess.setSize(w, h);
+  }
+
+  public render(renderViewmodel: boolean): void {
+    this.postProcess.render(
+      this.worldScene,
+      this.worldCamera,
+      this.viewmodelScene,
+      this.viewmodelCamera,
+      renderViewmodel
+    );
+  }
+
   public scheduleNextFrame(cb: (now: number) => void): void {
     if (!this.isSoftwareGl) {
       requestAnimationFrame(cb);
@@ -407,5 +426,6 @@ export class SceneManager {
     (this.skyMesh.material as THREE.Material).dispose();
     this.horizonMesh.geometry.dispose();
     (this.horizonMesh.material as THREE.Material).dispose();
+    this.postProcess.dispose();
   }
 }

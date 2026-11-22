@@ -216,6 +216,7 @@ export class GaramGame {
     this.sceneManager.viewmodelCamera.aspect = w / h;
     this.sceneManager.viewmodelCamera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    this.sceneManager.onResize(w, h);
   }
 
   private loop(now: number): void {
@@ -296,15 +297,9 @@ export class GaramGame {
     net.updateBandwidthTelemetry();
     this.perfMonitor.recordFrame(frameDelta * 1000, net.isConnected ? net.ping : -1, net.rxKbps, net.txKbps);
 
-    this.renderer.clear();
-    this.renderer.render(this.sceneManager.worldScene, worldCamera);
-    this.renderer.clearDepth();
-    if (!ctx.spectator.isSpectating && ctx.hasMatchStarted.value && document.body.dataset.state === 'playing') {
-      ctx.viewmodel.mesh.visible = true;
-      this.renderer.render(this.sceneManager.viewmodelScene, this.sceneManager.viewmodelCamera);
-    } else {
-      ctx.viewmodel.mesh.visible = false;
-    }
+    const showVm = !ctx.spectator.isSpectating && ctx.hasMatchStarted.value && document.body.dataset.state === 'playing';
+    ctx.viewmodel.mesh.visible = showVm;
+    this.sceneManager.render(showVm);
     this.sceneManager.scheduleNextFrame(this.boundLoop);
   }
 }

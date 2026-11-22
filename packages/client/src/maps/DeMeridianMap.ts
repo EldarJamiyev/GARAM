@@ -911,24 +911,33 @@ export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
   addWallStencil('B FOUNDRY →', '#27a3b8', 24.0, DE_MERIDIAN_DECK_Y + 3.4, 22.08, 0);
   addWallStencil('▲ AQUEDUCT MID', '#d99b38', 0, DE_MERIDIAN_DECK_Y + 2.6, 32.58, 0);
 
-  // 7. Warm Amber Tactical Accent PointLights (Sunken Aqueduct, A Palace, B Apartments, Foundry)
-  const lightPositions: [number, number, number, number, number][] = [
-    [0, 3.2, 4.0, 0xffb35c, 22], // Sunken Aqueduct Underpass warm lantern glow
-    [-41.5, DE_MERIDIAN_UPPER_Y + 2.4, 4.0, 0xffaa55, 18], // A Palace interior
-    [41.5, DE_MERIDIAN_UPPER_Y + 2.4, -2.0, 0xffa84c, 20], // B Apartments interior
-    [29.5, DE_MERIDIAN_DECK_Y + 5.2, -20.5, 0xffbc6b, 24], // B Foundry overhead amber fixture
+  // 7. Warm Amber Tactical Accent PointLights & Doorway Radiosity Bounce GI
+  const lightPositions: [number, number, number, number, number, boolean][] = [
+    [0, 3.2, 4.0, 0xffb35c, 22, true], // Sunken Aqueduct Underpass warm lantern glow
+    [-41.5, DE_MERIDIAN_UPPER_Y + 2.4, 4.0, 0xffaa55, 18, true], // A Palace interior
+    [41.5, DE_MERIDIAN_UPPER_Y + 2.4, -2.0, 0xffa84c, 20, true], // B Apartments interior
+    [29.5, DE_MERIDIAN_DECK_Y + 5.2, -20.5, 0xffbc6b, 24, true], // B Foundry overhead amber fixture
+    // CS2 Doorway Sunlight Bounce Radiosity (soft warm sandstone indirect spill into shaded portals)
+    [18.5, DE_MERIDIAN_DECK_Y + 3.2, 12.0, 0xffd099, 14, false], // A Main Archway portal
+    [6.2, DE_MERIDIAN_DECK_Y + 3.0, -4.5, 0xffd099, 12, false], // A Connector portal
+    [0.0, DE_MERIDIAN_DECK_Y + 4.2, -14.2, 0xffd099, 12, false], // Mid Sniper Nest aperture
+    [-16.4, DE_MERIDIAN_DECK_Y + 3.2, 8.0, 0xffd099, 14, false], // B Short Archway
+    [2.0, 1.2, 22.0, 0xffd099, 12, false], // Underpass South Entrance
+    [-4.0, 1.2, -18.0, 0xffd099, 12, false], // Underpass North Exit
   ];
-  for (const [lx, ly, lz, color, dist] of lightPositions) {
-    const pt = new THREE.PointLight(color, 1.35, dist, 1.6);
+  for (const [lx, ly, lz, color, dist, hasFixture] of lightPositions) {
+    const pt = new THREE.PointLight(color, hasFixture ? 1.35 : 1.15, dist, 1.6);
     pt.position.set(lx, ly, lz);
     scene.add(pt);
 
-    const fixture = new THREE.Mesh(
-      new THREE.BoxGeometry(0.9, 0.14, 0.35),
-      new THREE.MeshBasicMaterial({ color: 0xffe4b5 })
-    );
-    fixture.position.set(lx, ly + 0.18, lz);
-    scene.add(fixture);
+    if (hasFixture) {
+      const fixture = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 0.14, 0.35),
+        new THREE.MeshBasicMaterial({ color: 0xffe4b5 })
+      );
+      fixture.position.set(lx, ly + 0.18, lz);
+      scene.add(fixture);
+    }
   }
 
   // 8. Spawn Grounded 5v5 Tactical Bots on DE_MERIDIAN Deck
