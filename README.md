@@ -153,23 +153,27 @@ npm test
 
 ## 7. In-Engine Gameplay & Visual Telemetry
 
-The screenshots below are captured directly from live headless Chrome WebGL2 playtests via `scripts/visual-audit.cjs`:
+The screenshots below are captured directly from live headless Chrome WebGL2 playtests at 1440×900 via `scripts/visual-audit.cjs`, demonstrating the Source 2 optical pipeline, 6 photographic PBR texture sets, procedural architecture, and unified viewmodel rig:
 
 <p align="center">
-  <img src="docs/assets/playtests/audit_01_lobby.png" alt="Lobby Panoramic Overlook" width="48%">
-  <img src="docs/assets/playtests/audit_02_garam47_idle.png" alt="Garam-47 CS2 Framing" width="48%">
+  <img src="docs/assets/playtests/audit_01_lobby.png" alt="Lobby Panoramic Overlook & Golden-Hour Lighting" width="48%">
+  <img src="docs/assets/playtests/audit_02_garam47_idle.png" alt="Garam-47 CS2 Framing & PBR Wood Handguard" width="48%">
 </p>
 <p align="center">
-  <img src="docs/assets/playtests/audit_05_m4a1s_idle.png" alt="Vanguard M4A1-S" width="48%">
-  <img src="docs/assets/playtests/audit_06_awp_idle.png" alt="Sovereign AWP" width="48%">
+  <img src="docs/assets/playtests/audit_09_m4a1s_idle.png" alt="Vanguard M4A1-S Suppressed Stance" width="48%">
+  <img src="docs/assets/playtests/audit_11_awp_idle.png" alt="Sovereign AWP Sniper Low-Ready Framing" width="48%">
 </p>
 <p align="center">
-  <img src="docs/assets/playtests/audit_03_deagle_idle.png" alt="Desert Eagle Stance" width="48%">
-  <img src="docs/assets/playtests/audit_04_karambit_idle.png" alt="Garam Crimson Karambit Reverse-Grip" width="48%">
+  <img src="docs/assets/playtests/audit_05_deagle_idle.png" alt="Desert Eagle .50 AE Heavy Handgun Stance" width="48%">
+  <img src="docs/assets/playtests/audit_07_karambit_idle.png" alt="Garam Crimson Doppler Karambit Reverse-Grip" width="48%">
 </p>
 <p align="center">
-  <img src="docs/assets/playtests/audit_07_architectural_pergola_corbels.png" alt="Open-Sky Cantilevered Pergolas & Stone Corbels" width="48%">
-  <img src="docs/assets/playtests/audit_08_3p_vanguard_bot.png" alt="3P Operator Bot Ground Shadows" width="48%">
+  <img src="docs/assets/playtests/audit_08_karambit_inspect.png" alt="Karambit Index-Finger Twirl Inspect Animation" width="48%">
+  <img src="docs/assets/playtests/audit_14_mid_watchtower.png" alt="Mid Watchtower, Terracotta Roof & Sloped Cheek-Walls" width="48%">
+</p>
+<p align="center">
+  <img src="docs/assets/playtests/audit_19_3p_vanguard_bot.png" alt="3P Operator Bot & CSM Directional Ground Shadows" width="48%">
+  <img src="docs/assets/playtests/audit_20_ortho_radar_hud.png" alt="CS2 Tournament HUD, Rotating Radar & Volumetric Smoke" width="48%">
 </p>
 
 ---
