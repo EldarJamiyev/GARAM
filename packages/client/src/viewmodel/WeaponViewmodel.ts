@@ -1071,6 +1071,21 @@ export class WeaponViewmodel {
         if (gripAnchor) {
           gripAnchor.updateMatrixWorld(true);
           gripAnchor.getWorldPosition(_vA);
+
+          // Compute palm centroid offset from Hand_L to eliminate float/detachment
+          const b5 = this.fingerBones.get('Bone_L005') || this.fingerBones.get('Bone_L.005');
+          const b9 = this.fingerBones.get('Bone_L009') || this.fingerBones.get('Bone_L.009');
+          const b13 = this.fingerBones.get('Bone_L013') || this.fingerBones.get('Bone_L.013');
+          if (b5 && b9 && b13 && this.handL) {
+            b5.getWorldPosition(_vB);
+            b9.getWorldPosition(_vC);
+            b13.getWorldPosition(_vD);
+            _vC.add(_vB).add(_vD).multiplyScalar(1 / 3);
+            this.handL.getWorldPosition(_vD);
+            _vC.sub(_vD);
+            _vA.sub(_vC);
+          }
+
           const upArm = this.armsRoot?.getObjectByName('UpArm_L');
           const upArmPos = upArm ? upArm.getWorldPosition(_vB) : null;
           const reachDist = upArmPos ? _vA.distanceTo(upArmPos) : 0.35;
