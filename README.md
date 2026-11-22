@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-149%20Passing-00FF88?style=for-the-badge" alt="149 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-150%20Passing-00FF88?style=for-the-badge" alt="150 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -127,7 +127,7 @@ npm test
 ```
 ```text
  ✓ packages/client/src/__tests__/client-systems.test.ts       (11 tests)
- ✓ packages/client/src/__tests__/viewmodel-rig.test.ts        (9 tests)
+ ✓ packages/client/src/__tests__/viewmodel-rig.test.ts        (10 tests)
  ✓ packages/server/src/__tests__/gameroom.integration.test.ts (8 tests)
  ✓ packages/server/src/__tests__/pvs.test.ts                  (1 test)
  ✓ packages/server/src/__tests__/registry.test.ts             (6 tests)
@@ -146,12 +146,31 @@ npm test
  ✓ packages/shared/src/__tests__/docs-sync.test.ts            (3 tests)
 
  Test Files  18 passed (18)
-      Tests  149 passed (149)
+      Tests  150 passed (150)
 ```
 
 ---
 
-## 7. Quick Start & Developer Guide
+## 7. In-Engine Gameplay & Visual Telemetry
+
+The screenshots below are captured directly from live headless Chrome WebGL2 playtests via `scripts/visual-audit.cjs`:
+
+<p align="center">
+  <img src="docs/assets/playtests/audit_01_lobby.png" alt="Lobby Panoramic Overlook" width="48%">
+  <img src="docs/assets/playtests/audit_02_garam47_idle.png" alt="Garam-47 AK Framing" width="48%">
+</p>
+<p align="center">
+  <img src="docs/assets/playtests/audit_05_m4a1s_idle.png" alt="Vanguard M4A1-S" width="48%">
+  <img src="docs/assets/playtests/audit_06_awp_idle.png" alt="Sovereign AWP" width="48%">
+</p>
+<p align="center">
+  <img src="docs/assets/playtests/audit_07_architectural_pergola_corbels.png" alt="Pergola & Stone Corbels Architecture" width="48%">
+  <img src="docs/assets/playtests/audit_04_karambit_idle.png" alt="Garam Crimson Karambit Reverse-Grip" width="48%">
+</p>
+
+---
+
+## 8. Quick Start & Developer Guide
 
 ### Prerequisites
 - Node.js >= 18.0.0
@@ -183,7 +202,7 @@ Alternatively, on Windows, double-click **`PLAY_GARAM.bat`** in the project root
 
 ---
 
-## 8. License & Credits
+## 9. License & Credits
 
 Built with precision by **Eldar Jamiyev** & the GARAM Systems Team.  
 All gameplay systems, deterministic kinematics, and architectural specifications are maintained under the MIT License.
