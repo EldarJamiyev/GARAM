@@ -732,7 +732,7 @@ export class WeaponViewmodel {
     action.setEffectiveTimeScale(timeScale);
     action.play();
     this.armsMixer.update(0.001);
-    this.armIKSolver?.solve();
+    this.armIKSolver?.solve(this.currentWeaponId === 'garam-karambit');
 
     const isLoopClip = clipName.endsWith('_Idle') || clipName.endsWith('_Walk');
     const isOneShot =
@@ -1168,6 +1168,28 @@ export class WeaponViewmodel {
       }
 
       this.armsMixer.update(safeDt);
+
+      if (this.currentWeaponId === 'garam-karambit') {
+        const armL = this.armsRoot?.getObjectByName('Arm_L');
+        if (armL) {
+          armL.scale.set(0.0001, 0.0001, 0.0001);
+          armL.position.set(0, -10, 0);
+        }
+        if (this.ikHandCtrlL) {
+          this.ikHandCtrlL.scale.set(0.0001, 0.0001, 0.0001);
+          this.ikHandCtrlL.position.set(0, -10, 0);
+        }
+      } else {
+        const armL = this.armsRoot?.getObjectByName('Arm_L');
+        if (armL && (armL.scale.x < 0.5 || armL.position.y < -5)) {
+          armL.scale.set(1, 1, 1);
+          armL.position.set(0, 0.2158, 0);
+        }
+        if (this.ikHandCtrlL && (this.ikHandCtrlL.scale.x < 0.5 || this.ikHandCtrlL.position.y < -5)) {
+          this.ikHandCtrlL.scale.set(1, 1, 1);
+        }
+      }
+
       this.armsContainer.updateMatrixWorld(true);
 
       // Lock left hand to weapon handguard/forend underside anchor
@@ -1236,7 +1258,7 @@ export class WeaponViewmodel {
         }
       }
 
-      this.armIKSolver?.solve();
+      this.armIKSolver?.solve(this.currentWeaponId === 'garam-karambit');
     } else {
       this.wasReloading = this.isReloading;
     }

@@ -369,8 +369,8 @@ export class ArmIKSolver {
    * Executes right after `armsMixer.update(dt)` every frame.
    * Zero allocations.
    */
-  public solve(): void {
-    if (this.leftChain) {
+  public solve(skipLeft = false): void {
+    if (!skipLeft && this.leftChain) {
       this.lastLeftGap = this.solveChain(this.leftChain);
     }
     if (this.rightChain) {

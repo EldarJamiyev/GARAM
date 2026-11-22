@@ -323,8 +323,8 @@ async function runVisualAudit() {
   console.log('\n[Capture 13] Inspecting Underpass Portal & Doorway Radiosity...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      document.dispatchEvent(new Event('pointerlockchange'));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 0, bubbles: true }));
       window.dispatchEvent(new MouseEvent('mousemove', { movementX: -700, movementY: 60, bubbles: true }));
     })()`,
   });
@@ -335,6 +335,7 @@ async function runVisualAudit() {
   console.log('\n[Capture 14] Inspecting Mid Watchtower, Terracotta Roof & Sloped Cheek-Walls...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      document.dispatchEvent(new Event('pointerlockchange'));
       window.dispatchEvent(new MouseEvent('mousemove', { movementX: 700, movementY: -160, bubbles: true }));
     })()`,
   });
@@ -345,6 +346,7 @@ async function runVisualAudit() {
   console.log('\n[Capture 15] Inspecting Roman Stone Archways, Keystones & Mediterranean Windows...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      document.dispatchEvent(new Event('pointerlockchange'));
       window.dispatchEvent(new MouseEvent('mousemove', { movementX: -1400, movementY: 100, bubbles: true }));
     })()`,
   });
@@ -355,6 +357,7 @@ async function runVisualAudit() {
   console.log('\n[Capture 16] Inspecting Photographic Cobblestone 04 PBR Deck & Weathered Plaster...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      document.dispatchEvent(new Event('pointerlockchange'));
       window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 360, bubbles: true }));
     })()`,
   });
@@ -365,17 +368,17 @@ async function runVisualAudit() {
   console.log('\n[Capture 17] Deploying & Capturing 3D Volumetric Smoke Grenade Cloud...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 1400, movementY: -100, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
       const smokeBtn = document.querySelector('[data-buy="smoke-grenade"]');
       if (smokeBtn) smokeBtn.click();
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
+      document.dispatchEvent(new Event('pointerlockchange'));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit4', key: '4', bubbles: true }));
       setTimeout(() => {
         const canvas = document.getElementById('game-canvas');
         if (canvas) {
-          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
-          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 2, bubbles: true })), 60);
+          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 60);
         }
       }, 400);
     })()`,
@@ -391,12 +394,13 @@ async function runVisualAudit() {
       const molotovBtn = document.querySelector('[data-buy="molotov"]');
       if (molotovBtn) molotovBtn.click();
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
+      document.dispatchEvent(new Event('pointerlockchange'));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit4', key: '4', bubbles: true }));
       setTimeout(() => {
         const canvas = document.getElementById('game-canvas');
         if (canvas) {
-          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
-          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 2, bubbles: true })), 60);
+          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 60);
         }
       }, 400);
     })()`,
