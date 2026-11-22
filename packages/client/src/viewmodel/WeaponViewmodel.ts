@@ -432,6 +432,22 @@ export class WeaponViewmodel {
           this.armsActions.set(clip.name, action);
         }
 
+        armsModel.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            for (const m of mats) {
+              if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
+                const std = m as THREE.MeshStandardMaterial;
+                std.side = THREE.DoubleSide;
+                std.roughness = Math.max(0.65, std.roughness);
+                std.metalness = Math.min(0.20, std.metalness);
+                std.envMapIntensity = 1.2;
+              }
+            }
+          }
+        });
+
         this.armsContainer.add(armsModel);
         this.armsLoaded = true;
       }
