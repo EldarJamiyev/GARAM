@@ -143,8 +143,8 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localPos: [0.015, 0.035, -0.018],
     localRotEuler: [-3.05, -3.12, -2.58],
     localScale: 1.08,
-    armsScale: 0.40,
-    armsOffset: [0.050, -0.21, -0.35],
+    armsScale: 0.38,
+    armsOffset: [0.025, -0.21, -0.35],
     muzzleLocalPos: [0, -0.0427, -0.115],
     requiresPBodyRest: true,
     ringPivotLocal: [0, 0.02, 0.085],
@@ -283,10 +283,10 @@ export function buildKarambitAnimationClips(
   }
 
   // Position left hand in low-left tactical CQC guard so it stays clear of HUD and center screen (ndcY <= -0.80)
-  basePos.set('IK_Hand_Cntrl_L', [0.260, -0.010, 0.120]);
+  basePos.set('IK_Hand_Cntrl_L', [0.260, -0.040, 0.140]);
   baseQuats.set('IK_Hand_Cntrl_L', [-0.14, 0.05, 0.97, -0.18]);
   // Position right hand on the right side for crisp reverse-grip Karambit framing
-  basePos.set('IK_Hand_Cntrl_R', [-0.135, 0.095, 0.225]);
+  basePos.set('IK_Hand_Cntrl_R', [-0.200, 0.090, 0.225]);
 
   const ikRPos = basePos.get('IK_Hand_Cntrl_R') || [-0.088, 0.036, 0.225];
   const ikRQuat = baseQuats.get('IK_Hand_Cntrl_R') || [-0.0572, 0.0106, 0.5295, 0.8463];

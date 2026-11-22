@@ -323,7 +323,7 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     vmMesh.add(armsContainer);
 
     const ikHandCtrlR = new THREE.Object3D();
-    ikHandCtrlR.position.set(-0.135, 0.095, 0.225);
+    ikHandCtrlR.position.set(-0.200, 0.090, 0.225);
     ikHandCtrlR.quaternion.set(-0.0572, 0.0106, 0.5295, 0.8463);
     armsContainer.add(ikHandCtrlR);
 
@@ -593,7 +593,7 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     expect(handL).toBeDefined();
     expect(ikL).toBeDefined();
 
-    ikL!.position.set(0.260, -0.010, 0.120);
+    ikL!.position.set(0.260, -0.040, 0.140);
     kContainer.updateMatrixWorld(true);
 
     const kHandNDC = handL!.getWorldPosition(new THREE.Vector3()).project(camera);
