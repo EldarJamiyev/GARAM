@@ -360,6 +360,105 @@ export class WeaponViewmodel {
     void this.loadExternalModels();
   }
 
+function sealArmSleeveCutoffs(sm: THREE.SkinnedMesh): void {
+  const geom = sm.geometry;
+  const pos = geom.attributes.position;
+  const normal = geom.attributes.normal;
+  const uv = geom.attributes.uv;
+  const si = geom.attributes.skinIndex;
+  const sw = geom.attributes.skinWeight;
+  const index = geom.index;
+  if (!index || !pos || !si || !sw) return;
+
+  const edgeCounts = new Map<string, number>();
+  for (let i = 0; i < index.count; i += 3) {
+    const a = index.getX(i), b = index.getX(i + 1), c = index.getX(i + 2);
+    for (const [e1, e2] of [[Math.min(a, b), Math.max(a, b)], [Math.min(b, c), Math.max(b, c)], [Math.min(c, a), Math.max(c, a)]]) {
+      const key = `${e1}_${e2}`;
+      edgeCounts.set(key, (edgeCounts.get(key) || 0) + 1);
+    }
+  }
+
+  const nextEdge = new Map<number, number>();
+  for (let i = 0; i < index.count; i += 3) {
+    const a = index.getX(i), b = index.getX(i + 1), c = index.getX(i + 2);
+    for (const [v0, v1] of [[a, b], [b, c], [c, a]]) {
+      if (edgeCounts.get(`${Math.min(v0, v1)}_${Math.max(v0, v1)}`) === 1) {
+        nextEdge.set(v0, v1);
+      }
+    }
+  }
+
+  const visited = new Set<number>();
+  const cutoffLoops: number[][] = [];
+  for (const v0 of nextEdge.keys()) {
+    if (visited.has(v0)) continue;
+    const loop: number[] = [];
+    let curr: number | undefined = v0;
+    while (curr !== undefined && !visited.has(curr) && nextEdge.has(curr)) {
+      visited.add(curr);
+      loop.push(curr);
+      curr = nextEdge.get(curr);
+      if (curr === v0) break;
+    }
+    if (loop.length >= 8) {
+      let avgZ = 0;
+      for (const idx of loop) avgZ += pos.getZ(idx);
+      avgZ /= loop.length;
+      if (avgZ < 0.25) cutoffLoops.push(loop);
+    }
+  }
+
+  if (cutoffLoops.length === 0) return;
+
+  const newPositions = Array.from(pos.array);
+  const newNormals = normal ? Array.from(normal.array) : [];
+  const newUvs = uv ? Array.from(uv.array) : [];
+  const newSkinIndices = Array.from(si.array);
+  const newSkinWeights = Array.from(sw.array);
+  const newIndices = Array.from(index.array);
+
+  let vertCount = pos.count;
+  for (const loop of cutoffLoops) {
+    let cx = 0, cy = 0, cz = 0;
+    let sIdx0 = 0, sIdx1 = 0, sIdx2 = 0, sIdx3 = 0;
+    let sWt0 = 0, sWt1 = 0, sWt2 = 0, sWt3 = 0;
+
+    for (const vi of loop) {
+      cx += pos.getX(vi); cy += pos.getY(vi); cz += pos.getZ(vi);
+      sIdx0 = si.getX(vi); sIdx1 = si.getY(vi); sIdx2 = si.getZ(vi); sIdx3 = si.getW(vi);
+      sWt0 += sw.getX(vi); sWt1 += sw.getY(vi); sWt2 += sw.getZ(vi); sWt3 += sw.getW(vi);
+    }
+    const invN = 1 / loop.length;
+    cx *= invN; cy *= invN; cz *= invN;
+    sWt0 *= invN; sWt1 *= invN; sWt2 *= invN; sWt3 *= invN;
+
+    const centerIdx = vertCount++;
+    newPositions.push(cx, cy, cz);
+    if (normal) newNormals.push(0, 0, -1);
+    if (uv) newUvs.push(0.5, 0.5);
+    newSkinIndices.push(sIdx0, sIdx1, sIdx2, sIdx3);
+    newSkinWeights.push(sWt0, sWt1, sWt2, sWt3);
+
+    for (let i = 0; i < loop.length; i++) {
+      const v0 = loop[i];
+      const v1 = loop[(i + 1) % loop.length];
+      newIndices.push(centerIdx, v0, v1);
+    }
+  }
+
+  const newGeom = new THREE.BufferGeometry();
+  newGeom.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3));
+  if (normal) newGeom.setAttribute('normal', new THREE.Float32BufferAttribute(newNormals, 3));
+  if (uv) newGeom.setAttribute('uv', new THREE.Float32BufferAttribute(newUvs, 2));
+  newGeom.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(newSkinIndices, 4));
+  newGeom.setAttribute('skinWeight', new THREE.Float32BufferAttribute(newSkinWeights, 4));
+  newGeom.setIndex(newIndices);
+
+  sm.geometry.dispose();
+  sm.geometry = newGeom;
+}
+
   private async loadExternalModels(): Promise<void> {
     const assetManager = AssetManager.getInstance();
 
@@ -373,6 +472,11 @@ export class WeaponViewmodel {
 
       if (armsRes && armsRes.animations.length > 0) {
         const armsModel = armsRes.model;
+        armsModel.traverse((node) => {
+          if ((node as THREE.SkinnedMesh).isSkinnedMesh) {
+            sealArmSleeveCutoffs(node as THREE.SkinnedMesh);
+          }
+        });
         this.armsRoot = armsModel;
         this.bindPoseSnapshot = captureBindPose(armsModel);
         this.rifSocket = armsModel.getObjectByName('Rif') || null;
