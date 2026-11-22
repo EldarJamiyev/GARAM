@@ -903,8 +903,8 @@ export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
   };
 
   // Visible from CT Spawn (looking South +Z across flanking pillars & Mid Nest)
-  addWallStencil('← B FOUNDRY', '#27a3b8', 6.94, DE_MERIDIAN_DECK_Y + 3.2, -25.8, -Math.PI / 2);
-  addWallStencil('A SANCTUM →', '#d9483b', -6.94, DE_MERIDIAN_DECK_Y + 3.2, -25.8, Math.PI / 2);
+  addWallStencil('B FOUNDRY →', '#27a3b8', 6.94, DE_MERIDIAN_DECK_Y + 3.2, -25.8, -Math.PI / 2);
+  addWallStencil('← A SANCTUM', '#d9483b', -6.94, DE_MERIDIAN_DECK_Y + 3.2, -25.8, Math.PI / 2);
   addWallStencil('▲ MID NEST', '#d99b38', 0, DE_MERIDIAN_DECK_Y + 1.95, -19.56, Math.PI);
   // Visible from T Spawn (looking North -Z)
   addWallStencil('← A SANCTUM', '#d9483b', -24.0, DE_MERIDIAN_DECK_Y + 3.4, 22.08, 0);
