@@ -305,11 +305,11 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     expect(kCfg).toBeDefined();
     expect(kCfg.localRotEuler).toBeDefined();
 
-    // CS2 reverse-grip rotation: yaw 180°, pitch 180°, roll -157° [-3.142, -3.142, -2.742]
+    // CS2 reverse-grip rotation: angled broad bevel toward camera [-3.05, -3.12, -2.58]
     const [rx, ry, rz] = kCfg.localRotEuler!;
-    expect(rx).toBeCloseTo(-Math.PI, 1);
-    expect(ry).toBeCloseTo(-Math.PI, 1);
-    expect(rz).toBeCloseTo(-2.742, 1);
+    expect(rx).toBeCloseTo(-3.05, 1);
+    expect(ry).toBeCloseTo(-3.12, 1);
+    expect(rz).toBeCloseTo(-2.58, 1);
 
     // Compute NDC projection using viewmodel camera (FOV 62°, 1440x900)
     const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 10);
