@@ -325,7 +325,7 @@ async function runVisualAudit() {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }));
       window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 0, bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -600, movementY: 80, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -700, movementY: 60, bubbles: true }));
     })()`,
   });
   await sleep(600);
@@ -335,7 +335,7 @@ async function runVisualAudit() {
   console.log('\n[Capture 14] Inspecting Mid Watchtower, Terracotta Roof & Sloped Cheek-Walls...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 300, movementY: -180, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 700, movementY: -160, bubbles: true }));
     })()`,
   });
   await sleep(600);
@@ -345,7 +345,7 @@ async function runVisualAudit() {
   console.log('\n[Capture 15] Inspecting Roman Stone Archways, Keystones & Mediterranean Windows...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -450, movementY: 50, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -1400, movementY: 100, bubbles: true }));
     })()`,
   });
   await sleep(600);
@@ -355,17 +355,17 @@ async function runVisualAudit() {
   console.log('\n[Capture 16] Inspecting Photographic Cobblestone 04 PBR Deck & Weathered Plaster...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 260, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 360, bubbles: true }));
     })()`,
   });
   await sleep(600);
   await capture('audit_16_pbr_cobblestone_deck.png', 'Stage 16: Photographic PBR Cobblestone Deck');
 
-  // Stage 17: Active 3D Volumetric Smoke Cloud
+  // Stage 17: Active 3D Volumetric Smoke Cloud (Deploys right on deck 3m in front of camera)
   console.log('\n[Capture 17] Deploying & Capturing 3D Volumetric Smoke Grenade Cloud...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: -200, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 1400, movementY: -100, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
       const smokeBtn = document.querySelector('[data-buy="smoke-grenade"]');
       if (smokeBtn) smokeBtn.click();
@@ -374,16 +374,16 @@ async function runVisualAudit() {
       setTimeout(() => {
         const canvas = document.getElementById('game-canvas');
         if (canvas) {
-          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
-          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 60);
+          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
+          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 2, bubbles: true })), 60);
         }
-      }, 300);
+      }, 400);
     })()`,
   });
   await sleep(2400);
   await capture('audit_17_combat_smoke_cloud.png', 'Stage 17: Volumetric Smoke Cloud');
 
-  // Stage 18: Multi-Tongue Molotov Fire & Scorched Ground Decal
+  // Stage 18: Multi-Tongue Molotov Fire & Scorched Ground Decal (Deploys on deck in view)
   console.log('\n[Capture 18] Deploying & Capturing Multi-Tongue Molotov Fire...');
   await send('Runtime.evaluate', {
     expression: `(() => {
@@ -395,10 +395,10 @@ async function runVisualAudit() {
       setTimeout(() => {
         const canvas = document.getElementById('game-canvas');
         if (canvas) {
-          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
-          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 60);
+          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 2, bubbles: true }));
+          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 2, bubbles: true })), 60);
         }
-      }, 300);
+      }, 400);
     })()`,
   });
   await sleep(2200);
@@ -408,6 +408,10 @@ async function runVisualAudit() {
   console.log('\n[Capture 19] Inspecting 3rd-Person Operator Bot & CSM Directional Ground Shadows...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 600, movementY: -100, bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
+    })()`,
+  });
       window.dispatchEvent(new MouseEvent('mousemove', { movementX: 750, movementY: 50, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
     })()`,
