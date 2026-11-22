@@ -707,21 +707,21 @@ export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
   const pergolaGeos: THREE.BufferGeometry[] = [];
   const corbelGeos: THREE.BufferGeometry[] = [];
   for (const z of [-28.0, -26.5, -25.0, -23.5, -22.0]) {
-    const slat = new THREE.BoxGeometry(22.0, 0.22, 0.35);
-    slat.translate(0.35, 6.9, z);
+    const slat = new THREE.BoxGeometry(14.8, 0.22, 0.38);
+    slat.translate(0.0, 6.9, z);
     pergolaGeos.push(slat);
 
-    // Stone wall corbels/brackets supporting each slat at East & West wall junctions
-    const corbelL = new THREE.BoxGeometry(0.65, 0.55, 0.42);
-    corbelL.translate(-10.25, 6.55, z);
+    // Stone wall corbels/brackets supporting each slat at East (Sanctum x=-7.0) & West (Foundry x=+7.0) wall junctions
+    const corbelL = new THREE.BoxGeometry(0.55, 0.50, 0.42);
+    corbelL.translate(6.75, 6.55, z);
     corbelGeos.push(corbelL);
 
-    const corbelR = new THREE.BoxGeometry(0.65, 0.55, 0.42);
-    corbelR.translate(10.25, 6.55, z);
+    const corbelR = new THREE.BoxGeometry(0.55, 0.50, 0.42);
+    corbelR.translate(-6.75, 6.55, z);
     corbelGeos.push(corbelR);
   }
-  for (const x of [-9.8, 10.5]) {
-    const runner = new THREE.BoxGeometry(0.35, 0.25, 6.8);
+  for (const x of [-6.4, 6.4]) {
+    const runner = new THREE.BoxGeometry(0.32, 0.24, 7.2);
     runner.translate(x, 7.05, -25.0);
     pergolaGeos.push(runner);
   }
