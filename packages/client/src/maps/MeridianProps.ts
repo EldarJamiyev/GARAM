@@ -179,6 +179,13 @@ export class MeridianProps {
       receiveShadow: boolean
     ) => {
       if (geos.length === 0) return;
+      for (const g of geos) {
+        if (!g.index) {
+          const count = g.attributes.position.count;
+          const indices = Array.from({ length: count }, (_, i) => i);
+          g.setIndex(indices);
+        }
+      }
       const merged = mergeGeometries(geos, false);
       geos.forEach((g) => g.dispose());
       if (!merged) return;
