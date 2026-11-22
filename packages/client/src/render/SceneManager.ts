@@ -37,12 +37,12 @@ export class SceneManager {
 
     // 1. World Scene & Camera with warm CS2 sunlit Mediterranean atmospheric perspective
     this.worldScene = new THREE.Scene();
-    this.worldScene.fog = new THREE.FogExp2(0xd9cfc0, 0.0029);
+    this.worldScene.fog = new THREE.FogExp2(0xd6c7b2, 0.0024);
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 600);
 
-    // 2. Viewmodel Scene & Camera (Dual-pass at 68 deg FOV, near 0.005m)
+    // 2. Viewmodel Scene & Camera (Dual-pass at CS2 Pro 62 deg FOV, near 0.005m)
     this.viewmodelScene = new THREE.Scene();
-    this.viewmodelCamera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.005, 10);
+    this.viewmodelCamera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.005, 10);
 
     // 3. PMREM Image-Based Lighting (IBL)
     this.envRenderTarget = this.generateProceduralPMREM(renderer);
@@ -53,49 +53,49 @@ export class SceneManager {
       this.loadHdrEnvironment(renderer);
     }
 
-    // 4. Calibrated Golden-Hour Sun, Azure Sky Fill & Warm Ground Bounce (CS2 Mirage/Dust2 clarity)
-    this.hemiLight = new THREE.HemisphereLight(0xcce4ff, 0x76644c, 0.98);
+    // 4. Cinematic Golden-Afternoon Sun (azimuth ~40 deg, elevation ~38 deg) + Deep Shadow Contrast
+    this.hemiLight = new THREE.HemisphereLight(0x9ec5e8, 0x6e5a47, 0.72);
     this.worldScene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xffe7c2, 1.82);
-    this.sunLight.position.set(52, 68, 38);
+    this.sunLight = new THREE.DirectionalLight(0xfff0d8, 2.4);
+    this.sunLight.position.set(58, 62, 48);
     this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.width = 2048;
     this.sunLight.shadow.mapSize.height = 2048;
     this.sunLight.shadow.camera.near = 1.0;
-    this.sunLight.shadow.camera.far = 220;
-    this.sunLight.shadow.bias = -0.00015;
-    this.sunLight.shadow.normalBias = 0.025;
+    this.sunLight.shadow.camera.far = 210;
+    this.sunLight.shadow.bias = -0.0004;
+    this.sunLight.shadow.normalBias = 0.03;
 
-    const d = 68;
+    const d = 52;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
     this.worldScene.add(this.sunLight);
 
-    // Opposite cool Mediterranean sky bounce fill so shadowed sides of CS2 operators retain crisp contrast
-    const fillLight = new THREE.DirectionalLight(0x98c2f0, 0.56);
-    fillLight.position.set(-48, 38, -42);
+    // Subtle cool sky bounce fill on shadowed faces so operator silhouettes pop cleanly
+    const fillLight = new THREE.DirectionalLight(0x8cb8e8, 0.44);
+    fillLight.position.set(-48, 34, -44);
     this.worldScene.add(fillLight);
 
     // Viewmodel crisp 3-point studio lighting rig (Warm Sun Key + Cool Sky Rim + Balanced Hemisphere)
-    const vmHemi = new THREE.HemisphereLight(0xeef5ff, 0x5d5345, 1.18);
+    const vmHemi = new THREE.HemisphereLight(0xeef5ff, 0x554b3e, 1.12);
     this.viewmodelScene.add(vmHemi);
 
-    const vmKey = new THREE.DirectionalLight(0xfff0d4, 1.75);
+    const vmKey = new THREE.DirectionalLight(0xfff1d6, 1.85);
     vmKey.position.set(2.5, 4.5, 3.0);
     this.viewmodelScene.add(vmKey);
 
-    const vmRim = new THREE.DirectionalLight(0x8bc6ff, 1.15);
+    const vmRim = new THREE.DirectionalLight(0x8bc6ff, 1.25);
     vmRim.position.set(-3.2, 2.2, -2.5);
     this.viewmodelScene.add(vmRim);
 
-    // 5. Atmospheric Gradient Sky Dome with Sun Disc
+    // 5. Atmospheric Rayleigh/Mie Sky Dome with soft bloomed solar aureole
     this.skyMesh = this.buildAtmosphericSky();
     this.worldScene.add(this.skyMesh);
 
-    // 6. Distant Low-Poly Industrial Horizon Silhouette (Single InstancedMesh = 1 draw call)
+    // 6. Distant Sunlit Mediterranean Skyline + Industrial Foundry Cranes (1 draw call)
     this.horizonMesh = this.buildDistantHorizon();
     this.worldScene.add(this.horizonMesh);
   }
@@ -113,18 +113,21 @@ export class SceneManager {
     const ctx = canvas.getContext('2d')!;
 
     const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0.0, '#164d8f');
-    grad.addColorStop(0.52, '#79aed8');
-    grad.addColorStop(0.76, '#efe6d6');
-    grad.addColorStop(0.82, '#8b775c');
-    grad.addColorStop(1.0, '#3d3326');
+    grad.addColorStop(0.0, '#103c75');
+    grad.addColorStop(0.46, '#5c9ad0');
+    grad.addColorStop(0.74, '#eadac4');
+    grad.addColorStop(0.82, '#7d6952');
+    grad.addColorStop(1.0, '#362c22');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 256);
 
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(360, 60, 28, 0, Math.PI * 2);
-    ctx.fill();
+    // Soft radial sun bloom for metallic viewmodel specular reflections
+    const sunGrad = ctx.createRadialGradient(356, 68, 4, 356, 68, 56);
+    sunGrad.addColorStop(0.0, 'rgba(255, 250, 238, 1.0)');
+    sunGrad.addColorStop(0.32, 'rgba(255, 224, 175, 0.72)');
+    sunGrad.addColorStop(1.0, 'rgba(255, 210, 150, 0.0)');
+    ctx.fillStyle = sunGrad;
+    ctx.fillRect(290, 10, 130, 120);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -192,24 +195,36 @@ export class SceneManager {
         vec3 dir = normalize(vWorldPosition);
         float y = dir.y;
 
-        vec3 zenithColor = vec3(0.08, 0.30, 0.62);
-        vec3 midSkyColor = vec3(0.46, 0.69, 0.88);
-        vec3 horizonColor = vec3(0.90, 0.85, 0.77);
-        vec3 groundColor = vec3(0.36, 0.31, 0.25);
+        // Rayleigh vertical sky gradient (deep cerulean zenith -> sunlit Mediterranean horizon)
+        vec3 zenithColor = vec3(0.06, 0.25, 0.56);
+        vec3 midSkyColor = vec3(0.36, 0.62, 0.86);
+        vec3 horizonColor = vec3(0.86, 0.80, 0.71);
+        vec3 groundColor = vec3(0.34, 0.29, 0.23);
 
-        vec3 sky = mix(horizonColor, midSkyColor, smoothstep(0.0, 0.24, max(y, 0.0)));
-        sky = mix(sky, zenithColor, smoothstep(0.20, 0.85, max(y, 0.0)));
+        vec3 sky = mix(horizonColor, midSkyColor, smoothstep(0.0, 0.26, max(y, 0.0)));
+        sky = mix(sky, zenithColor, smoothstep(0.20, 0.86, max(y, 0.0)));
         if (y < 0.0) {
           sky = mix(horizonColor, groundColor, clamp(-y * 6.0, 0.0, 1.0));
         }
 
-        vec3 sunDir = normalize(sunPosition);
-        float cosTheta = dot(dir, sunDir);
-        float sunDisc = smoothstep(0.9984, 0.9996, cosTheta);
-        float sunHalo = pow(max(cosTheta, 0.0), 10.0) * 0.36;
-        float warmHorizon = pow(1.0 - clamp(abs(y), 0.0, 1.0), 6.0) * 0.14;
+        // Subtle procedural wispy Mediterranean cirrus clouds
+        float cloudUV = atan(dir.z, dir.x) * 3.0;
+        float cloudBand = smoothstep(0.08, 0.34, y) * (1.0 - smoothstep(0.45, 0.78, y));
+        float wisp = sin(cloudUV * 2.1 + y * 9.0) * cos(cloudUV * 3.7 - y * 6.0) * 0.5 + 0.5;
+        sky = mix(sky, vec3(0.95, 0.91, 0.85), cloudBand * smoothstep(0.62, 0.94, wisp) * 0.16);
 
-        vec3 finalColor = sky + vec3(1.0, 0.91, 0.72) * (sunDisc * 3.8 + sunHalo + warmHorizon);
+        // Soft Mie forward-scattering solar aureole (no harsh white disc)
+        vec3 sunDir = normalize(sunPosition);
+        float cosTheta = max(dot(dir, sunDir), 0.0);
+        float mieCore = pow(cosTheta, 160.0) * 1.15;
+        float mieAureole = pow(cosTheta, 22.0) * 0.42;
+        float mieGlow = pow(cosTheta, 4.5) * 0.18;
+        float warmHorizon = pow(1.0 - clamp(abs(y), 0.0, 1.0), 5.0) * 0.16;
+
+        vec3 finalColor = sky
+          + vec3(1.0, 0.95, 0.84) * mieCore
+          + vec3(1.0, 0.86, 0.66) * (mieAureole + mieGlow)
+          + vec3(0.94, 0.82, 0.68) * warmHorizon;
         gl_FragColor = vec4(finalColor, 1.0);
       }
     `;
@@ -228,16 +243,17 @@ export class SceneManager {
   }
 
   /**
-   * Distant sunlit city silhouette blended naturally into atmospheric horizon haze (1 draw call)
+   * Distant sunlit Mediterranean city skyline + industrial foundry cranes on +X side (1 draw call)
    */
   private buildDistantHorizon(): THREE.InstancedMesh {
-    const numBaseStructures = 48;
-    const totalInstances = numBaseStructures * 2;
+    const numBaseStructures = 56;
+    const craneParts = 12; // 4 distant steel cranes (mast + jib + counter-jib) behind B Foundry (+X)
+    const totalInstances = numBaseStructures * 2 + craneParts;
     const unitBox = new THREE.BoxGeometry(1, 1, 1);
     const horizonMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      roughness: 0.94,
-      metalness: 0.02,
+      roughness: 0.92,
+      metalness: 0.04,
       fog: true,
     });
 
@@ -246,8 +262,9 @@ export class SceneManager {
 
     const dummy = new THREE.Object3D();
     const tint = new THREE.Color();
-    const palette = [0xc8baa4, 0xbcb09c, 0xd1c2aa, 0xafa18d, 0xc3b39b];
-    const radius = 205;
+    const warmPalette = [0xc2b097, 0xb8a58b, 0xcab89d, 0xa8967e, 0xbc9f84];
+    const industrialPalette = [0x6e7b88, 0x5c6976, 0x7a8590, 0x64707d];
+    const radius = 195;
 
     for (let i = 0; i < numBaseStructures; i++) {
       const seed = Math.sin(i * 12.9898) * 43758.5453;
@@ -256,26 +273,28 @@ export class SceneManager {
       const r2 = seed2 - Math.floor(seed2);
 
       const angle = (i / numBaseStructures) * Math.PI * 2;
-      const dist = radius + (r1 - 0.5) * 36;
+      const dist = radius + (r1 - 0.5) * 38;
       const x = Math.cos(angle) * dist;
       const z = Math.sin(angle) * dist;
+      const isFoundrySide = x > 55;
 
       let sx: number;
       let sy: number;
       let sz: number;
 
-      if (r1 < 0.55) {
-        sx = 22 + r2 * 26;
-        sy = 11 + r1 * 18;
-        sz = 18 + r2 * 20;
-      } else if (r1 < 0.85) {
-        sx = 14 + r2 * 14;
-        sy = 18 + r2 * 16;
-        sz = 14 + r2 * 12;
+      if (r1 < 0.52) {
+        sx = 20 + r2 * 24;
+        sy = 12 + r1 * 18;
+        sz = 18 + r2 * 18;
+      } else if (r1 < 0.82) {
+        sx = 13 + r2 * 14;
+        sy = 20 + r2 * 16;
+        sz = 13 + r2 * 12;
       } else {
-        sx = 9 + r2 * 6;
-        sy = 26 + r2 * 14;
-        sz = 9 + r2 * 6;
+        // Tall Mediterranean bell tower / spire / industrial silo
+        sx = 7 + r2 * 5;
+        sy = 30 + r2 * 16;
+        sz = 7 + r2 * 5;
       }
 
       dummy.position.set(x, sy * 0.5 - 4, z);
@@ -283,19 +302,57 @@ export class SceneManager {
       dummy.scale.set(sx, sy, sz);
       dummy.updateMatrix();
       instanced.setMatrixAt(i * 2, dummy.matrix);
-      tint.setHex(palette[i % palette.length]);
+      const pal = isFoundrySide ? industrialPalette : warmPalette;
+      tint.setHex(pal[i % pal.length]);
       instanced.setColorAt(i * 2, tint);
 
-      // Upper citadel tier / minaret parapet crown
-      const upperSx = sx * (0.42 + r1 * 0.25);
+      // Terraced rooftop parapet / pitched bell-tower crown
+      const upperSx = sx * (0.44 + r1 * 0.24);
       const upperSy = 5 + r2 * 11;
-      const upperSz = sz * (0.42 + r2 * 0.25);
+      const upperSz = sz * (0.44 + r2 * 0.24);
       dummy.position.set(x, sy - 4 + upperSy * 0.5, z);
       dummy.scale.set(upperSx, upperSy, upperSz);
       dummy.updateMatrix();
       instanced.setMatrixAt(i * 2 + 1, dummy.matrix);
-      tint.setHex(palette[(i + 2) % palette.length]);
+      tint.setHex(isFoundrySide ? industrialPalette[(i + 1) % industrialPalette.length] : 0xb38466);
       instanced.setColorAt(i * 2 + 1, tint);
+    }
+
+    // 4 Distant Industrial Foundry Tower Cranes on East (+X) Skyline
+    let idx = numBaseStructures * 2;
+    const craneSpecs = [
+      { x: 148, z: -48, h: 46, yaw: 0.45 },
+      { x: 162, z: -12, h: 52, yaw: -0.32 },
+      { x: 155, z: 26, h: 42, yaw: 0.85 },
+      { x: 138, z: -78, h: 38, yaw: -0.65 },
+    ];
+    for (const c of craneSpecs) {
+      // Mast
+      dummy.position.set(c.x, c.h * 0.5 - 4, c.z);
+      dummy.rotation.set(0, c.yaw, 0);
+      dummy.scale.set(2.4, c.h, 2.4);
+      dummy.updateMatrix();
+      instanced.setMatrixAt(idx, dummy.matrix);
+      tint.setHex(0x8a5b3e);
+      instanced.setColorAt(idx++, tint);
+
+      // Horizontal Jib
+      dummy.position.set(c.x + Math.cos(c.yaw) * 10, c.h - 4.5, c.z - Math.sin(c.yaw) * 10);
+      dummy.rotation.set(0, c.yaw, 0);
+      dummy.scale.set(34, 2.0, 2.0);
+      dummy.updateMatrix();
+      instanced.setMatrixAt(idx, dummy.matrix);
+      tint.setHex(0x9a6948);
+      instanced.setColorAt(idx++, tint);
+
+      // Operator Cab / Counterweight
+      dummy.position.set(c.x - Math.cos(c.yaw) * 8, c.h - 5.5, c.z + Math.sin(c.yaw) * 8);
+      dummy.rotation.set(0, c.yaw, 0);
+      dummy.scale.set(6.5, 4.0, 3.6);
+      dummy.updateMatrix();
+      instanced.setMatrixAt(idx, dummy.matrix);
+      tint.setHex(0x525d68);
+      instanced.setColorAt(idx++, tint);
     }
 
     instanced.instanceMatrix.needsUpdate = true;

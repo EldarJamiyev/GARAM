@@ -759,7 +759,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
 
   const walkBob = Math.sin(s.distanceTraveled * 4) * 0.008 * (hozSpeed / 5.45);
   const strafeRoll = inputMgr.input.left ? 0.025 : inputMgr.input.right ? -0.025 : 0;
-  ctx.viewmodel.update(frameDelta, inputMgr.mouseDeltaX, inputMgr.mouseDeltaY, walkBob, strafeRoll);
+  ctx.viewmodel.update(frameDelta, inputMgr.mouseDeltaX, inputMgr.mouseDeltaY, walkBob, strafeRoll, hozSpeed);
   inputMgr.mouseDeltaX = 0;
   inputMgr.mouseDeltaY = 0;
 

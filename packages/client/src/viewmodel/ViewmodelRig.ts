@@ -24,6 +24,12 @@ export interface WeaponSocketConfig {
   armsOffset: [number, number, number];
   muzzleLocalPos: [number, number, number];
   requiresPBodyRest: boolean;
+  /** Optional left-hand wrist target anchor in weapon holder local space for firearm grip locking */
+  leftHandAnchorLocal?: [number, number, number];
+  /** Optional relative Euler rotation for Hand_L in weapon holder space (matched to AK_Idle palm cradle) */
+  leftHandRelRotEuler?: [number, number, number];
+  /** Optional ring-spin pivot centroid in normalized weapon local space (Karambit) */
+  ringPivotLocal?: [number, number, number];
   clips: WeaponClipSet;
 }
 
@@ -38,9 +44,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-1.7183, -0.1314, 3.0204],
     localScale: 1.004,
     armsScale: 0.44,
-    armsOffset: [0.062, -0.220, -0.045],
+    armsOffset: [0.064, -0.212, -0.052],
     muzzleLocalPos: [0.0089, 0.06, -0.6078],
     requiresPBodyRest: false,
+    leftHandAnchorLocal: [-0.046, 0.004, -0.435],
+    leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     clips: {
       idle: 'AK_Idle',
       walk: 'AK_Walk',
@@ -60,9 +68,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [0.0327, 0.3605, -1.6931],
     localScale: 1.004,
     armsScale: 0.44,
-    armsOffset: [0.055, -0.245, -0.035],
+    armsOffset: [0.058, -0.232, -0.042],
     muzzleLocalPos: [0.007, 0.081, -0.6525],
     requiresPBodyRest: true,
+    leftHandAnchorLocal: [-0.030, 0.012, -0.315],
+    leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     clips: {
       idle: 'M4_Idle',
       walk: 'M4_Walk',
@@ -80,12 +90,14 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
     localPos: [-0.0859, 0.0405, 0.0958],
-    localRotEuler: [-0.8092, -0.2297, 3.0691],
+    localRotEuler: [-0.957, -0.0551, 3.043],
     localScale: 1.004,
     armsScale: 0.43,
-    armsOffset: [0.088, -0.278, -0.070],
+    armsOffset: [0.082, -0.242, -0.072],
     muzzleLocalPos: [0.0114, 0.114, -0.8357],
     requiresPBodyRest: false,
+    leftHandAnchorLocal: [-0.032, -0.024, -0.300],
+    leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     clips: {
       idle: 'SRifle_Idle',
       walk: 'SRifle_Walk',
@@ -104,9 +116,10 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [1.3226, -1.4991, 2.6492],
     localScale: 1.004,
     armsScale: 0.44,
-    armsOffset: [0.056, -0.218, -0.046],
+    armsOffset: [0.052, -0.178, -0.068],
     muzzleLocalPos: [0.0001, 0.064, -0.2348],
     requiresPBodyRest: false,
+    leftHandAnchorLocal: [-0.030, -0.056, -0.004],
     clips: {
       idle: 'Pistol_Idle',
       walk: 'Pistol_Walk',
@@ -118,15 +131,16 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'garam-karambit': {
     socketBone: 'Hand_R',
     modelPath: '/models/karambit.glb',
-    targetLength: 0.22,
+    targetLength: 0.23,
     rotationEuler: [0, 0, 0],
-    localPos: [0.012, 0.205, 0.018],
-    localRotEuler: [2.38, -0.45, 0.35],
-    localScale: 1.004,
+    localPos: [-0.0001, 0.0276, -0.0283],
+    localRotEuler: [0.6463, -0.1043, 2.2079],
+    localScale: 1.08,
     armsScale: 0.44,
-    armsOffset: [0.050, -0.215, -0.038],
-    muzzleLocalPos: [0, 0, -0.11],
+    armsOffset: [0.082, -0.208, -0.052],
+    muzzleLocalPos: [0, -0.0427, -0.115],
     requiresPBodyRest: true,
+    ringPivotLocal: [0, 0.0224, 0.095],
     clips: {
       idle: 'Karambit_Idle',
       walk: 'Karambit_Walk',
