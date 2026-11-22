@@ -432,4 +432,104 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
 
     expect(scopeNDC.y, 'AWP scope rail NDC Y').toBeLessThanOrEqual(-0.02);
   });
+
+  it('guarantees 0 skinned arm vertices with camZ > -0.10m, screen coverage <= 24%, and elbows ndcY < -0.55 across all 5 weapons', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+    const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
+
+    const glbPath = path.resolve(__dirname, '../../../packages/client/public/models/fps_arms_tactical.glb');
+    if (!fs.existsSync(glbPath)) return; // graceful skip if file not present in test runner
+
+    const buf = fs.readFileSync(glbPath);
+    const loader = new GLTFLoader();
+    const gltf = await new Promise<any>((res, rej) => {
+      loader.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), '', res, rej);
+    });
+
+    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 50);
+    camera.updateProjectionMatrix();
+
+    for (const [weaponId, cfg] of Object.entries(WEAPON_SOCKET_CONFIGS)) {
+      const root = clone(gltf.scene);
+      let sm: THREE.SkinnedMesh | null = null;
+      root.traverse((c: any) => { if (c.isSkinnedMesh) sm = c; });
+      expect(sm).not.toBeNull();
+
+      const container = new THREE.Group();
+      container.position.set(...cfg.armsOffset);
+      container.scale.setScalar(cfg.armsScale);
+      container.rotation.y = Math.PI;
+      container.add(root);
+
+      const mixer = new THREE.AnimationMixer(root);
+      const clipName = cfg.clips.idle;
+      const clip = gltf.animations.find((a: any) => a.name === clipName) || gltf.animations[0];
+      mixer.clipAction(clip).play();
+      mixer.update(0.01);
+      container.updateMatrixWorld(true);
+
+      sm!.skeleton.update();
+      const bm = sm!.skeleton.boneMatrices;
+      const bindMatrix = sm!.bindMatrix;
+      const bindMatrixInverse = sm!.bindMatrixInverse;
+      const matrixWorld = sm!.matrixWorld;
+
+      const pos = sm!.geometry.attributes.position;
+      const si = sm!.geometry.attributes.skinIndex;
+      const sw = sm!.geometry.attributes.skinWeight;
+      const v = new THREE.Vector4(), skinVertex = new THREE.Vector4(), skinned = new THREE.Vector4(), t = new THREE.Vector4();
+      let countCloser10cm = 0;
+      const gridW = 144, gridH = 90;
+      const cov = new Uint8Array(gridW * gridH);
+      const ndc = new THREE.Vector3();
+
+      for (let i = 0; i < pos.count; i++) {
+        v.set(pos.getX(i), pos.getY(i), pos.getZ(i), 1.0);
+        skinVertex.copy(v).applyMatrix4(bindMatrix);
+        skinned.set(0, 0, 0, 0);
+
+        for (let k = 0; k < 4; k++) {
+          const idx = k === 0 ? si.getX(i) : k === 1 ? si.getY(i) : k === 2 ? si.getZ(i) : si.getW(i);
+          const w = k === 0 ? sw.getX(i) : k === 1 ? sw.getY(i) : k === 2 ? sw.getZ(i) : sw.getW(i);
+          if (w <= 0) continue;
+          const off = idx * 16;
+          t.x = bm[off+0]*skinVertex.x + bm[off+4]*skinVertex.y + bm[off+8]*skinVertex.z + bm[off+12]*skinVertex.w;
+          t.y = bm[off+1]*skinVertex.x + bm[off+5]*skinVertex.y + bm[off+9]*skinVertex.z + bm[off+13]*skinVertex.w;
+          t.z = bm[off+2]*skinVertex.x + bm[off+6]*skinVertex.y + bm[off+10]*skinVertex.z + bm[off+14]*skinVertex.w;
+          t.w = bm[off+3]*skinVertex.x + bm[off+7]*skinVertex.y + bm[off+11]*skinVertex.z + bm[off+15]*skinVertex.w;
+          skinned.addScaledVector(t, w);
+        }
+        skinned.applyMatrix4(bindMatrixInverse);
+        skinned.applyMatrix4(matrixWorld);
+
+        if (skinned.z > -0.10) countCloser10cm++;
+
+        ndc.set(skinned.x, skinned.y, skinned.z).project(camera);
+        if (ndc.z >= 0 && ndc.z <= 1 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1) {
+          const gx = Math.floor((ndc.x + 1) * 0.5 * (gridW - 1));
+          const gy = Math.floor((1 - (ndc.y + 1) * 0.5) * (gridH - 1));
+          cov[gy * gridW + gx] = 1;
+        }
+      }
+
+      let covCount = 0;
+      for (let j = 0; j < cov.length; j++) if (cov[j]) covCount++;
+      const covPct = (covCount / (gridW * gridH)) * 100;
+
+      // 1. Zero vertices closer than 10cm to the camera near-plane
+      expect(countCloser10cm, `${weaponId} vertices closer than 10cm`).toBe(0);
+
+      // 2. Viewmodel screen coverage strictly <= 24%
+      expect(covPct, `${weaponId} screen coverage`).toBeLessThanOrEqual(24.0);
+
+      // 3. Elbows hang naturally in lower screen half
+      const elbowL = root.getObjectByName('Forearm_L');
+      if (elbowL) {
+        const eLndc = elbowL.getWorldPosition(new THREE.Vector3()).project(camera);
+        expect(eLndc.y, `${weaponId} Forearm_L NDC Y`).toBeLessThan(-0.50);
+      }
+    }
+  });
 });

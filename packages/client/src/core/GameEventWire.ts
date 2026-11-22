@@ -562,6 +562,14 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     if (!ctx.hasMatchStarted.value) {
       ctx.hasMatchStarted.value = true;
       ctx.roundManager?.startMatch();
+      const initialYaw = settingsStore.settings.faction === 'Syndicate' ? 0 : Math.PI;
+      if (ctx.inputManager) {
+        ctx.inputManager.input.yaw = initialYaw;
+        ctx.inputManager.input.pitch = 0;
+      }
+      ctx.worldCamera.position.set(ctx.spawnPos.x, ctx.spawnPos.y + 1.68, ctx.spawnPos.z);
+      ctx.worldCamera.rotation.set(0, initialYaw, 0, 'YXZ');
+      ctx.viewmodel.mesh.visible = true;
     }
 
     if (settingsStore.settings.gameMode === 'multiplayer') {

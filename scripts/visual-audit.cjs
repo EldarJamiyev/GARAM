@@ -21,7 +21,7 @@ async function isServerRunning(port = 3000) {
   });
 }
 
-async function getDebuggerUrl(retries = 20) {
+async function getDebuggerUrl(retries = 25) {
   for (let i = 0; i < retries; i++) {
     try {
       const data = await new Promise((resolve, reject) => {
@@ -46,7 +46,7 @@ async function getDebuggerUrl(retries = 20) {
 
 async function runVisualAudit() {
   console.log('=====================================================');
-  console.log('📸 GARAM: ZERO HOUR — VISUAL AUDIT & SCREENSHOT SUITE');
+  console.log('📸 GARAM: ZERO HOUR — COMPREHENSIVE 10-STAGE VISUAL AUDIT');
   console.log('=====================================================');
 
   const outDir = path.resolve(__dirname, '../docs/assets/playtests');
@@ -147,7 +147,6 @@ async function runVisualAudit() {
   await send('Page.enable');
   await send('Log.enable');
 
-  // Wait for canvas to be fully initialized and WebGL context active
   for (let i = 0; i < 20; i++) {
     await sleep(500);
     try {
@@ -160,46 +159,50 @@ async function runVisualAudit() {
   }
   await sleep(1500);
 
-  // Deploy Operator
-  console.log('[Phase 2] Deploying Operator into DE_MERIDIAN...');
-  await send('Runtime.evaluate', {
-    expression: `(() => {
-      const btn = document.getElementById('spawn-btn');
-      if (btn) btn.click();
-    })()`,
-  });
-  await sleep(1200);
-
   async function capture(fileName, label) {
-    await sleep(400);
+    await sleep(500);
     const ss = await send('Page.captureScreenshot', { format: 'png' });
     const targetPath = path.join(outDir, fileName);
     fs.writeFileSync(targetPath, Buffer.from(ss.data, 'base64'));
     console.log(`✓ [Screenshot] ${label} -> ${fileName}`);
   }
 
-  // 1. Capture Default Primary: Garam-47
-  console.log('\n[Capture 1] Inspecting Garam-47 Idle & Viewmodel...');
-  await capture('v_garam47_idle.png', 'Garam-47 (AK) Viewmodel');
+  // Stage 1: Lobby Screen with Panoramic Overlook (Viewmodel hidden, zero lens occlusion)
+  console.log('\n[Capture 1] Inspecting Lobby Modal & Panoramic Overlook Camera...');
+  await capture('audit_01_lobby.png', 'Stage 1: Lobby Panoramic Overlook');
 
-  // 2. Capture Secondary: Desert Eagle (Key 2)
-  console.log('\n[Capture 2] Switching to Secondary (Desert Eagle)...');
+  // Stage 2: Deploy Operator into Arena
+  console.log('\n[Phase 2] Deploying Operator into DE_MERIDIAN...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      const btn = document.getElementById('spawn-btn');
+      if (btn) btn.click();
+    })()`,
+  });
+  await sleep(1500);
+
+  // Stage 2: Default Primary Garam-47 (AK)
+  console.log('\n[Capture 2] Inspecting Garam-47 (AK) Viewmodel Framing...');
+  await capture('audit_02_garam47_idle.png', 'Stage 2: Garam-47 Viewmodel');
+
+  // Stage 3: Secondary Desert Eagle (.50 AE)
+  console.log('\n[Capture 3] Switching to Secondary (Desert Eagle)...');
   await send('Runtime.evaluate', {
     expression: `window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit2', key: '2', bubbles: true }))`,
   });
-  await sleep(600);
-  await capture('v_deagle_idle.png', 'Desert Eagle Viewmodel');
+  await sleep(800);
+  await capture('audit_03_deagle_idle.png', 'Stage 3: Desert Eagle Viewmodel');
 
-  // 3. Capture Knife: Garam Karambit (Key 3)
-  console.log('\n[Capture 3] Switching to Knife (CS2 Karambit Reverse-Grip)...');
+  // Stage 4: Tactical Knife (Garam Karambit Reverse-Grip)
+  console.log('\n[Capture 4] Switching to Knife (CS2 Karambit Reverse-Grip)...');
   await send('Runtime.evaluate', {
     expression: `window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }))`,
   });
-  await sleep(700);
-  await capture('v_karambit_idle.png', 'Karambit Reverse-Grip Viewmodel');
+  await sleep(800);
+  await capture('audit_04_karambit_idle.png', 'Stage 4: Karambit Reverse-Grip Viewmodel');
 
-  // 4. Buy and Capture Vanguard M4A1-S
-  console.log('\n[Capture 4] Purchasing & Inspecting Vanguard M4A1-S...');
+  // Stage 5: Buy & Inspect Vanguard M4A1-S
+  console.log('\n[Capture 5] Purchasing & Inspecting Vanguard M4A1-S...');
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
@@ -209,11 +212,11 @@ async function runVisualAudit() {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
     })()`,
   });
-  await sleep(700);
-  await capture('v_m4a1s_idle.png', 'Vanguard M4A1-S Viewmodel');
+  await sleep(800);
+  await capture('audit_05_m4a1s_idle.png', 'Stage 5: Vanguard M4A1-S Viewmodel');
 
-  // 5. Buy and Capture Sovereign AWP
-  console.log('\n[Capture 5] Purchasing & Inspecting Sovereign AWP...');
+  // Stage 6: Buy & Inspect Sovereign AWP
+  console.log('\n[Capture 6] Purchasing & Inspecting Sovereign AWP...');
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
@@ -223,19 +226,61 @@ async function runVisualAudit() {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
     })()`,
   });
-  await sleep(700);
-  await capture('v_awp_idle.png', 'Sovereign AWP Viewmodel');
+  await sleep(800);
+  await capture('audit_06_awp_idle.png', 'Stage 6: Sovereign AWP Viewmodel');
 
-  // 6. Architectural View: Rotate Camera to Look South Towards Mid Nest & Pergolas
-  console.log('\n[Capture 6] Inspecting Architectural Dressings & Mid Watchtower Nest...');
+  // Stage 7: Pergola Beams & Stone Wall Corbels with Cast Sunlight Shadows
+  console.log('\n[Capture 7] Inspecting Pergola Architecture & Stone Wall Corbels...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      // Trigger camera yaw to inspect the sunlit chokepoints and Mid Nest
+      // Look back towards CT Spawn Promenade & Pergolas (yaw = 0)
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }));
     })()`,
   });
-  await sleep(500);
-  await capture('v_map_mid_and_sites.png', 'DE_MERIDIAN Architectural Overview');
+  await sleep(600);
+  await capture('audit_07_architectural_pergola_corbels.png', 'Stage 7: Pergola Architecture & Corbels');
+
+  // Stage 8: 3P Bot Stance & Weapon Alignment
+  console.log('\n[Capture 8] Inspecting 3rd-Person Bot Holding Weapon along +Z...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
+    })()`,
+  });
+  await sleep(600);
+  await capture('audit_08_3p_vanguard_bot.png', 'Stage 8: 3P Bot Alignment');
+
+  // Stage 9: Combat Fire Recoil & Muzzle Flash
+  console.log('\n[Capture 9] Simulating Primary Fire Recoil Kick...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
+      const canvas = document.getElementById('game-canvas');
+      if (canvas) {
+        canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+      }
+    })()`,
+  });
+  await sleep(150);
+  await capture('audit_09_combat_fire_recoil.png', 'Stage 9: Primary Fire Recoil');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      const canvas = document.getElementById('game-canvas');
+      if (canvas) {
+        canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
+      }
+    })()`,
+  });
+
+  // Stage 10: Live Smoke & Molotov on Stone Deck
+  console.log('\n[Capture 10] Deploying Tactical Smoke & Molotov on Stone Deck (y=2.1m)...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit4', key: '4', bubbles: true }));
+    })()`,
+  });
+  await sleep(1200);
+  await capture('audit_10_live_utility_deck.png', 'Stage 10: Live Tactical Smoke & Molotov on Deck');
 
   console.log('\n=====================================================');
   console.log('📊 VISUAL AUDIT RESULTS');

@@ -59,14 +59,10 @@ export class GaramGame {
 
   constructor() {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement;
-    this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      powerPreference: 'high-performance',
-    });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    this.renderer.toneMappingExposure = 0.94;
     this.renderer.autoClear = false;
 
     this.sceneManager = new SceneManager(this.renderer);
@@ -75,6 +71,7 @@ export class GaramGame {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const viewmodel = new WeaponViewmodel();
+    viewmodel.mesh.visible = false;
     this.sceneManager.viewmodelScene.add(viewmodel.mesh);
 
     const audio = new ProceduralAudio();
@@ -89,10 +86,7 @@ export class GaramGame {
     const inventory = new InventoryManager();
     const economy = new EconomyManager();
 
-    const baseSpawn =
-      settingsStore.settings.faction === 'Syndicate'
-        ? SPAWN_POINTS.OBSIDIAN_T
-        : SPAWN_POINTS.VANGUARD_CT;
+    const baseSpawn = settingsStore.settings.faction === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
     const spawnPos = { x: baseSpawn.x, y: baseSpawn.y, z: baseSpawn.z };
     const player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
@@ -231,6 +225,10 @@ export class GaramGame {
     const { ctx } = this;
 
     if (!ctx.hasMatchStarted.value) {
+      ctx.viewmodel.mesh.visible = false;
+      const t = now * 0.00018;
+      worldCamera.position.set(Math.sin(t) * 28, 10.5, -12 + Math.cos(t) * 20);
+      worldCamera.lookAt(0, 2.4, -14);
       ctx.effects.update(frameDelta);
       this.sceneManager.update(frameDelta, worldCamera.position);
       this.renderer.clear();
@@ -296,18 +294,16 @@ export class GaramGame {
     });
 
     net.updateBandwidthTelemetry();
-    this.perfMonitor.recordFrame(
-      frameDelta * 1000,
-      net.isConnected ? net.ping : -1,
-      net.rxKbps,
-      net.txKbps
-    );
+    this.perfMonitor.recordFrame(frameDelta * 1000, net.isConnected ? net.ping : -1, net.rxKbps, net.txKbps);
 
     this.renderer.clear();
     this.renderer.render(this.sceneManager.worldScene, worldCamera);
     this.renderer.clearDepth();
-    if (!ctx.spectator.isSpectating) {
+    if (!ctx.spectator.isSpectating && ctx.hasMatchStarted.value && document.body.dataset.state === 'playing') {
+      ctx.viewmodel.mesh.visible = true;
       this.renderer.render(this.sceneManager.viewmodelScene, this.sceneManager.viewmodelCamera);
+    } else {
+      ctx.viewmodel.mesh.visible = false;
     }
     this.sceneManager.scheduleNextFrame(this.boundLoop);
   }

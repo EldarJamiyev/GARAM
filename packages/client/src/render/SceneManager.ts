@@ -37,7 +37,7 @@ export class SceneManager {
 
     // 1. World Scene & Camera with warm CS2 sunlit Mediterranean atmospheric perspective
     this.worldScene = new THREE.Scene();
-    this.worldScene.fog = new THREE.FogExp2(0xd6c7b2, 0.0024);
+    this.worldScene.fog = new THREE.FogExp2(0xd8cbb8, 0.0042);
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 600);
 
     // 2. Viewmodel Scene & Camera (Dual-pass at CS2 Pro 62 deg FOV, near 0.005m)
@@ -54,20 +54,22 @@ export class SceneManager {
     }
 
     // 4. Cinematic Golden-Afternoon Sun (azimuth ~40 deg, elevation ~38 deg) + Deep Shadow Contrast
-    this.hemiLight = new THREE.HemisphereLight(0x9ec5e8, 0x6e5a47, 0.72);
+    this.hemiLight = new THREE.HemisphereLight(0x8dbde8, 0x6b5642, 0.68);
     this.worldScene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff0d8, 2.4);
-    this.sunLight.position.set(58, 62, 48);
+    this.sunLight = new THREE.DirectionalLight(0xfff0d4, 2.6);
+    this.sunLight.position.set(48, 56, 36);
+    this.sunLight.target.position.set(0, 2.1, 0);
+    this.worldScene.add(this.sunLight.target);
     this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.width = 2048;
     this.sunLight.shadow.mapSize.height = 2048;
     this.sunLight.shadow.camera.near = 1.0;
     this.sunLight.shadow.camera.far = 210;
-    this.sunLight.shadow.bias = -0.0004;
-    this.sunLight.shadow.normalBias = 0.03;
+    this.sunLight.shadow.bias = -0.00035;
+    this.sunLight.shadow.normalBias = 0.035;
 
-    const d = 52;
+    const d = 56;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
@@ -75,20 +77,20 @@ export class SceneManager {
     this.worldScene.add(this.sunLight);
 
     // Subtle cool sky bounce fill on shadowed faces so operator silhouettes pop cleanly
-    const fillLight = new THREE.DirectionalLight(0x8cb8e8, 0.44);
-    fillLight.position.set(-48, 34, -44);
+    const fillLight = new THREE.DirectionalLight(0x9cc4f0, 0.35);
+    fillLight.position.set(-42, 24, -38);
     this.worldScene.add(fillLight);
 
     // Viewmodel crisp 3-point studio lighting rig (Warm Sun Key + Cool Sky Rim + Balanced Hemisphere)
-    const vmHemi = new THREE.HemisphereLight(0xeef5ff, 0x554b3e, 1.12);
+    const vmHemi = new THREE.HemisphereLight(0xdbe8f8, 0x4a4035, 0.65);
     this.viewmodelScene.add(vmHemi);
 
-    const vmKey = new THREE.DirectionalLight(0xfff1d6, 1.85);
-    vmKey.position.set(2.5, 4.5, 3.0);
+    const vmKey = new THREE.DirectionalLight(0xfff4e0, 2.1);
+    vmKey.position.set(3.0, 5.0, 4.0);
     this.viewmodelScene.add(vmKey);
 
-    const vmRim = new THREE.DirectionalLight(0x8bc6ff, 1.25);
-    vmRim.position.set(-3.2, 2.2, -2.5);
+    const vmRim = new THREE.DirectionalLight(0x8ebeff, 0.75);
+    vmRim.position.set(-4.0, 2.0, -2.0);
     this.viewmodelScene.add(vmRim);
 
     // 5. Atmospheric Rayleigh/Mie Sky Dome with soft bloomed solar aureole
@@ -196,8 +198,8 @@ export class SceneManager {
         float y = dir.y;
 
         // Rayleigh vertical sky gradient (deep cerulean zenith -> sunlit Mediterranean horizon)
-        vec3 zenithColor = vec3(0.06, 0.25, 0.56);
-        vec3 midSkyColor = vec3(0.36, 0.62, 0.86);
+        vec3 zenithColor = vec3(0.11, 0.32, 0.62);
+        vec3 midSkyColor = vec3(0.32, 0.56, 0.80);
         vec3 horizonColor = vec3(0.86, 0.80, 0.71);
         vec3 groundColor = vec3(0.34, 0.29, 0.23);
 

@@ -74,7 +74,7 @@ function createProceduralSurface(
 
   if (kind === 'sanctum_stone') {
     // Warm sunlit Dust2/Mirage weathered limestone stucco & sandstone masonry
-    cCtx.fillStyle = '#cbb89d';
+    cCtx.fillStyle = '#cbb799';
     cCtx.fillRect(0, 0, size, size);
     bCtx.fillStyle = '#8a8a8a';
     bCtx.fillRect(0, 0, size, size);
@@ -90,7 +90,7 @@ function createProceduralSurface(
         const x = c * colW + offset;
         const y = r * rowH;
         const shade = Math.floor((rand() - 0.5) * 16);
-        cCtx.fillStyle = `rgb(${203 + shade}, ${184 + shade}, ${157 + shade})`;
+        cCtx.fillStyle = `rgb(${203 + shade}, ${183 + shade}, ${153 + shade})`;
         cCtx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
         bCtx.fillStyle = `rgb(${142 + shade}, ${142 + shade}, ${142 + shade})`;
         bCtx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
@@ -101,6 +101,14 @@ function createProceduralSurface(
       bCtx.fillStyle = '#303030';
       bCtx.fillRect(0, r * rowH, size, 4);
     }
+
+    // Basal plinth course (0.95m ground stone footing)
+    cCtx.fillStyle = '#7a6b57';
+    cCtx.fillRect(0, size - 44, size, 44);
+    bCtx.fillStyle = '#555555';
+    bCtx.fillRect(0, size - 44, size, 44);
+    cCtx.fillStyle = '#5c4e3e';
+    cCtx.fillRect(0, size - 44, size, 4);
 
     // Exposed terracotta brick patch peeking through worn plaster
     const brickPatchX = 140;
@@ -144,12 +152,12 @@ function createProceduralSurface(
     }
   } else if (kind === 'foundry_concrete') {
     // Industrial weathered slate-blue painted concrete with formwork seams & rust streaks
-    cCtx.fillStyle = '#5d6b78';
+    cCtx.fillStyle = '#566370';
     cCtx.fillRect(0, 0, size, size);
     bCtx.fillStyle = '#888888';
     bCtx.fillRect(0, 0, size, size);
 
-    cCtx.strokeStyle = '#44515d';
+    cCtx.strokeStyle = '#3e4b57';
     cCtx.lineWidth = 4;
     cCtx.strokeRect(4, 4, size - 8, size / 2 - 8);
     cCtx.strokeRect(4, size / 2 + 4, size - 8, size / 2 - 8);
@@ -162,7 +170,7 @@ function createProceduralSurface(
     // Tie-rod dimples
     for (const px of [48, size - 48]) {
       for (const py of [52, size / 2 - 52, size / 2 + 52, size - 52]) {
-        cCtx.fillStyle = '#38434d';
+        cCtx.fillStyle = '#343f49';
         cCtx.beginPath();
         cCtx.arc(px, py, 5, 0, Math.PI * 2);
         cCtx.fill();
@@ -179,7 +187,7 @@ function createProceduralSurface(
     cCtx.fillRect(360, 0, 14, size);
   } else if (kind === 'deck_paving') {
     // Sun-baked Mediterranean warm sandy stone courtyard paving (NEVER blinding white!)
-    cCtx.fillStyle = '#b5a38a';
+    cCtx.fillStyle = '#b39f84';
     cCtx.fillRect(0, 0, size, size);
     bCtx.fillStyle = '#8c8c8c';
     bCtx.fillRect(0, 0, size, size);
@@ -188,7 +196,7 @@ function createProceduralSurface(
     for (let ty = 0; ty < size; ty += tile) {
       for (let tx = 0; tx < size; tx += tile) {
         const shade = Math.floor((rand() - 0.5) * 16);
-        cCtx.fillStyle = `rgb(${181 + shade}, ${163 + shade}, ${138 + shade})`;
+        cCtx.fillStyle = `rgb(${179 + shade}, ${159 + shade}, ${132 + shade})`;
         cCtx.fillRect(tx + 3, ty + 3, tile - 6, tile - 6);
         bCtx.fillStyle = `rgb(${145 + shade}, ${145 + shade}, ${145 + shade})`;
         bCtx.fillRect(tx + 3, ty + 3, tile - 6, tile - 6);
@@ -697,15 +705,35 @@ export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
 
   // Overhead Wooden Pergola Beams Spanning CT Spawn -> A/B Approach (Casts Slatted Shadows)
   const pergolaGeos: THREE.BufferGeometry[] = [];
+  const corbelGeos: THREE.BufferGeometry[] = [];
   for (const z of [-28.0, -26.5, -25.0, -23.5, -22.0]) {
     const slat = new THREE.BoxGeometry(22.0, 0.22, 0.35);
     slat.translate(0.35, 6.9, z);
     pergolaGeos.push(slat);
+
+    // Stone wall corbels/brackets supporting each slat at East & West wall junctions
+    const corbelL = new THREE.BoxGeometry(0.65, 0.55, 0.42);
+    corbelL.translate(-10.25, 6.55, z);
+    corbelGeos.push(corbelL);
+
+    const corbelR = new THREE.BoxGeometry(0.65, 0.55, 0.42);
+    corbelR.translate(10.25, 6.55, z);
+    corbelGeos.push(corbelR);
   }
   for (const x of [-9.8, 10.5]) {
     const runner = new THREE.BoxGeometry(0.35, 0.25, 6.8);
     runner.translate(x, 7.05, -25.0);
     pergolaGeos.push(runner);
+  }
+  if (corbelGeos.length > 0) {
+    const mergedCorbels = mergeGeometries(corbelGeos, false);
+    corbelGeos.forEach((g) => g.dispose());
+    if (mergedCorbels) {
+      const corbelMesh = new THREE.Mesh(mergedCorbels, materials.sanctum);
+      corbelMesh.castShadow = true;
+      corbelMesh.receiveShadow = true;
+      scene.add(corbelMesh);
+    }
   }
   if (pergolaGeos.length > 0) {
     const mergedPergola = mergeGeometries(pergolaGeos, false);

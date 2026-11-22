@@ -39,6 +39,7 @@ const _vCurDir1 = new THREE.Vector3();
 const _vCurDir2 = new THREE.Vector3();
 const _vSlackWorld = new THREE.Vector3();
 const _vSlackLocal = new THREE.Vector3();
+const _vAnatPole = new THREE.Vector3();
 const _vAxisY = new THREE.Vector3(0, 1, 0);
 
 const _qParentWorld = new THREE.Quaternion();
@@ -91,7 +92,8 @@ export function solveTwoBoneIK(
   targetWorld: THREE.Vector3,
   poleWorld: THREE.Vector3 | null,
   allowClavicleSlack = false,
-  upperBindLocalPos?: THREE.Vector3
+  upperBindLocalPos?: THREE.Vector3,
+  anatomicalHintDir?: THREE.Vector3
 ): number {
   if (upperBindLocalPos) {
     upper.position.copy(upperBindLocalPos);
@@ -176,6 +178,17 @@ export function solveTwoBoneIK(
   }
   _vBendDir.normalize();
 
+  // Explicit anatomical downward-outward pole vector clamping when bendDir.y > 0.15
+  // (prevents elbows projecting upward/backward into camera near-plane)
+  if (anatomicalHintDir && _vBendDir.y > 0.15) {
+    _vAnatPole.copy(anatomicalHintDir).addScaledVector(_vDirT, -anatomicalHintDir.dot(_vDirT));
+    if (_vAnatPole.lengthSq() > 1e-6) {
+      _vAnatPole.normalize();
+      const blend = clamp((_vBendDir.y - 0.15) / 0.45, 0.0, 1.0);
+      _vBendDir.lerp(_vAnatPole, blend).normalize();
+    }
+  }
+
   // Desired world direction of upper arm and target elbow position
   _vDesiredDir1
     .copy(_vDirT)
@@ -256,7 +269,9 @@ export function applyForearmTwist(chain: TwoBoneIKChain): void {
     prevCumulative = targetWeight;
 
     const bindAngle = chain.bindTwistAngles[i] ?? 0;
-    const finalAngle = bindAngle + deltaTwist * incrementalWeight;
+    const maxSegmentTwist = Math.PI / 4; // <= 45° anatomical per-segment twist clamp
+    const segmentTwist = clamp(deltaTwist * incrementalWeight, -maxSegmentTwist, maxSegmentTwist);
+    const finalAngle = bindAngle + segmentTwist;
     _qTwistOnly.setFromAxisAngle(_vAxisY, finalAngle);
     bone.quaternion.copy(_qTwistOnly);
   }
@@ -342,7 +357,7 @@ export class ArmIKSolver {
       bindTwistAngles,
       bindForearmToHand,
       upperBindLocalPos: upper.position.clone(),
-      fallbackPoleDir: new THREE.Vector3(side === 'L' ? -0.4 : 0.4, -0.8, 0.2).normalize(),
+      fallbackPoleDir: new THREE.Vector3(side === 'L' ? -0.65 : 0.65, -0.75, 0.10).normalize(),
     };
   }
 
@@ -389,7 +404,8 @@ export class ArmIKSolver {
       _vTarget,
       polePos,
       true,
-      chain.upperBindLocalPos
+      chain.upperBindLocalPos,
+      chain.fallbackPoleDir
     );
 
     applyForearmTwist(chain);

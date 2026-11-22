@@ -1053,28 +1053,35 @@ export class WeaponViewmodel {
         if (gripAnchor) {
           gripAnchor.updateMatrixWorld(true);
           gripAnchor.getWorldPosition(_vA);
-          if (this.ikHandCtrlL.parent) {
-            this.ikHandCtrlL.parent.updateMatrixWorld(true);
-            this.ikHandCtrlL.parent.worldToLocal(_vB.copy(_vA));
-            this.ikHandCtrlL.position.lerp(_vB, this.leftHandLockWeight);
-          } else {
-            this.ikHandCtrlL.position.lerp(_vA, this.leftHandLockWeight);
-          }
-          if (this.handL && cfg.leftHandRelRotEuler) {
-            _euler.set(cfg.leftHandRelRotEuler[0], cfg.leftHandRelRotEuler[1], cfg.leftHandRelRotEuler[2], 'XYZ');
-            _qDelta.setFromEuler(_euler);
-            this.handL.quaternion.slerp(_qDelta, this.leftHandLockWeight);
-          }
-          if (
-            this.akFingerPose.size > 0 &&
-            (this.currentWeaponId === 'vanguard-m4' || this.currentWeaponId === 'sovereign-awp')
-          ) {
-            this.akFingerPose.forEach((qTarget, boneName) => {
-              const bone = this.fingerBones.get(boneName);
-              if (bone) {
-                bone.quaternion.slerp(qTarget, this.leftHandLockWeight);
-              }
-            });
+          const upArm = this.armsRoot?.getObjectByName('UpArm_L');
+          const upArmPos = upArm ? upArm.getWorldPosition(_vB) : null;
+          const reachDist = upArmPos ? _vA.distanceTo(upArmPos) : 0.35;
+          const isGripValid = _vA.z < -0.18 && reachDist >= 0.12 && reachDist <= 0.65;
+          if (isGripValid) {
+            if (this.ikHandCtrlL.parent) {
+              this.ikHandCtrlL.parent.updateMatrixWorld(true);
+              this.ikHandCtrlL.parent.worldToLocal(_vB.copy(_vA));
+              this.ikHandCtrlL.position.lerp(_vB, this.leftHandLockWeight);
+            } else {
+              this.ikHandCtrlL.position.lerp(_vA, this.leftHandLockWeight);
+            }
+            this.ikHandCtrlL.updateMatrixWorld(true);
+            if (this.handL && cfg.leftHandRelRotEuler) {
+              _euler.set(cfg.leftHandRelRotEuler[0], cfg.leftHandRelRotEuler[1], cfg.leftHandRelRotEuler[2], 'XYZ');
+              _qDelta.setFromEuler(_euler);
+              this.handL.quaternion.slerp(_qDelta, this.leftHandLockWeight);
+            }
+            if (
+              this.akFingerPose.size > 0 &&
+              (this.currentWeaponId === 'vanguard-m4' || this.currentWeaponId === 'sovereign-awp')
+            ) {
+              this.akFingerPose.forEach((qTarget, boneName) => {
+                const bone = this.fingerBones.get(boneName);
+                if (bone) {
+                  bone.quaternion.slerp(qTarget, this.leftHandLockWeight);
+                }
+              });
+            }
           }
         }
       }
@@ -1197,7 +1204,19 @@ export class WeaponViewmodel {
     let reloadRoll = 0;
     const currentMag = this.magMeshes.get(this.currentWeaponId);
 
-    if (this.isReloading && !usesUnifiedArms) {
+    if (this.isReloading && usesUnifiedArms) {
+      const pmag = this.armsRoot?.getObjectByName('Pmag');
+      if (pmag && currentMag && this.reloadProgress >= 0.18 && this.reloadProgress <= 0.78) {
+        pmag.updateMatrixWorld(true);
+        pmag.getWorldPosition(_vA);
+        if (currentMag.parent) {
+          currentMag.parent.worldToLocal(_vB.copy(_vA));
+          currentMag.position.lerp(_vB, 0.45);
+        }
+      } else if (currentMag && typeof currentMag.userData.baseY === 'number') {
+        currentMag.position.y = currentMag.userData.baseY;
+      }
+    } else if (this.isReloading && !usesUnifiedArms) {
       reloadY = -0.06 * Math.sin(this.reloadProgress * Math.PI);
       reloadRoll = 0.22 * Math.sin(this.reloadProgress * Math.PI);
 
