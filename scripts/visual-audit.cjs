@@ -46,7 +46,7 @@ async function getDebuggerUrl(retries = 25) {
 
 async function runVisualAudit() {
   console.log('=====================================================');
-  console.log('📸 GARAM: ZERO HOUR — COMPREHENSIVE 10-STAGE VISUAL AUDIT');
+  console.log('📸 GARAM: ZERO HOUR — COMPREHENSIVE 20-STAGE VISUAL AUDIT');
   console.log('=====================================================');
 
   const outDir = path.resolve(__dirname, '../docs/assets/playtests');
@@ -160,18 +160,18 @@ async function runVisualAudit() {
   await sleep(1500);
 
   async function capture(fileName, label) {
-    await sleep(500);
+    await sleep(400);
     const ss = await send('Page.captureScreenshot', { format: 'png' });
     const targetPath = path.join(outDir, fileName);
     fs.writeFileSync(targetPath, Buffer.from(ss.data, 'base64'));
     console.log(`✓ [Screenshot] ${label} -> ${fileName}`);
   }
 
-  // Stage 1: Lobby Screen with Panoramic Overlook (Viewmodel hidden, zero lens occlusion)
+  // Stage 1: Lobby Screen with Panoramic Overlook
   console.log('\n[Capture 1] Inspecting Lobby Modal & Panoramic Overlook Camera...');
   await capture('audit_01_lobby.png', 'Stage 1: Lobby Panoramic Overlook');
 
-  // Stage 2: Deploy Operator into Arena
+  // Deploy Operator into Arena
   console.log('\n[Phase 2] Deploying Operator into DE_MERIDIAN...');
   await send('Runtime.evaluate', {
     expression: `(() => {
@@ -186,28 +186,79 @@ async function runVisualAudit() {
   });
   await sleep(1500);
 
-  // Stage 2: Default Primary Garam-47 (AK)
-  console.log('\n[Capture 2] Inspecting Garam-47 (AK) Viewmodel Framing...');
-  await capture('audit_02_garam47_idle.png', 'Stage 2: Garam-47 Viewmodel');
+  // Stage 2: Garam-47 (AK) Idle Viewmodel Framing
+  console.log('\n[Capture 2] Inspecting Garam-47 (AK) Idle Viewmodel Framing...');
+  await capture('audit_02_garam47_idle.png', 'Stage 2: Garam-47 Viewmodel Idle');
 
-  // Stage 3: Secondary Desert Eagle (.50 AE)
-  console.log('\n[Capture 3] Switching to Secondary (Desert Eagle)...');
+  // Stage 3: Garam-47 Firing Recoil Kick & Casing
+  console.log('\n[Capture 3] Simulating Garam-47 Primary Fire Recoil Kick...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      const canvas = document.getElementById('game-canvas');
+      if (canvas) canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+    })()`,
+  });
+  await sleep(120);
+  await capture('audit_03_garam47_fire.png', 'Stage 3: Garam-47 Firing Recoil');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      const canvas = document.getElementById('game-canvas');
+      if (canvas) canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
+    })()`,
+  });
+  await sleep(300);
+
+  // Stage 4: Garam-47 Reload
+  console.log('\n[Capture 4] Simulating Garam-47 Reload Sequence...');
+  await send('Runtime.evaluate', {
+    expression: `window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyR', key: 'r', bubbles: true }))`,
+  });
+  await sleep(400);
+  await capture('audit_04_garam47_reload.png', 'Stage 4: Garam-47 Reloading');
+  await sleep(1000);
+
+  // Stage 5: Desert Eagle Idle
+  console.log('\n[Capture 5] Switching to Desert Eagle (.50 AE)...');
   await send('Runtime.evaluate', {
     expression: `window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit2', key: '2', bubbles: true }))`,
   });
-  await sleep(800);
-  await capture('audit_03_deagle_idle.png', 'Stage 3: Desert Eagle Viewmodel');
+  await sleep(700);
+  await capture('audit_05_deagle_idle.png', 'Stage 5: Desert Eagle Idle');
 
-  // Stage 4: Tactical Knife (Garam Karambit Reverse-Grip)
-  console.log('\n[Capture 4] Switching to Knife (CS2 Karambit Reverse-Grip)...');
+  // Stage 6: Desert Eagle Firing Blowback
+  console.log('\n[Capture 6] Simulating Desert Eagle Slide Blowback...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      const canvas = document.getElementById('game-canvas');
+      if (canvas) {
+        canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+        setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 50);
+      }
+    })()`,
+  });
+  await sleep(80);
+  await capture('audit_06_deagle_fire.png', 'Stage 6: Desert Eagle Slide Blowback');
+  await sleep(400);
+
+  // Stage 7: Karambit Reverse-Grip Idle
+  console.log('\n[Capture 7] Switching to Tactical Knife (Karambit Reverse-Grip)...');
   await send('Runtime.evaluate', {
     expression: `window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }))`,
   });
-  await sleep(800);
-  await capture('audit_04_karambit_idle.png', 'Stage 4: Karambit Reverse-Grip Viewmodel');
+  await sleep(700);
+  await capture('audit_07_karambit_idle.png', 'Stage 7: Karambit Reverse-Grip Idle');
 
-  // Stage 5: Buy & Inspect Vanguard M4A1-S
-  console.log('\n[Capture 5] Purchasing & Inspecting Vanguard M4A1-S...');
+  // Stage 8: Karambit Ring Twirl Inspect (F key)
+  console.log('\n[Capture 8] Triggering Karambit Index-Finger Twirl Inspect...');
+  await send('Runtime.evaluate', {
+    expression: `window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyF', key: 'f', bubbles: true }))`,
+  });
+  await sleep(350);
+  await capture('audit_08_karambit_inspect.png', 'Stage 8: Karambit Ring Inspect');
+  await sleep(500);
+
+  // Stage 9: Vanguard M4A1-S Idle
+  console.log('\n[Capture 9] Purchasing & Inspecting Vanguard M4A1-S...');
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
@@ -220,10 +271,25 @@ async function runVisualAudit() {
     })()`,
   });
   await sleep(800);
-  await capture('audit_05_m4a1s_idle.png', 'Stage 5: Vanguard M4A1-S Viewmodel');
+  await capture('audit_09_m4a1s_idle.png', 'Stage 9: Vanguard M4A1-S Idle');
 
-  // Stage 6: Buy & Inspect Sovereign AWP
-  console.log('\n[Capture 6] Purchasing & Inspecting Sovereign AWP...');
+  // Stage 10: Vanguard M4A1-S Firing
+  console.log('\n[Capture 10] Firing Suppressed Vanguard M4A1-S...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      const canvas = document.getElementById('game-canvas');
+      if (canvas) {
+        canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+        setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 50);
+      }
+    })()`,
+  });
+  await sleep(80);
+  await capture('audit_10_m4a1s_fire.png', 'Stage 10: M4A1-S Firing');
+  await sleep(400);
+
+  // Stage 11: Sovereign AWP Idle
+  console.log('\n[Capture 11] Purchasing & Inspecting Sovereign AWP...');
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
@@ -236,62 +302,70 @@ async function runVisualAudit() {
     })()`,
   });
   await sleep(800);
-  await capture('audit_06_awp_idle.png', 'Stage 6: Sovereign AWP Viewmodel');
+  await capture('audit_11_awp_idle.png', 'Stage 11: Sovereign AWP Idle');
 
-  // Stage 7: Pergola Beams & Stone Wall Corbels with Cast Sunlight Shadows
-  console.log('\n[Capture 7] Inspecting Pergola Architecture & Stone Wall Corbels...');
+  // Stage 12: Sovereign AWP Firing Recoil
+  console.log('\n[Capture 12] Firing Sovereign AWP...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      const canvas = document.getElementById('game-canvas');
+      if (canvas) {
+        canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+        setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 50);
+      }
+    })()`,
+  });
+  await sleep(80);
+  await capture('audit_12_awp_fire.png', 'Stage 12: AWP Firing Recoil');
+  await sleep(400);
+
+  // Stage 13: Underpass Portal & Doorway Bounce GI
+  console.log('\n[Capture 13] Inspecting Underpass Portal & Doorway Radiosity...');
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }));
-      // Discharge first 2 frames of lockAcquiredFrames filter, then pitch up
       window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 0, bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 0, bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: -220, bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -600, movementY: 80, bubbles: true }));
     })()`,
   });
   await sleep(600);
-  await capture('audit_07_architectural_pergola_corbels.png', 'Stage 7: Pergola Architecture & Corbels');
+  await capture('audit_13_underpass_portal.png', 'Stage 13: Underpass Portal Bounce GI');
 
-  // Stage 8: 3P Bot Stance & Weapon Alignment
-  console.log('\n[Capture 8] Inspecting 3rd-Person Bot Holding Weapon along +Z...');
+  // Stage 14: Mid Watchtower Silhouette
+  console.log('\n[Capture 14] Inspecting Mid Watchtower, Terracotta Roof & Sloped Cheek-Walls...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      // Restore pitch and turn right towards Sentinel bot
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -320, movementY: 220, bubbles: true }));
-      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 300, movementY: -180, bubbles: true }));
     })()`,
   });
   await sleep(600);
-  await capture('audit_08_3p_vanguard_bot.png', 'Stage 8: 3P Bot Alignment');
+  await capture('audit_14_mid_watchtower.png', 'Stage 14: Mid Watchtower Architecture');
 
-  // Stage 9: Combat Fire Recoil & Muzzle Flash
-  console.log('\n[Capture 9] Simulating Primary Fire Recoil Kick...');
+  // Stage 15: Extruded Roman Stone Archways & Shuttered Windows
+  console.log('\n[Capture 15] Inspecting Roman Stone Archways, Keystones & Mediterranean Windows...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      // Re-center aim
-      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 320, movementY: 0, bubbles: true }));
-      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
-      const canvas = document.getElementById('game-canvas');
-      if (canvas) {
-        canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
-      }
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -450, movementY: 50, bubbles: true }));
     })()`,
   });
-  await sleep(150);
-  await capture('audit_09_combat_fire_recoil.png', 'Stage 9: Primary Fire Recoil');
+  await sleep(600);
+  await capture('audit_15_archways_and_windows.png', 'Stage 15: Roman Arches & Windows');
+
+  // Stage 16: PBR Cobblestone Deck & Weathered Plaster Close-Up
+  console.log('\n[Capture 16] Inspecting Photographic Cobblestone 04 PBR Deck & Weathered Plaster...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      const canvas = document.getElementById('game-canvas');
-      if (canvas) {
-        canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
-      }
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 260, bubbles: true }));
     })()`,
   });
+  await sleep(600);
+  await capture('audit_16_pbr_cobblestone_deck.png', 'Stage 16: Photographic PBR Cobblestone Deck');
 
-  // Stage 10: Live Smoke & Molotov on Stone Deck
-  console.log('\n[Capture 10] Deploying Tactical Smoke & Molotov on Stone Deck (y=2.1m)...');
+  // Stage 17: Active 3D Volumetric Smoke Cloud
+  console.log('\n[Capture 17] Deploying & Capturing 3D Volumetric Smoke Grenade Cloud...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: -200, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
       const smokeBtn = document.querySelector('[data-buy="smoke-grenade"]');
       if (smokeBtn) smokeBtn.click();
@@ -301,21 +375,55 @@ async function runVisualAudit() {
         const canvas = document.getElementById('game-canvas');
         if (canvas) {
           canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
-          setTimeout(() => {
-            canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
-          }, 60);
+          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 60);
         }
       }, 300);
     })()`,
   });
   await sleep(2400);
-  await capture('audit_10_live_utility_deck.png', 'Stage 10: Live Tactical Smoke & Molotov on Deck');
+  await capture('audit_17_combat_smoke_cloud.png', 'Stage 17: Volumetric Smoke Cloud');
+
+  // Stage 18: Multi-Tongue Molotov Fire & Scorched Ground Decal
+  console.log('\n[Capture 18] Deploying & Capturing Multi-Tongue Molotov Fire...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
+      const molotovBtn = document.querySelector('[data-buy="molotov"]');
+      if (molotovBtn) molotovBtn.click();
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit4', key: '4', bubbles: true }));
+      setTimeout(() => {
+        const canvas = document.getElementById('game-canvas');
+        if (canvas) {
+          canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+          setTimeout(() => canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true })), 60);
+        }
+      }, 300);
+    })()`,
+  });
+  await sleep(2200);
+  await capture('audit_18_combat_molotov_fire.png', 'Stage 18: Multi-Tongue Molotov Fire');
+
+  // Stage 19: 3rd-Person Tactical Operator Bot & Ground Shadows
+  console.log('\n[Capture 19] Inspecting 3rd-Person Operator Bot & CSM Directional Ground Shadows...');
+  await send('Runtime.evaluate', {
+    expression: `(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 750, movementY: 50, bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
+    })()`,
+  });
+  await sleep(600);
+  await capture('audit_19_3p_vanguard_bot.png', 'Stage 19: 3P Operator Bot & CSM Shadows');
+
+  // Stage 20: Esports HUD & Rotating Orthographic Radar
+  console.log('\n[Capture 20] Inspecting CS2 Tournament HUD & Rotating Orthographic Radar...');
+  await capture('audit_20_ortho_radar_hud.png', 'Stage 20: Esports HUD & Radar');
 
   console.log('\n=====================================================');
-  console.log('📊 VISUAL AUDIT RESULTS');
+  console.log('📊 20-STAGE VISUAL AUDIT RESULTS');
   console.log('=====================================================');
   if (consoleErrors.length === 0) {
-    console.log('✅ ZERO CONSOLE ERRORS DETECTED DURING VISUAL AUDIT!');
+    console.log('✅ ZERO CONSOLE ERRORS DETECTED DURING 20-STAGE VISUAL AUDIT!');
   } else {
     console.log('⚠️ Console Diagnostics Detected:');
     console.log(consoleErrors.join('\n'));
@@ -323,7 +431,7 @@ async function runVisualAudit() {
 
   ws.close();
   cleanup();
-  console.log('✓ Visual Audit Successfully Concluded!\n');
+  console.log('✓ 20-Stage Visual Audit Concluded Successfully!\n');
 }
 
 runVisualAudit().catch((err) => {

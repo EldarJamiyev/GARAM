@@ -281,7 +281,8 @@ export class GaramGame {
       }
     }
 
-    this.sceneManager.update(frameDelta, worldCamera.position);
+    const currentZone = getCalloutName(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
+    this.sceneManager.update(frameDelta, worldCamera.position, currentZone);
     stepMatchFrame(ctx, {
       frameDelta,
       hozSpeed,
@@ -291,7 +292,7 @@ export class GaramGame {
       interpX: interp.x,
       interpEyeY: interp.eyeY,
       interpZ: interp.z,
-      currentZone: getCalloutName(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z),
+      currentZone,
     });
 
     net.updateBandwidthTelemetry();

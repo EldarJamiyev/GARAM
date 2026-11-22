@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { AssetManager } from './AssetManager.js';
 import { PostProcessPipeline } from './PostProcessPipeline.js';
+import { ViewmodelLighting } from './ViewmodelLighting.js';
 
 export class SceneManager {
   public worldScene: THREE.Scene;
@@ -14,6 +15,7 @@ export class SceneManager {
   public horizonMesh: THREE.InstancedMesh;
   public envMap: THREE.Texture;
   public postProcess: PostProcessPipeline;
+  public viewmodelLighting: ViewmodelLighting;
   private envRenderTarget: THREE.WebGLRenderTarget | null = null;
   private renderer: THREE.WebGLRenderer;
   public isSoftwareGl = false;
@@ -105,6 +107,9 @@ export class SceneManager {
 
     // 7. CS2 Post-Processing Optical Pipeline (GTAO crevice contact shadows + filmic bloom)
     this.postProcess = new PostProcessPipeline(renderer, this.worldScene, this.worldCamera, this.isSoftwareGl);
+
+    // 8. Dynamic Viewmodel Zone Lighting Controller
+    this.viewmodelLighting = new ViewmodelLighting(this.viewmodelScene);
   }
 
   private generateProceduralPMREM(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarget {
@@ -369,9 +374,12 @@ export class SceneManager {
     return instanced;
   }
 
-  public update(_dt: number, cameraPos: THREE.Vector3): void {
+  public update(dt: number, cameraPos: THREE.Vector3, currentZone?: string): void {
     this.skyMesh.position.copy(cameraPos);
     this.horizonMesh.position.set(cameraPos.x, 0, cameraPos.z);
+    if (currentZone) {
+      this.viewmodelLighting.update(dt, currentZone);
+    }
   }
 
   public onResize(w: number, h: number): void {

@@ -78,7 +78,7 @@ interface MolotovFireZone {
   id: string;
   center: THREE.Vector3;
   radius: number;
-  mesh: THREE.Mesh;
+  mesh: THREE.Object3D;
   light: THREE.PointLight | null;
   spawnTime: number;
   duration: number;
@@ -111,6 +111,7 @@ export class UtilityManager {
   private smokeMaterial: THREE.MeshStandardMaterial;
   private grenadeMat: THREE.MeshStandardMaterial;
   private fireMat: THREE.MeshBasicMaterial;
+  private flameTongueMat: THREE.MeshBasicMaterial;
   private sharedPuffGeo: THREE.SphereGeometry;
   private sharedGrenadeGeo: THREE.CylinderGeometry;
   private sharedFireGeo: THREE.CircleGeometry;
@@ -138,10 +139,10 @@ export class UtilityManager {
     smokeCanvas.height = 128;
     const sCtx = smokeCanvas.getContext('2d')!;
     const grad = sCtx.createRadialGradient(64, 64, 8, 64, 64, 60);
-    grad.addColorStop(0, 'rgba(210, 215, 222, 0.95)');
-    grad.addColorStop(0.45, 'rgba(180, 186, 194, 0.82)');
-    grad.addColorStop(0.85, 'rgba(150, 155, 162, 0.35)');
-    grad.addColorStop(1, 'rgba(140, 145, 150, 0.0)');
+    grad.addColorStop(0, 'rgba(235, 228, 216, 0.96)'); // CS2 warm sunlit cream core
+    grad.addColorStop(0.45, 'rgba(185, 192, 202, 0.85)'); // mid-tone dispersion
+    grad.addColorStop(0.85, 'rgba(114, 128, 145, 0.38)'); // cool slate shadow edge
+    grad.addColorStop(1, 'rgba(100, 110, 125, 0.0)');
     sCtx.fillStyle = grad;
     sCtx.fillRect(0, 0, 128, 128);
 
@@ -154,7 +155,7 @@ export class UtilityManager {
       depthWrite: false,
       roughness: 0.95,
       metalness: 0.0,
-      color: 0xd8dde3,
+      color: 0xebe4d8,
     });
 
     this.grenadeMat = new THREE.MeshStandardMaterial({
@@ -164,9 +165,29 @@ export class UtilityManager {
     });
 
     this.fireMat = new THREE.MeshBasicMaterial({
-      color: 0xff5511,
+      color: 0xff4408,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.72,
+      side: THREE.DoubleSide,
+    });
+
+    const flameCanvas = document.createElement('canvas');
+    flameCanvas.width = 128;
+    flameCanvas.height = 256;
+    const fCtx = flameCanvas.getContext('2d')!;
+    const fGrad = fCtx.createLinearGradient(64, 256, 64, 0);
+    fGrad.addColorStop(0.0, 'rgba(255, 245, 200, 0.96)');
+    fGrad.addColorStop(0.3, 'rgba(255, 130, 20, 0.88)');
+    fGrad.addColorStop(0.7, 'rgba(210, 40, 10, 0.65)');
+    fGrad.addColorStop(1.0, 'rgba(100, 10, 0, 0.0)');
+    fCtx.fillStyle = fGrad;
+    fCtx.fillRect(0, 0, 128, 256);
+    const flameTex = new THREE.CanvasTexture(flameCanvas);
+    this.flameTongueMat = new THREE.MeshBasicMaterial({
+      map: flameTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
       side: THREE.DoubleSide,
     });
   }
@@ -435,13 +456,13 @@ export class UtilityManager {
 
     const puffs: SmokePuffData[] = [];
     const mat = this.smokeMaterial.clone();
-    const instancedMesh = new THREE.InstancedMesh(this.sharedPuffGeo, mat, 28);
+    const instancedMesh = new THREE.InstancedMesh(this.sharedPuffGeo, mat, 48);
     instancedMesh.position.copy(pos);
 
-    for (let p = 0; p < 28; p++) {
+    for (let p = 0; p < 48; p++) {
       const theta = Math.random() * Math.PI * 2;
       const phi = (Math.random() - 0.2) * Math.PI;
-      const r = Math.random() * 2.8;
+      const r = Math.random() * 3.6;
 
       const offset = new THREE.Vector3(
         r * Math.sin(phi) * Math.cos(theta),
@@ -566,10 +587,27 @@ export class UtilityManager {
     this.audio.playGrenadeExplosion();
 
     const radius = 3.4;
-    const fireMesh = new THREE.Mesh(this.sharedFireGeo, this.fireMat);
-    fireMesh.rotation.x = -Math.PI / 2;
-    fireMesh.position.set(pos.x, Math.max(0.04, pos.y + 0.04), pos.z);
-    this.scene.add(fireMesh);
+    const fireGroup = new THREE.Group();
+    fireGroup.position.set(pos.x, Math.max(0.04, pos.y + 0.04), pos.z);
+
+    // Ground scorched fire pool decal
+    const fireDecal = new THREE.Mesh(this.sharedFireGeo, this.fireMat);
+    fireDecal.rotation.x = -Math.PI / 2;
+    fireGroup.add(fireDecal);
+
+    // Multi-tongue vertical animated flame billboards
+    const flameGeo = new THREE.PlaneGeometry(1.4, 2.2);
+    flameGeo.translate(0, 1.1, 0);
+    for (let f = 0; f < 14; f++) {
+      const angle = (f / 14) * Math.PI * 2;
+      const r = 0.5 + Math.random() * (radius - 0.9);
+      const tongue = new THREE.Mesh(flameGeo, this.flameTongueMat);
+      tongue.position.set(Math.cos(angle) * r, 0, Math.sin(angle) * r);
+      tongue.rotation.y = Math.random() * Math.PI;
+      fireGroup.add(tongue);
+    }
+
+    this.scene.add(fireGroup);
 
     const light = this.acquireFireLight(pos);
 
@@ -577,7 +615,7 @@ export class UtilityManager {
       id: Math.random().toString(36).substring(2, 9),
       center: pos.clone(),
       radius,
-      mesh: fireMesh,
+      mesh: fireGroup,
       light,
       spawnTime: performance.now(),
       duration: 7.0,

@@ -14,6 +14,9 @@ import {
 } from '@garam/shared';
 import { OperatorRig } from '../render/OperatorRig.js';
 import { AssetManager } from '../render/AssetManager.js';
+import { MaterialLibrary } from './MaterialLibrary.js';
+import { MeridianArchitecture } from './MeridianArchitecture.js';
+import { MeridianProps } from './MeridianProps.js';
 
 export interface BotEntity {
   id: string;
@@ -457,78 +460,23 @@ function resolveMaterialBucket(block: MapBlockCollider): string {
 export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
   const aniso = AssetManager.getInstance().getMaxAnisotropy();
 
-  // 1. Procedural PBR Materials for all 3 Architectural Quadrants + 4 Wallbang Surface Types
-  const sanctumPair = createProceduralSurface('sanctum_stone', aniso);
-  const aqueductPair = createProceduralSurface('aqueduct_basalt', aniso);
-  const foundryPair = createProceduralSurface('foundry_concrete', aniso);
-  const deckPair = createProceduralSurface('deck_paving', aniso);
-  const woodPair = createProceduralSurface('wood', aniso);
-  const drywallPair = createProceduralSurface('drywall', aniso);
-  const metalPair = createProceduralSurface('metal', aniso);
-
+  // 1. Photographic CC0 1K PBR Materials + Triplanar Anti-Tiling + Dust Gradients
+  const matLib = MaterialLibrary.getInstance();
+  const pbrMaterials = matLib.createMaterials();
   const materials: Record<string, THREE.MeshStandardMaterial> = {
-    deck: new THREE.MeshStandardMaterial({
-      map: deckPair.map,
-      bumpMap: deckPair.bumpMap,
-      bumpScale: 0.05,
-      roughness: 0.92,
-      metalness: 0.02,
-    }),
-    sanctum: new THREE.MeshStandardMaterial({
-      map: sanctumPair.map,
-      bumpMap: sanctumPair.bumpMap,
-      bumpScale: 0.055,
-      roughness: 0.84,
-      metalness: 0.04,
-    }),
-    aqueduct: new THREE.MeshStandardMaterial({
-      map: aqueductPair.map,
-      bumpMap: aqueductPair.bumpMap,
-      bumpScale: 0.06,
-      roughness: 0.78,
-      metalness: 0.08,
-    }),
-    foundry: new THREE.MeshStandardMaterial({
-      map: foundryPair.map,
-      bumpMap: foundryPair.bumpMap,
-      bumpScale: 0.05,
-      roughness: 0.74,
-      metalness: 0.14,
-    }),
-    wood: new THREE.MeshStandardMaterial({
-      map: woodPair.map,
-      bumpMap: woodPair.bumpMap,
-      bumpScale: 0.06,
-      roughness: 0.82,
-      metalness: 0.04,
-    }),
-    drywall: new THREE.MeshStandardMaterial({
-      map: drywallPair.map,
-      bumpMap: drywallPair.bumpMap,
-      bumpScale: 0.03,
-      roughness: 0.9,
-      metalness: 0.02,
-    }),
-    metal: new THREE.MeshStandardMaterial({
-      map: metalPair.map,
-      bumpMap: metalPair.bumpMap,
-      bumpScale: 0.05,
-      roughness: 0.36,
-      metalness: 0.72,
-    }),
+    deck: pbrMaterials.deck,
+    sanctum: pbrMaterials.sanctum,
+    aqueduct: pbrMaterials.aqueduct,
+    foundry: pbrMaterials.foundry,
+    wood: pbrMaterials.wood,
+    drywall: pbrMaterials.drywall,
+    metal: pbrMaterials.metal,
   };
 
   // 2. Sunken Aqueduct Floor at y = 0.0m (Dark Wet Basalt Stone)
   const underpassFloorGeo = new THREE.PlaneGeometry(18, 36);
   underpassFloorGeo.rotateX(-Math.PI / 2);
-  const underpassFloorMat = new THREE.MeshStandardMaterial({
-    map: aqueductPair.map,
-    bumpMap: aqueductPair.bumpMap,
-    bumpScale: 0.05,
-    color: 0x58626e,
-    roughness: 0.56,
-    metalness: 0.16,
-  });
+  const underpassFloorMat = pbrMaterials.aqueduct;
   const underpassFloor = new THREE.Mesh(underpassFloorGeo, underpassFloorMat);
   underpassFloor.position.set(1.5, 0.0, 5.0);
   underpassFloor.receiveShadow = true;
@@ -940,7 +888,12 @@ export function buildTacticalMeridianMap(scene: THREE.Scene): MapBuildResult {
     }
   }
 
-  // 8. Spawn Grounded 5v5 Tactical Bots on DE_MERIDIAN Deck
+  // 8. Environmental Decals, Non-Boxy Roman Arches & Instanced Clutter Props
+  matLib.createEnvironmentalDecals(scene);
+  MeridianArchitecture.build(scene);
+  MeridianProps.build(scene);
+
+  // 9. Spawn Grounded 5v5 Tactical Bots on DE_MERIDIAN Deck
   const bots: BotEntity[] = [];
   for (const cfg of TACTICAL_BOTS) {
     const rig = new OperatorRig(cfg.team, cfg.name);
