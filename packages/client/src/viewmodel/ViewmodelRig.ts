@@ -264,7 +264,7 @@ export function buildKarambitAnimationClips(
   }
 
   // Position left hand in low-left tactical CQC guard so it stays clear of HUD and center screen (ndcY <= -0.85)
-  basePos.set('IK_Hand_Cntrl_L', [0.260, 0.080, 0.260]);
+  basePos.set('IK_Hand_Cntrl_L', [0.320, -0.220, 0.140]);
   baseQuats.set('IK_Hand_Cntrl_L', [-0.05, 0.12, 0.85, 0.51]);
   // Position right hand on the right side for crisp reverse-grip Karambit framing
   basePos.set('IK_Hand_Cntrl_R', [-0.180, 0.220, 0.230]);
