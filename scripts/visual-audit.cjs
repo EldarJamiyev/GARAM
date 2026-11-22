@@ -177,6 +177,11 @@ async function runVisualAudit() {
     expression: `(() => {
       const btn = document.getElementById('spawn-btn');
       if (btn) btn.click();
+      Object.defineProperty(document, 'pointerLockElement', {
+        get: () => document.getElementById('game-canvas'),
+        configurable: true
+      });
+      document.dispatchEvent(new Event('pointerlockchange'));
     })()`,
   });
   await sleep(1500);
@@ -206,6 +211,8 @@ async function runVisualAudit() {
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
+      const practice = document.getElementById('practice-btn');
+      if (practice) practice.click();
       const btn = document.querySelector('[data-buy="vanguard-m4"]');
       if (btn) btn.click();
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
@@ -220,6 +227,8 @@ async function runVisualAudit() {
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', bubbles: true }));
+      const practice = document.getElementById('practice-btn');
+      if (practice) practice.click();
       const btn = document.querySelector('[data-buy="sovereign-awp"]');
       if (btn) btn.click();
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', bubbles: true }));
@@ -233,8 +242,9 @@ async function runVisualAudit() {
   console.log('\n[Capture 7] Inspecting Pergola Architecture & Stone Wall Corbels...');
   await send('Runtime.evaluate', {
     expression: `(() => {
-      // Look back towards CT Spawn Promenade & Pergolas (yaw = 0)
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit3', key: '3', bubbles: true }));
+      // Pitch camera up to look directly at the overhead wooden pergolas & corbels
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: -160, bubbles: true }));
     })()`,
   });
   await sleep(600);
@@ -244,6 +254,8 @@ async function runVisualAudit() {
   console.log('\n[Capture 8] Inspecting 3rd-Person Bot Holding Weapon along +Z...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      // Restore pitch, turn slightly right towards Sentinel bot
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: -180, movementY: 160, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
     })()`,
   });
@@ -254,6 +266,8 @@ async function runVisualAudit() {
   console.log('\n[Capture 9] Simulating Primary Fire Recoil Kick...');
   await send('Runtime.evaluate', {
     expression: `(() => {
+      // Re-center aim
+      window.dispatchEvent(new MouseEvent('mousemove', { movementX: 180, movementY: 0, bubbles: true }));
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', key: '1', bubbles: true }));
       const canvas = document.getElementById('game-canvas');
       if (canvas) {
@@ -277,9 +291,16 @@ async function runVisualAudit() {
   await send('Runtime.evaluate', {
     expression: `(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit4', key: '4', bubbles: true }));
+      const canvas = document.getElementById('game-canvas');
+      if (canvas) {
+        canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, bubbles: true }));
+        setTimeout(() => {
+          canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
+        }, 80);
+      }
     })()`,
   });
-  await sleep(1200);
+  await sleep(1500);
   await capture('audit_10_live_utility_deck.png', 'Stage 10: Live Tactical Smoke & Molotov on Deck');
 
   console.log('\n=====================================================');
