@@ -656,9 +656,10 @@ export class WeaponViewmodel {
                 for (const m of mats) {
                   if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
                     const std = m as THREE.MeshStandardMaterial;
-                    std.metalness = Math.max(0.88, std.metalness);
-                    std.roughness = Math.min(0.22, std.roughness);
-                    std.envMapIntensity = 2.0;
+                    std.color.setHex(0xb81828);
+                    std.metalness = 0.95;
+                    std.roughness = 0.16;
+                    std.envMapIntensity = 2.5;
                   }
                 }
               }
@@ -1177,7 +1178,8 @@ export class WeaponViewmodel {
           // 1. Curl fingers FIRST so knuckle world positions reflect the curled hand grip!
           if (
             this.akFingerPose.size > 0 &&
-            (this.currentWeaponId === 'vanguard-m4' ||
+            (this.currentWeaponId === 'garam-47' ||
+              this.currentWeaponId === 'vanguard-m4' ||
               this.currentWeaponId === 'sovereign-awp' ||
               this.currentWeaponId === 'desert-eagle')
           ) {
@@ -1212,12 +1214,6 @@ export class WeaponViewmodel {
           const reachDist = upArmPos ? _vA.distanceTo(upArmPos) : 0.35;
           const isGripValid = reachDist >= 0.02 && reachDist <= 0.75;
           if (isGripValid) {
-            // Clamp target reach to prevent hyper-extension
-            const maxReach = 0.52 * cfg.armsScale;
-            if (upArmPos && reachDist > maxReach) {
-              _vA.sub(upArmPos).normalize().multiplyScalar(maxReach).add(upArmPos);
-            }
-
             if (this.ikHandCtrlL.parent) {
               this.ikHandCtrlL.parent.updateMatrixWorld(true);
               this.ikHandCtrlL.parent.worldToLocal(_vB.copy(_vA));

@@ -323,7 +323,7 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     vmMesh.add(armsContainer);
 
     const ikHandCtrlR = new THREE.Object3D();
-    ikHandCtrlR.position.set(-0.200, 0.090, 0.225);
+    ikHandCtrlR.position.set(-0.180, 0.220, 0.230);
     ikHandCtrlR.quaternion.set(-0.0572, 0.0106, 0.5295, 0.8463);
     armsContainer.add(ikHandCtrlR);
 
