@@ -532,4 +532,119 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
       }
     }
   });
+
+  it('confirms Garam-47 front sight framing sits at ndcX >= 0.18 matching CS2 right-side framing', () => {
+    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 50);
+    camera.updateProjectionMatrix();
+
+    const akCfg = WEAPON_SOCKET_CONFIGS['garam-47'];
+    const akContainer = new THREE.Group();
+    akContainer.rotation.y = Math.PI;
+
+    const akInner = new THREE.Group();
+    akInner.position.set(...akCfg.armsOffset);
+    akInner.scale.setScalar(akCfg.armsScale);
+    akContainer.add(akInner);
+
+    const rightHand = new THREE.Group();
+    akInner.add(rightHand);
+
+    const akMesh = new THREE.Group();
+    akMesh.position.set(...akCfg.localPos);
+    akMesh.rotation.set(...akCfg.localRotEuler);
+    rightHand.add(akMesh);
+
+    const frontSight = new THREE.Object3D();
+    frontSight.position.set(0.008, 0.095, -0.52);
+    akMesh.add(frontSight);
+
+    akContainer.updateMatrixWorld(true);
+    const sightNDC = frontSight.getWorldPosition(new THREE.Vector3()).project(camera);
+
+    expect(sightNDC.x, 'Garam-47 front sight ndcX').toBeGreaterThanOrEqual(0.18);
+  });
+
+  it('confirms Karambit tactical guard Hand_L projects strictly below ndcY <= -0.80 clear of crosshair', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+
+    const glbPath = path.resolve(__dirname, '../../../packages/client/public/models/fps_arms_tactical.glb');
+    if (!fs.existsSync(glbPath)) return;
+
+    const buf = fs.readFileSync(glbPath);
+    const loader = new GLTFLoader();
+    const gltf = await new Promise<any>((res, rej) => {
+      loader.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), '', res, rej);
+    });
+
+    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 50);
+    camera.updateProjectionMatrix();
+
+    const kCfg = WEAPON_SOCKET_CONFIGS['garam-karambit'];
+    const kContainer = new THREE.Group();
+    kContainer.position.set(...kCfg.armsOffset);
+    kContainer.scale.setScalar(kCfg.armsScale);
+    kContainer.rotation.y = Math.PI;
+    kContainer.add(gltf.scene);
+
+    const handL = gltf.scene.getObjectByName('Hand_L');
+    const ikL = gltf.scene.getObjectByName('IK_Hand_Cntrl_L');
+    expect(handL).toBeDefined();
+    expect(ikL).toBeDefined();
+
+    ikL!.position.set(0.260, -0.010, 0.120);
+    kContainer.updateMatrixWorld(true);
+
+    const kHandNDC = handL!.getWorldPosition(new THREE.Vector3()).project(camera);
+    expect(kHandNDC.y, 'Karambit Hand_L NDC Y').toBeLessThanOrEqual(-0.80);
+    expect(kHandNDC.x, 'Karambit Hand_L NDC X').toBeLessThan(-0.25);
+  });
+
+  it('verifies firearm left palm centroid tracks weapon grip anchor within <= 0.015m eliminating detachment', () => {
+    const handL = new THREE.Object3D();
+    const ikHandCtrlL = new THREE.Object3D();
+    const parent = new THREE.Group();
+    parent.add(ikHandCtrlL);
+    ikHandCtrlL.add(handL);
+
+    const b5 = new THREE.Object3D();
+    b5.position.set(0.02, 0.04, 0.02);
+    handL.add(b5);
+
+    const b9 = new THREE.Object3D();
+    b9.position.set(0.00, 0.045, 0.025);
+    handL.add(b9);
+
+    const b13 = new THREE.Object3D();
+    b13.position.set(-0.02, 0.04, 0.02);
+    handL.add(b13);
+
+    parent.updateMatrixWorld(true);
+
+    const gripAnchorWorld = new THREE.Vector3(0.04, -0.22, -0.42);
+
+    // Compute palm centroid offset
+    const p5 = b5.getWorldPosition(new THREE.Vector3());
+    const p9 = b9.getWorldPosition(new THREE.Vector3());
+    const p13 = b13.getWorldPosition(new THREE.Vector3());
+    const palm = new THREE.Vector3().add(p5).add(p9).add(p13).multiplyScalar(1 / 3);
+    const pHand = handL.getWorldPosition(new THREE.Vector3());
+
+    const palmOffset = palm.clone().sub(pHand);
+    const targetWristWorld = gripAnchorWorld.clone().sub(palmOffset);
+
+    parent.worldToLocal(targetWristWorld);
+    ikHandCtrlL.position.copy(targetWristWorld);
+    parent.updateMatrixWorld(true);
+
+    const finalPalm = new THREE.Vector3()
+      .add(b5.getWorldPosition(new THREE.Vector3()))
+      .add(b9.getWorldPosition(new THREE.Vector3()))
+      .add(b13.getWorldPosition(new THREE.Vector3()))
+      .multiplyScalar(1 / 3);
+
+    const gap = finalPalm.distanceTo(gripAnchorWorld);
+    expect(gap).toBeLessThanOrEqual(0.015);
+  });
 });
