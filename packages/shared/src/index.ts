@@ -2,7 +2,12 @@ export * from './constants/kinematics.js';
 export * from './constants/weapons.js';
 export * from './constants/economy.js';
 export * from './physics/KinematicPlayerController.js';
-export * from './maps/DeCitadelData.js';
+export * from './maps/DeMeridianData.js';
+export {
+  DE_CITADEL_BOUNDS,
+  DE_CITADEL_BLOCKS,
+  DE_CITADEL_COLLIDERS,
+} from './maps/DeCitadelData.js';
 export * from './maps/TacticalNavGraph.js';
 export * from './physics/RaycastEngine.js';
 export * from './net/Protocol.js';

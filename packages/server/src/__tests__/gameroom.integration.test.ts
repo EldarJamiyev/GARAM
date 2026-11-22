@@ -354,8 +354,8 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     expect(attacker.cash).toBe(5000);
 
     attacker.controller.state.x = 0;
-    attacker.controller.state.y = 0;
-    attacker.controller.state.z = 42;
+    attacker.controller.state.y = 2.1;
+    attacker.controller.state.z = -34;
     attackerWs.simulateClientMessage({ type: 'buy', item: 'sovereign-awp' });
     expect(attacker.ownedWeapons.has('sovereign-awp')).toBe(true);
     expect(attacker.cash).toBe(250);
@@ -400,7 +400,8 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     // Duplicate weapon buy does not charge twice; buying a new primary replaces previous primary
     room.phase = 'FREEZE_TIME';
     session.controller.state.x = 0;
-    session.controller.state.z = 42;
+    session.controller.state.y = 2.1;
+    session.controller.state.z = -34;
     session.cash = 10000;
     ws.simulateClientMessage({ type: 'buy', item: 'garam-47' }); // Already owned -> no charge
     expect(session.cash).toBe(10000);

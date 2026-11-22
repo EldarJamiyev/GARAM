@@ -170,23 +170,25 @@ const _otherPositionsScratch: Vec3[] = [];
 
 const VANGUARD_TACTICAL_HOLDS: readonly string[] = [
   'a_site_center',
-  'a_site_crates',
-  'a_heaven_stairs_top',
-  'a_connector_site',
-  'mid_doors',
-  'mid_courtyard_n',
-  'b_site_containers',
-  'b_site_back',
-  'b_connector_site',
+  'a_site_triple',
+  'a_heaven_balcony',
+  'a_conn_north',
+  'mid_nest_center',
+  'b_short_arch',
+  'b_site_north',
+  'b_site_bench',
+  'b_site_west',
 ];
 
 const SYNDICATE_TACTICAL_EXECUTES: readonly string[] = [
-  'a_long_corner',
+  'a_main_choke',
+  'a_palace_balcony',
   'a_site_center',
-  'a_connector_site',
-  'mid_doors',
-  'b_connector_site',
-  'b_tunnels_exit',
+  'a_conn_north',
+  'underpass_north',
+  'b_short_arch',
+  'b_canal_choke',
+  'b_apps_north',
   'b_site_center',
 ];
 
@@ -372,23 +374,23 @@ export class BotAISystem {
 
       if (this.currentStrategies.syndicate === 'RUSH_A_LONG') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = index === 4 ? DE_CITADEL_NAV_GRAPH['t_mid'].pos : BOMBSITES.A.center;
+        dest = index === 4 ? DE_CITADEL_NAV_GRAPH['top_mid_center'].pos : BOMBSITES.A.center;
       } else if (this.currentStrategies.syndicate === 'SPLIT_A_MID') {
         role = index < 2 ? 'entry' : 'rotator';
-        dest = index < 2 ? BOMBSITES.A.center : DE_CITADEL_NAV_GRAPH['a_connector_site'].pos;
+        dest = index < 2 ? BOMBSITES.A.center : DE_CITADEL_NAV_GRAPH['a_conn_north'].pos;
       } else if (this.currentStrategies.syndicate === 'RUSH_B_TUNNELS') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = index === 4 ? DE_CITADEL_NAV_GRAPH['t_mid'].pos : BOMBSITES.B.center;
+        dest = index === 4 ? DE_CITADEL_NAV_GRAPH['top_mid_center'].pos : BOMBSITES.B.center;
       } else if (this.currentStrategies.syndicate === 'MID_TO_B_SPLIT') {
         role = index < 3 ? 'entry' : 'support';
-        dest = index < 3 ? DE_CITADEL_NAV_GRAPH['b_connector_site'].pos : BOMBSITES.B.center;
+        dest = index < 3 ? DE_CITADEL_NAV_GRAPH['b_short_arch'].pos : BOMBSITES.B.center;
       } else {
         role = index === 0 ? 'entry' : index === 1 ? 'lurker' : 'rotator';
         const spots = [
-          DE_CITADEL_NAV_GRAPH['a_long_corner'].pos,
-          DE_CITADEL_NAV_GRAPH['t_mid'].pos,
-          DE_CITADEL_NAV_GRAPH['b_tunnels_mid'].pos,
-          DE_CITADEL_NAV_GRAPH['mid_doors'].pos,
+          DE_CITADEL_NAV_GRAPH['a_main_choke'].pos,
+          DE_CITADEL_NAV_GRAPH['underpass_north'].pos,
+          DE_CITADEL_NAV_GRAPH['b_canal_choke'].pos,
+          DE_CITADEL_NAV_GRAPH['b_apps_north'].pos,
           BOMBSITES.A.center,
         ];
         dest = spots[index % spots.length];
@@ -410,37 +412,37 @@ export class BotAISystem {
 
       if (this.currentStrategies.vanguard === 'STANDARD_2_1_2') {
         const spots = [
-          DE_CITADEL_NAV_GRAPH['a_site_crates'].pos,
-          DE_CITADEL_NAV_GRAPH['a_heaven_stairs_top'].pos,
-          DE_CITADEL_NAV_GRAPH['mid_doors'].pos,
-          DE_CITADEL_NAV_GRAPH['b_site_containers'].pos,
+          DE_CITADEL_NAV_GRAPH['a_site_triple'].pos,
+          DE_CITADEL_NAV_GRAPH['a_heaven_balcony'].pos,
+          DE_CITADEL_NAV_GRAPH['mid_nest_center'].pos,
+          DE_CITADEL_NAV_GRAPH['b_site_north'].pos,
         ];
         dest = spots[index % spots.length];
         role = index === 1 || index === 3 ? 'anchor' : 'rotator';
       } else if (this.currentStrategies.vanguard === 'AGGRESSIVE_MID_CONTROL') {
         const spots = [
-          DE_CITADEL_NAV_GRAPH['mid_courtyard_n'].pos,
-          DE_CITADEL_NAV_GRAPH['mid_doors'].pos,
-          DE_CITADEL_NAV_GRAPH['a_site_crates'].pos,
-          DE_CITADEL_NAV_GRAPH['b_site_containers'].pos,
+          DE_CITADEL_NAV_GRAPH['mid_nest_center'].pos,
+          DE_CITADEL_NAV_GRAPH['b_short_arch'].pos,
+          DE_CITADEL_NAV_GRAPH['a_site_triple'].pos,
+          DE_CITADEL_NAV_GRAPH['b_site_west'].pos,
         ];
         dest = spots[index % spots.length];
         role = index < 2 ? 'rotator' : 'anchor';
       } else if (this.currentStrategies.vanguard === 'HEAVY_A_STACK') {
         const spots = [
-          DE_CITADEL_NAV_GRAPH['a_site_crates'].pos,
-          DE_CITADEL_NAV_GRAPH['a_heaven_stairs_top'].pos,
-          DE_CITADEL_NAV_GRAPH['a_connector_site'].pos,
-          DE_CITADEL_NAV_GRAPH['b_site_containers'].pos,
+          DE_CITADEL_NAV_GRAPH['a_site_triple'].pos,
+          DE_CITADEL_NAV_GRAPH['a_heaven_balcony'].pos,
+          DE_CITADEL_NAV_GRAPH['a_conn_north'].pos,
+          DE_CITADEL_NAV_GRAPH['b_site_north'].pos,
         ];
         dest = spots[index % spots.length];
         role = 'anchor';
       } else {
         const spots = [
-          DE_CITADEL_NAV_GRAPH['ct_a_lane'].pos,
-          DE_CITADEL_NAV_GRAPH['a_site_center'].pos,
-          DE_CITADEL_NAV_GRAPH['ct_b_lane'].pos,
-          DE_CITADEL_NAV_GRAPH['b_site_back'].pos,
+          DE_CITADEL_NAV_GRAPH['ct_ticket_lane'].pos,
+          DE_CITADEL_NAV_GRAPH['a_site_back'].pos,
+          DE_CITADEL_NAV_GRAPH['b_market_south'].pos,
+          DE_CITADEL_NAV_GRAPH['b_site_bench'].pos,
         ];
         dest = spots[index % spots.length];
         role = index % 2 === 0 ? 'rotator' : 'anchor';

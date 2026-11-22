@@ -211,7 +211,8 @@ export class PlayerManager {
       if (bot.patrolWaypoints.length > 0) {
         bot.waypointIndex = 0;
         bot.patrolTarget = bot.patrolWaypoints[0];
-        bot.mesh.position.set(bot.patrolTarget.x, 0, bot.patrolTarget.z);
+        bot.mesh.position.set(bot.patrolTarget.x, bot.patrolTarget.y, bot.patrolTarget.z);
+        bot.mesh.rotation.y = bot.team === 'Vanguard' ? 0 : Math.PI;
       }
     }
   }

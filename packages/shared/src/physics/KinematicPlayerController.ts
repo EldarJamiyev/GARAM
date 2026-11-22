@@ -58,10 +58,10 @@ export interface MapBounds {
 }
 
 export const DEFAULT_MAP_BOUNDS: MapBounds = {
-  minX: -58.5,
-  maxX: 58.5,
-  minZ: -58.5,
-  maxZ: 58.5,
+  minX: -47,
+  maxX: 47,
+  minZ: -45,
+  maxZ: 45,
 };
 
 /**

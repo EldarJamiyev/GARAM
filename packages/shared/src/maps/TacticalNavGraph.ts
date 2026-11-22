@@ -1,4 +1,9 @@
-import { Vec3, MapBlockCollider } from './DeCitadelData.js';
+import {
+  Vec3,
+  MapBlockCollider,
+  DE_MERIDIAN_DECK_Y,
+  DE_MERIDIAN_UPPER_Y,
+} from './DeMeridianData.js';
 import { hasLineOfSight } from '../physics/RaycastEngine.js';
 
 export interface NavNode {
@@ -10,285 +15,409 @@ export interface NavNode {
   coverType?: 'LOW' | 'HIGH' | 'NONE';
 }
 
+const DECK = DE_MERIDIAN_DECK_Y;
+const UPPER = DE_MERIDIAN_UPPER_Y;
+
 /**
- * 32-Node Bidirectional Tactical Waypoint Graph covering all lanes and elevations of DE_CITADEL
+ * 46-Node Fully Bidirectional Tactical Waypoint Graph covering all 3 vertical tiers of DE_MERIDIAN:
+ *  - Tier 0 (y = 0.0m): Sunken Aqueduct Underpass
+ *  - Tier 1 (y = +2.1m): Main Map Deck (Sanctum A, Mid Courtyard, Foundry B, CT/T Spawns)
+ *  - Tier 2 (y = +4.9m): 4 Interconnected Overlooks (A Palace, A Heaven, Mid CT Nest, B Apartments)
+ * Zero dead-end nodes (every node has degree >= 2).
  */
-export const DE_CITADEL_NAV_GRAPH: Record<string, NavNode> = {
-  // --- Vanguard CT Spawn Area (South) ---
+export const DE_MERIDIAN_NAV_GRAPH: Record<string, NavNode> = {
+  // =========================================================================
+  // 1. VANGUARD CT SPAWN & NORTH ROTATION HALLS (6 nodes)
+  // =========================================================================
   ct_spawn_mid: {
     id: 'ct_spawn_mid',
-    pos: { x: 0, y: 0, z: 42 },
-    neighbors: ['ct_spawn_left', 'ct_spawn_right', 'mid_courtyard_s'],
+    pos: { x: 0, y: DECK, z: -34.0 },
+    neighbors: ['ct_spawn_west', 'ct_spawn_east', 'ct_mid_west_entry', 'ct_mid_east_entry'],
     callout: 'VANGUARD SPAWN',
-  },
-  ct_spawn_left: {
-    id: 'ct_spawn_left',
-    pos: { x: -14, y: 0, z: 40 },
-    neighbors: ['ct_spawn_mid', 'ct_a_lane'],
-    callout: 'VANGUARD SPAWN',
-  },
-  ct_spawn_right: {
-    id: 'ct_spawn_right',
-    pos: { x: 18, y: 0, z: 40 },
-    neighbors: ['ct_spawn_mid', 'ct_b_lane'],
-    callout: 'VANGUARD SPAWN',
-  },
-
-  // --- A Lane & Long ---
-  ct_a_lane: {
-    id: 'ct_a_lane',
-    pos: { x: -28, y: 0, z: 28 },
-    neighbors: ['ct_spawn_left', 'a_long_entry', 'mid_courtyard_s'],
-    callout: 'A LONG',
-  },
-  a_long_entry: {
-    id: 'a_long_entry',
-    pos: { x: -48, y: 0, z: 18 },
-    neighbors: ['ct_a_lane', 'a_long_mid'],
-    callout: 'A LONG',
     coverType: 'HIGH',
   },
-  a_long_mid: {
-    id: 'a_long_mid',
-    pos: { x: -50, y: 0, z: 0 },
-    neighbors: ['a_long_entry', 'a_long_corner'],
-    callout: 'A LONG',
-  },
-  a_long_corner: {
-    id: 'a_long_corner',
-    pos: { x: -50, y: 0, z: -22 },
-    neighbors: ['a_long_mid', 'a_site_entry'],
-    callout: 'A LONG',
+  ct_spawn_west: {
+    id: 'ct_spawn_west',
+    pos: { x: -13.5, y: DECK, z: -34.5 },
+    neighbors: ['ct_spawn_mid', 'ct_ticket_lane', 'a_heaven_stairs_e_bot'],
+    callout: 'CT TICKET',
     coverType: 'HIGH',
   },
-  a_site_entry: {
-    id: 'a_site_entry',
-    pos: { x: -50, y: 0, z: -40 },
-    neighbors: ['a_long_corner', 'a_site_courtyard', 't_a_flank'],
-    callout: 'A SITE',
+  ct_ticket_lane: {
+    id: 'ct_ticket_lane',
+    pos: { x: -24.0, y: DECK, z: -35.8 },
+    neighbors: ['ct_spawn_west', 'a_site_back'],
+    callout: 'CT TICKET',
+    coverType: 'HIGH',
   },
-  a_site_courtyard: {
-    id: 'a_site_courtyard',
-    pos: { x: -38, y: 0, z: -38 },
-    neighbors: ['a_site_entry', 'a_site_crates'],
-    callout: 'A SITE',
+  ct_spawn_east: {
+    id: 'ct_spawn_east',
+    pos: { x: 14.0, y: DECK, z: -35.8 },
+    neighbors: ['ct_spawn_mid', 'b_market_north'],
+    callout: 'B MARKET',
+    coverType: 'HIGH',
+  },
+  b_market_north: {
+    id: 'b_market_north',
+    pos: { x: 20.0, y: DECK, z: -36.3 },
+    neighbors: ['ct_spawn_east', 'b_market_south'],
+    callout: 'B MARKET',
+    coverType: 'HIGH',
+  },
+  b_market_south: {
+    id: 'b_market_south',
+    pos: { x: 19.0, y: DECK, z: -30.0 },
+    neighbors: ['b_market_north', 'b_site_north', 'b_site_west'],
+    callout: 'B MARKET',
     coverType: 'HIGH',
   },
 
-  // --- Bombsite A & Heaven (+3.5m) ---
-  a_site_crates: {
-    id: 'a_site_crates',
-    pos: { x: -38, y: 0, z: -22 },
-    neighbors: ['a_site_courtyard', 'a_site_center'],
-    callout: 'A SITE',
+  // =========================================================================
+  // 2. BOMBSITE A — "THE SANCTUM" & A HEAVEN (8 nodes)
+  // =========================================================================
+  a_site_back: {
+    id: 'a_site_back',
+    pos: { x: -32.8, y: DECK, z: -31.0 },
+    neighbors: ['ct_ticket_lane', 'a_heaven_stairs_w_bot', 'a_site_firebox', 'a_site_center'],
+    callout: 'A SITE SANCTUM',
+    coverType: 'HIGH',
+  },
+  a_site_firebox: {
+    id: 'a_site_firebox',
+    pos: { x: -42.5, y: DECK, z: -28.5 },
+    neighbors: ['a_site_back', 'a_site_west_drop'],
+    callout: 'A FIREBOX',
+    coverType: 'HIGH',
+  },
+  a_site_west_drop: {
+    id: 'a_site_west_drop',
+    pos: { x: -41.2, y: DECK, z: -12.5 },
+    neighbors: ['a_site_firebox', 'a_palace_stairs_n_bot', 'a_main_choke', 'a_site_center'],
+    callout: 'A SITE SANCTUM',
     coverType: 'HIGH',
   },
   a_site_center: {
     id: 'a_site_center',
-    pos: { x: -30, y: 0, z: -22 },
-    neighbors: ['a_site_crates', 'a_connector_site'],
-    callout: 'A SITE',
+    pos: { x: -30.5, y: DECK, z: -22.8 },
+    neighbors: ['a_site_back', 'a_site_west_drop', 'a_site_triple'],
+    callout: 'A SITE SANCTUM',
     coverType: 'LOW',
   },
-  a_heaven_stairs_bottom: {
-    id: 'a_heaven_stairs_bottom',
-    pos: { x: -14, y: 0, z: -24.4 },
-    neighbors: ['a_connector_mid', 'a_heaven_stairs_entry'],
-    callout: 'A HEAVEN',
+  a_site_triple: {
+    id: 'a_site_triple',
+    pos: { x: -21.5, y: DECK, z: -22.2 },
+    neighbors: ['a_site_center', 'a_conn_north'],
+    callout: 'A SITE SANCTUM',
+    coverType: 'HIGH',
   },
-  a_heaven_stairs_entry: {
-    id: 'a_heaven_stairs_entry',
-    pos: { x: -18, y: 0, z: -24.4 },
-    neighbors: ['a_heaven_stairs_bottom', 'a_heaven_stairs_top'],
-    callout: 'A HEAVEN',
-  },
-  a_heaven_stairs_top: {
-    id: 'a_heaven_stairs_top',
-    pos: { x: -18, y: 3.5, z: -35.6 },
-    neighbors: ['a_heaven_stairs_entry', 'a_heaven_balcony'],
-    callout: 'A HEAVEN',
-    isHighGround: true,
+  a_heaven_stairs_e_bot: {
+    id: 'a_heaven_stairs_e_bot',
+    pos: { x: -11.8, y: DECK, z: -28.8 },
+    neighbors: ['ct_spawn_west', 'a_conn_north', 'a_heaven_balcony'],
+    callout: 'A SITE SANCTUM',
     coverType: 'HIGH',
   },
   a_heaven_balcony: {
     id: 'a_heaven_balcony',
-    pos: { x: -24, y: 3.5, z: -40.0 },
-    neighbors: ['a_heaven_stairs_top'],
+    pos: { x: -21.5, y: UPPER, z: -28.8 },
+    neighbors: ['a_heaven_stairs_e_bot', 'a_heaven_stairs_w_bot'],
     callout: 'A HEAVEN',
     isHighGround: true,
-    coverType: 'LOW',
+    coverType: 'HIGH',
   },
-
-  // --- A Connector & Mid ---
-  a_connector_site: {
-    id: 'a_connector_site',
-    pos: { x: -24, y: 0, z: -14 },
-    neighbors: ['a_site_center', 'a_connector_corner'],
-    callout: 'A CONNECTOR',
-  },
-  a_connector_corner: {
-    id: 'a_connector_corner',
-    pos: { x: -24, y: 0, z: -4 },
-    neighbors: ['a_connector_site', 'a_connector_mid'],
-    callout: 'A CONNECTOR',
-  },
-  a_connector_mid: {
-    id: 'a_connector_mid',
-    pos: { x: -12, y: 0, z: -4 },
-    neighbors: ['a_connector_corner', 'mid_doors_n', 'a_heaven_stairs_bottom'],
-    callout: 'A CONNECTOR',
+  a_heaven_stairs_w_bot: {
+    id: 'a_heaven_stairs_w_bot',
+    pos: { x: -30.8, y: DECK, z: -28.8 },
+    neighbors: ['a_heaven_balcony', 'a_site_back'],
+    callout: 'A SITE SANCTUM',
     coverType: 'HIGH',
   },
 
-  // --- Mid Courtyard & Double Doors ---
-  mid_courtyard_s: {
-    id: 'mid_courtyard_s',
-    pos: { x: 0, y: 0, z: 24 },
-    neighbors: ['ct_spawn_mid', 'ct_a_lane', 'ct_b_lane', 'mid_courtyard_n'],
+  // =========================================================================
+  // 3. A PALACE (+4.9m) & A MAIN (6 nodes)
+  // =========================================================================
+  a_palace_stairs_n_bot: {
+    id: 'a_palace_stairs_n_bot',
+    pos: { x: -40.4, y: DECK, z: -9.8 },
+    neighbors: ['a_site_west_drop', 'a_palace_balcony'],
+    callout: 'A SITE SANCTUM',
+    coverType: 'HIGH',
+  },
+  a_palace_balcony: {
+    id: 'a_palace_balcony',
+    pos: { x: -40.4, y: UPPER, z: -2.5 },
+    neighbors: ['a_palace_stairs_n_bot', 'a_palace_top'],
+    callout: 'A PALACE',
+    isHighGround: true,
+    coverType: 'HIGH',
+  },
+  a_palace_top: {
+    id: 'a_palace_top',
+    pos: { x: -41.8, y: UPPER, z: 13.5 },
+    neighbors: ['a_palace_balcony', 'a_palace_stairs_s_bot'],
+    callout: 'A PALACE',
+    isHighGround: true,
+    coverType: 'HIGH',
+  },
+  a_palace_stairs_s_bot: {
+    id: 'a_palace_stairs_s_bot',
+    pos: { x: -41.8, y: DECK, z: 20.4 },
+    neighbors: ['a_palace_top', 't_a_lobby'],
+    callout: 'T-A LOBBY',
+    coverType: 'HIGH',
+  },
+  a_main_choke: {
+    id: 'a_main_choke',
+    pos: { x: -33.4, y: DECK, z: -6.5 },
+    neighbors: ['a_site_west_drop', 'a_main_south'],
+    callout: 'A MAIN',
+    coverType: 'HIGH',
+  },
+  a_main_south: {
+    id: 'a_main_south',
+    pos: { x: -33.4, y: DECK, z: 3.0 },
+    neighbors: ['a_main_choke', 't_a_lobby'],
+    callout: 'A MAIN',
+    coverType: 'HIGH',
+  },
+
+  // =========================================================================
+  // 4. A CONNECTOR, MID NEST (+4.9m), MID COURTYARD & SUNKEN AQUEDUCT (12 nodes)
+  // =========================================================================
+  a_conn_north: {
+    id: 'a_conn_north',
+    pos: { x: -12.0, y: DECK, z: -13.5 },
+    neighbors: ['a_site_triple', 'a_heaven_stairs_e_bot', 'mid_nest_stairs_w_bot', 'mid_courtyard_nw'],
+    callout: 'A CONNECTOR',
+    coverType: 'HIGH',
+  },
+  ct_mid_west_entry: {
+    id: 'ct_mid_west_entry',
+    pos: { x: -5.2, y: DECK, z: -20.7 },
+    neighbors: ['ct_spawn_mid', 'ct_mid_west_turn'],
+    callout: 'A CONNECTOR',
+    coverType: 'HIGH',
+  },
+  ct_mid_west_turn: {
+    id: 'ct_mid_west_turn',
+    pos: { x: -9.6, y: DECK, z: -20.7 },
+    neighbors: ['ct_mid_west_entry', 'mid_nest_stairs_w_bot'],
+    callout: 'A CONNECTOR',
+    coverType: 'HIGH',
+  },
+  mid_nest_stairs_w_bot: {
+    id: 'mid_nest_stairs_w_bot',
+    pos: { x: -9.6, y: DECK, z: -16.8 },
+    neighbors: ['ct_mid_west_turn', 'a_conn_north', 'mid_nest_center'],
+    callout: 'A CONNECTOR',
+    coverType: 'HIGH',
+  },
+  mid_nest_center: {
+    id: 'mid_nest_center',
+    pos: { x: 0.0, y: UPPER, z: -16.8 },
+    neighbors: ['mid_nest_stairs_w_bot', 'mid_nest_stairs_e_bot'],
+    callout: 'MID NEST',
+    isHighGround: true,
+    coverType: 'HIGH',
+  },
+  mid_nest_stairs_e_bot: {
+    id: 'mid_nest_stairs_e_bot',
+    pos: { x: 9.6, y: DECK, z: -16.8 },
+    neighbors: ['mid_nest_center', 'ct_mid_east_turn', 'b_short_arch'],
+    callout: 'B SHORT',
+    coverType: 'HIGH',
+  },
+  ct_mid_east_turn: {
+    id: 'ct_mid_east_turn',
+    pos: { x: 9.6, y: DECK, z: -20.7 },
+    neighbors: ['ct_mid_east_entry', 'mid_nest_stairs_e_bot'],
+    callout: 'B SHORT',
+    coverType: 'HIGH',
+  },
+  ct_mid_east_entry: {
+    id: 'ct_mid_east_entry',
+    pos: { x: 5.2, y: DECK, z: -20.7 },
+    neighbors: ['ct_spawn_mid', 'ct_mid_east_turn'],
+    callout: 'B SHORT',
+    coverType: 'HIGH',
+  },
+  mid_courtyard_nw: {
+    id: 'mid_courtyard_nw',
+    pos: { x: -9.0, y: DECK, z: -6.2 },
+    neighbors: ['a_conn_north', 'top_mid_west'],
     callout: 'MID COURTYARD',
+    coverType: 'HIGH',
   },
-  mid_courtyard_n: {
-    id: 'mid_courtyard_n',
-    pos: { x: 3, y: 0, z: 8 },
-    neighbors: ['mid_courtyard_s', 'mid_doors'],
+  mid_courtyard_e: {
+    id: 'mid_courtyard_e',
+    pos: { x: 8.4, y: DECK, z: 2.5 },
+    neighbors: ['b_short_arch', 'top_mid_east'],
     callout: 'MID COURTYARD',
-  },
-  mid_doors: {
-    id: 'mid_doors',
-    pos: { x: 3, y: 0, z: 0 },
-    neighbors: ['mid_courtyard_n', 'mid_doors_n'],
-    callout: 'MID DOORS',
     coverType: 'HIGH',
   },
-  mid_doors_n: {
-    id: 'mid_doors_n',
-    pos: { x: 3, y: 0, z: -5 },
-    neighbors: ['mid_doors', 't_mid', 'a_connector_mid', 'b_connector_entry'],
-    callout: 'MID DOORS',
+  underpass_north: {
+    id: 'underpass_north',
+    pos: { x: 0.0, y: 0.0, z: -8.0 },
+    neighbors: ['underpass_south', 'b_short_arch'],
+    callout: 'SUNKEN AQUEDUCT',
     coverType: 'HIGH',
   },
-  t_mid: {
-    id: 't_mid',
-    pos: { x: 3, y: 0, z: -16 },
-    neighbors: ['mid_doors_n', 't_mid_arch'],
-    callout: 'T MID',
-  },
-  t_mid_arch: {
-    id: 't_mid_arch',
-    pos: { x: 0, y: 0, z: -28 },
-    neighbors: ['t_mid', 't_spawn_mid'],
-    callout: 'T MID',
+  underpass_south: {
+    id: 'underpass_south',
+    pos: { x: 0.0, y: 0.0, z: 15.8 },
+    neighbors: ['underpass_north', 'top_mid_center'],
+    callout: 'SUNKEN AQUEDUCT',
     coverType: 'HIGH',
   },
 
-  // --- Obsidian Syndicate T Spawn (North) ---
-  t_spawn_mid: {
-    id: 't_spawn_mid',
-    pos: { x: 0, y: 0, z: -52 },
-    neighbors: ['t_mid_arch', 't_spawn_a', 't_spawn_b'],
-    callout: 'SYNDICATE SPAWN',
-  },
-  t_spawn_a: {
-    id: 't_spawn_a',
-    pos: { x: -24, y: 0, z: -52 },
-    neighbors: ['t_spawn_mid', 't_a_flank'],
-    callout: 'SYNDICATE SPAWN',
-  },
-  t_spawn_b: {
-    id: 't_spawn_b',
-    pos: { x: 24, y: 0, z: -52 },
-    neighbors: ['t_spawn_mid'],
-    callout: 'SYNDICATE SPAWN',
-  },
-  t_a_flank: {
-    id: 't_a_flank',
-    pos: { x: -50, y: 0, z: -52 },
-    neighbors: ['t_spawn_a', 'a_site_entry'],
-    callout: 'A SITE',
+  // =========================================================================
+  // 5. BOMBSITE B — "THE FOUNDRY", B SHORT, B CANAL & B APPS (10 nodes)
+  // =========================================================================
+  b_short_arch: {
+    id: 'b_short_arch',
+    pos: { x: 8.6, y: DECK, z: -8.0 },
+    neighbors: ['mid_nest_stairs_e_bot', 'underpass_north', 'mid_courtyard_e', 'b_short_exit'],
+    callout: 'B SHORT',
     coverType: 'HIGH',
   },
-
-  // --- B Connector & Reactor Bombsite B ---
-  b_connector_entry: {
-    id: 'b_connector_entry',
-    pos: { x: 14, y: 0, z: -5 },
-    neighbors: ['mid_doors_n', 'b_connector_corner'],
-    callout: 'B CONNECTOR',
+  b_short_exit: {
+    id: 'b_short_exit',
+    pos: { x: 16.6, y: DECK, z: -9.4 },
+    neighbors: ['b_short_arch', 'b_site_west'],
+    callout: 'B SHORT',
     coverType: 'HIGH',
   },
-  b_connector_corner: {
-    id: 'b_connector_corner',
-    pos: { x: 28, y: 0, z: -5 },
-    neighbors: ['b_connector_entry', 'b_connector_hall'],
-    callout: 'B CONNECTOR',
+  b_site_west: {
+    id: 'b_site_west',
+    pos: { x: 18.2, y: DECK, z: -14.5 },
+    neighbors: ['b_short_exit', 'b_market_south', 'b_canal_choke'],
+    callout: 'B SITE FOUNDRY',
+    coverType: 'HIGH',
   },
-  b_connector_hall: {
-    id: 'b_connector_hall',
-    pos: { x: 30, y: 0, z: -12 },
-    neighbors: ['b_connector_corner', 'b_connector_site'],
-    callout: 'B CONNECTOR',
+  b_site_north: {
+    id: 'b_site_north',
+    pos: { x: 26.5, y: DECK, z: -28.0 },
+    neighbors: ['b_market_south', 'b_site_bench', 'b_site_center'],
+    callout: 'B SITE FOUNDRY',
+    coverType: 'HIGH',
   },
-  b_connector_site: {
-    id: 'b_connector_site',
-    pos: { x: 30, y: 0, z: -18 },
-    neighbors: ['b_connector_hall', 'b_site_center'],
-    callout: 'B CONNECTOR',
+  b_site_bench: {
+    id: 'b_site_bench',
+    pos: { x: 38.5, y: DECK, z: -28.0 },
+    neighbors: ['b_site_north', 'b_site_east'],
+    callout: 'B SITE FOUNDRY',
+    coverType: 'HIGH',
   },
   b_site_center: {
     id: 'b_site_center',
-    pos: { x: 30, y: 0, z: -24 },
-    neighbors: ['b_connector_site', 'b_site_containers', 'b_tunnels_exit'],
-    callout: 'B SITE',
+    pos: { x: 31.8, y: DECK, z: -22.5 },
+    neighbors: ['b_site_north', 'b_site_east', 'b_canal_choke'],
+    callout: 'B SITE FOUNDRY',
     coverType: 'LOW',
   },
-  b_site_containers: {
-    id: 'b_site_containers',
-    pos: { x: 22, y: 0, z: -24 },
-    neighbors: ['b_site_center', 'b_site_back'],
-    callout: 'B SITE',
+  b_site_east: {
+    id: 'b_site_east',
+    pos: { x: 40.8, y: DECK, z: -20.0 },
+    neighbors: ['b_site_bench', 'b_site_center', 'b_apps_north'],
+    callout: 'B SITE FOUNDRY',
     coverType: 'HIGH',
   },
-  b_site_back: {
-    id: 'b_site_back',
-    pos: { x: 22, y: 0, z: -40 },
-    neighbors: ['b_site_containers'],
-    callout: 'B SITE',
+  b_apps_north: {
+    id: 'b_apps_north',
+    pos: { x: 41.2, y: UPPER, z: -11.5 },
+    neighbors: ['b_site_east', 'b_apps_south'],
+    callout: 'B APARTMENTS',
+    isHighGround: true,
+    coverType: 'HIGH',
+  },
+  b_apps_south: {
+    id: 'b_apps_south',
+    pos: { x: 41.8, y: UPPER, z: 12.5 },
+    neighbors: ['b_apps_north', 'b_apps_stairs_s_bot'],
+    callout: 'B APARTMENTS',
+    isHighGround: true,
+    coverType: 'HIGH',
+  },
+  b_apps_stairs_s_bot: {
+    id: 'b_apps_stairs_s_bot',
+    pos: { x: 41.8, y: DECK, z: 19.4 },
+    neighbors: ['b_apps_south', 't_b_staging'],
+    callout: 'T-B STAGING',
     coverType: 'HIGH',
   },
 
-  // --- Covered B Tunnels ---
-  b_tunnels_exit: {
-    id: 'b_tunnels_exit',
-    pos: { x: 30, y: 0, z: -20.2 },
-    neighbors: ['b_site_center', 'b_tunnels_north'],
-    callout: 'B TUNNEL',
+  // =========================================================================
+  // 6. B CANAL, TOP MID & SYNDICATE T SPAWN (9 nodes -> Total: 51 nodes)
+  // =========================================================================
+  b_canal_choke: {
+    id: 'b_canal_choke',
+    pos: { x: 31.4, y: DECK, z: -6.5 },
+    neighbors: ['b_site_west', 'b_site_center', 't_b_staging'],
+    callout: 'B CANAL',
     coverType: 'HIGH',
   },
-  b_tunnels_north: {
-    id: 'b_tunnels_north',
-    pos: { x: 44, y: 0, z: -20.2 },
-    neighbors: ['b_tunnels_exit', 'b_tunnels_mid'],
-    callout: 'B TUNNEL',
+  t_a_lobby: {
+    id: 't_a_lobby',
+    pos: { x: -33.8, y: DECK, z: 25.5 },
+    neighbors: ['a_main_south', 'a_palace_stairs_s_bot', 'top_mid_west', 't_spawn_west'],
+    callout: 'T-A LOBBY',
+    coverType: 'HIGH',
   },
-  b_tunnels_mid: {
-    id: 'b_tunnels_mid',
-    pos: { x: 44, y: 0, z: 0 },
-    neighbors: ['b_tunnels_north', 'b_tunnels_entry'],
-    callout: 'B TUNNEL',
+  top_mid_west: {
+    id: 'top_mid_west',
+    pos: { x: -9.5, y: DECK, z: 24.5 },
+    neighbors: ['mid_courtyard_nw', 't_a_lobby', 'top_mid_center', 't_spawn_west'],
+    callout: 'TOP MID',
+    coverType: 'HIGH',
   },
-  b_tunnels_entry: {
-    id: 'b_tunnels_entry',
-    pos: { x: 44, y: 0, z: 18 },
-    neighbors: ['b_tunnels_mid', 'ct_b_lane'],
-    callout: 'B TUNNEL',
+  top_mid_center: {
+    id: 'top_mid_center',
+    pos: { x: 0.0, y: DECK, z: 23.0 },
+    neighbors: ['underpass_south', 'top_mid_west', 'top_mid_east'],
+    callout: 'TOP MID',
+    coverType: 'LOW',
   },
-  ct_b_lane: {
-    id: 'ct_b_lane',
-    pos: { x: 28, y: 0, z: 28 },
-    neighbors: ['ct_spawn_right', 'mid_courtyard_s', 'b_tunnels_entry'],
-    callout: 'B TUNNEL',
+  top_mid_east: {
+    id: 'top_mid_east',
+    pos: { x: 10.5, y: DECK, z: 24.5 },
+    neighbors: ['mid_courtyard_e', 'top_mid_center', 't_b_staging', 't_spawn_east'],
+    callout: 'TOP MID',
+    coverType: 'HIGH',
+  },
+  t_b_staging: {
+    id: 't_b_staging',
+    pos: { x: 33.8, y: DECK, z: 25.5 },
+    neighbors: ['b_canal_choke', 'b_apps_stairs_s_bot', 'top_mid_east', 't_spawn_east'],
+    callout: 'T-B STAGING',
+    coverType: 'HIGH',
+  },
+  t_spawn_west: {
+    id: 't_spawn_west',
+    pos: { x: -13.5, y: DECK, z: 35.0 },
+    neighbors: ['t_spawn_mid', 'top_mid_west', 't_a_lobby'],
+    callout: 'SYNDICATE SPAWN',
+    coverType: 'HIGH',
+  },
+  t_spawn_east: {
+    id: 't_spawn_east',
+    pos: { x: 13.5, y: DECK, z: 35.0 },
+    neighbors: ['t_spawn_mid', 'top_mid_east', 't_b_staging'],
+    callout: 'SYNDICATE SPAWN',
+    coverType: 'HIGH',
+  },
+  t_spawn_mid: {
+    id: 't_spawn_mid',
+    pos: { x: 0.0, y: DECK, z: 38.5 },
+    neighbors: ['t_spawn_west', 't_spawn_east'],
+    callout: 'SYNDICATE SPAWN',
+    coverType: 'HIGH',
   },
 };
+
+/**
+ * Backward-compatible alias for DE_MERIDIAN_NAV_GRAPH
+ */
+export const DE_CITADEL_NAV_GRAPH = DE_MERIDIAN_NAV_GRAPH;
 
 /**
  * Finds the closest NavNode to any arbitrary world position.
@@ -306,8 +435,8 @@ export function findNearestNavNode(
 
   const eyeA = { x: pos.x, y: pos.y + 1.2, z: pos.z };
 
-  for (const key of Object.keys(DE_CITADEL_NAV_GRAPH)) {
-    const node = DE_CITADEL_NAV_GRAPH[key];
+  for (const key of Object.keys(DE_MERIDIAN_NAV_GRAPH)) {
+    const node = DE_MERIDIAN_NAV_GRAPH[key];
     if (filter && !filter(node)) continue;
 
     const dx = node.pos.x - pos.x;
@@ -331,7 +460,7 @@ export function findNearestNavNode(
     }
   }
 
-  return closestWithLOS || closest || DE_CITADEL_NAV_GRAPH['mid_courtyard_s'];
+  return closestWithLOS || closest || DE_MERIDIAN_NAV_GRAPH['top_mid_center'];
 }
 
 function dist3D(a: Vec3, b: Vec3): number {
@@ -402,26 +531,25 @@ export function findPathAStar(
     }
 
     if (currentId === goalNode.id) {
-      // Reconstruct path
       const path: Vec3[] = [{ x: goal.x, y: goal.y, z: goal.z }];
       let curr = currentId;
       while (cameFrom.has(curr)) {
-        path.unshift(DE_CITADEL_NAV_GRAPH[curr].pos);
+        path.unshift(DE_MERIDIAN_NAV_GRAPH[curr].pos);
         curr = cameFrom.get(curr)!;
       }
-      path.unshift(DE_CITADEL_NAV_GRAPH[curr].pos);
+      path.unshift(DE_MERIDIAN_NAV_GRAPH[curr].pos);
       path.unshift({ x: start.x, y: start.y, z: start.z });
       return path;
     }
 
     openSet.delete(currentId);
-    const currentNode = DE_CITADEL_NAV_GRAPH[currentId];
+    const currentNode = DE_MERIDIAN_NAV_GRAPH[currentId];
     if (!currentNode) continue;
 
     const currentG = gScore.get(currentId) ?? Infinity;
 
     for (const neighborId of currentNode.neighbors) {
-      const neighbor = DE_CITADEL_NAV_GRAPH[neighborId];
+      const neighbor = DE_MERIDIAN_NAV_GRAPH[neighborId];
       if (!neighbor) continue;
 
       const penalty = dynamicWeights?.[neighborId] ?? 0;
@@ -436,7 +564,6 @@ export function findPathAStar(
     }
   }
 
-  // Fallback: direct line from start to goal if no path found
   return [
     { x: start.x, y: start.y, z: start.z },
     startNode.pos,

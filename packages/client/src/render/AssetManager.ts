@@ -41,6 +41,10 @@ export class AssetManager {
     this.maxAnisotropy = Math.max(1, Math.min(16, anisotropy));
   }
 
+  public getMaxAnisotropy(): number {
+    return this.maxAnisotropy;
+  }
+
   /**
    * Asynchronously loads a .glb / .gltf model with in-flight deduplication and graceful fallback.
    * Returns a normalized wrapper Group containing a SkeletonUtils-cloned model, or null on failure.

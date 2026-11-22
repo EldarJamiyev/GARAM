@@ -326,7 +326,7 @@ export class OperatorRig {
     const spriteMat = new THREE.SpriteMaterial({
       map: this.uiTexture,
       transparent: true,
-      depthTest: false,
+      depthTest: true,
     });
     this.uiBillboard = new THREE.Sprite(spriteMat);
     this.uiBillboard.position.set(0, 2.15, 0);
@@ -762,6 +762,7 @@ export class OperatorRig {
     ctx.clearRect(0, 0, 256, 80);
 
     const isAlly = team === localTeam;
+    (this.uiBillboard.material as THREE.SpriteMaterial).depthTest = !isAlly;
     const tagColor = isAlly ? '#3b9eff' : '#ffaa00';
     const tagText = isAlly ? `[ALLY] ${name}` : `[ENEMY] ${name}`;
 

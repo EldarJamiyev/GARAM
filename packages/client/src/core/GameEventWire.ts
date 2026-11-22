@@ -331,6 +331,10 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.utilityManager.resetRound();
       ctx.radar.clearSpotted();
       ctx.playerManager.reset(ctx.spawnPos);
+      if (ctx.inputManager) {
+        ctx.inputManager.input.yaw = settingsStore.settings.faction === 'Syndicate' ? 0 : Math.PI;
+        ctx.inputManager.input.pitch = 0;
+      }
       ctx.playerManager.respawnAllBots(ctx.bots);
       for (let s = 1; s <= 3; s++) {
         const state = ctx.inventory.slots[s as SlotNumber];
@@ -607,7 +611,13 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
         ctx.player.state.vx = 0;
         ctx.player.state.vy = 0;
         ctx.player.state.vz = 0;
+        const nextYaw = faction === 'Syndicate' ? 0 : Math.PI;
+        if (ctx.inputManager) {
+          ctx.inputManager.input.yaw = nextYaw;
+          ctx.inputManager.input.pitch = 0;
+        }
         ctx.worldCamera.position.set(nextSpawn.x, nextSpawn.y + 1.68, nextSpawn.z);
+        ctx.worldCamera.rotation.set(0, nextYaw, 0, 'YXZ');
       }
     },
   };
@@ -642,7 +652,12 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
 
   ctx.audio.updateListener(worldCamera);
   ctx.audio.setIndoorZone(
-    currentZone === 'B TUNNELS' || currentZone === 'A CONNECTOR' || currentZone === 'B CONNECTOR'
+    currentZone === 'SUNKEN AQUEDUCT' ||
+      currentZone === 'A CONNECTOR' ||
+      currentZone === 'B SHORT' ||
+      currentZone === 'A PALACE' ||
+      currentZone === 'B APARTMENTS' ||
+      currentZone === 'B CANAL'
   );
 
   const invUpdate = ctx.inventory.update(frameDelta);

@@ -8,7 +8,7 @@ import {
 import { SceneManager } from './render/SceneManager.js';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
 import { ProceduralAudio } from './audio/ProceduralAudio.js';
-import { buildTacticalCitadelMap } from './maps/DeCitadelMap.js';
+import { buildTacticalMeridianMap } from './maps/DeMeridianMap.js';
 import { InventoryManager } from './combat/InventoryManager.js';
 import { WeaponController } from './combat/WeaponController.js';
 import { EffectsManager } from './combat/EffectsManager.js';
@@ -96,7 +96,7 @@ export class GaramGame {
     const spawnPos = { x: baseSpawn.x, y: baseSpawn.y, z: baseSpawn.z };
     const player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
-    const mapData = buildTacticalCitadelMap(this.sceneManager.worldScene);
+    const mapData = buildTacticalMeridianMap(this.sceneManager.worldScene);
     const spatialGrid = new SpatialGrid(mapData.blocks, 10);
 
     let ctxRef!: GameContext;
@@ -183,17 +183,19 @@ export class GaramGame {
     ctxRef.networkClient = networkClient;
 
     ctxRef.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
-    this.sceneManager.worldCamera.fov = settingsStore.settings.fov;
-    this.sceneManager.worldCamera.updateProjectionMatrix();
+    const initialYaw = settingsStore.settings.faction === 'Syndicate' ? 0 : Math.PI;
+    ctxRef.inputManager.input.yaw = initialYaw;
+    const cam = this.sceneManager.worldCamera;
+    cam.position.set(spawnPos.x, spawnPos.y + 1.68, spawnPos.z);
+    cam.rotation.set(0, initialYaw, 0, 'YXZ');
+    cam.fov = settingsStore.settings.fov;
+    cam.updateProjectionMatrix();
     this.syncActiveWeapon();
 
     this.boundResize = this.onResize.bind(this);
     this.boundLoop = this.loop.bind(this);
     window.addEventListener('resize', this.boundResize);
-
-    if (new URLSearchParams(window.location.search).get('autostart') === '1') {
-      lobbyCallbacks.onDeploy();
-    }
+    if (new URLSearchParams(window.location.search).get('autostart') === '1') lobbyCallbacks.onDeploy();
     requestAnimationFrame(this.boundLoop);
   }
 

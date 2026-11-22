@@ -126,9 +126,9 @@ describe('Kinematics & SAT Collision Resolution', () => {
     expect(player.state.isCrouching).toBe(true);
   });
 
-  it('hard clamps player position within DE_CITADEL map boundary', () => {
+  it('hard clamps player position within DE_MERIDIAN map boundary', () => {
     const res = resolveHorizontalAABB(
-      70, 0, -80, // Far outside perimeter
+      70, 2.1, -80, // Far outside perimeter
       10, -10,
       1 / 128,
       KINEMATICS.CAPSULE_RADIUS,
@@ -137,8 +137,8 @@ describe('Kinematics & SAT Collision Resolution', () => {
       false
     );
 
-    expect(res.x).toBeLessThanOrEqual(58.14);
-    expect(res.z).toBeGreaterThanOrEqual(-58.14);
+    expect(res.x).toBeLessThanOrEqual(46.64);
+    expect(res.z).toBeGreaterThanOrEqual(-44.64);
   });
 
   it('sub-tick position interpolation smoothly blends prevState and state', () => {
@@ -324,8 +324,8 @@ describe('Kinematics & SAT Collision Resolution', () => {
       player.update(sprintInput, 1 / 128, KINEMATICS.SPEED_KNIFE, []);
     }
 
-    // 58.5 - 0.36 = 58.14
-    expect(player.state.x).toBeCloseTo(58.14, 2);
+    // 47.0 - 0.36 = 46.64
+    expect(player.state.x).toBeCloseTo(46.64, 2);
   });
 
   it('allows solo crouch-jump tuck onto 1.80m crates (crate_a_mid reach)', () => {

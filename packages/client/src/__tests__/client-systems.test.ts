@@ -397,7 +397,7 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         };
       };
 
-      // 1. Player standing directly BEHIND bot (-Z while bot faces +Z) -> ZERO shots across 120 frames (2s)
+      // 1. Player standing directly BEHIND bot (+Z while bot faces -Z toward North sites) -> ZERO shots across 120 frames (2s)
       let shotsBehind = 0;
       const aiBehind = new BotAISystem(
         {
@@ -408,7 +408,7 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         },
         'Sovereign'
       );
-      const behindBot = makeBot(0); // facing +Z
+      const behindBot = makeBot(Math.PI); // facing -Z (North toward DE_MERIDIAN sites)
       aiBehind.startNewRound(1, [behindBot]);
       for (let f = 0; f < 120; f++) {
         aiBehind.update(
@@ -416,8 +416,8 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
           1 / 60,
           [],
           [],
-          new THREE.Vector3(0, 0, -10),
-          new THREE.Vector3(0, 1.68, -10),
+          new THREE.Vector3(0, 0, 10),
+          new THREE.Vector3(0, 1.68, 10),
           [],
           false,
           null,
