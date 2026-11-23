@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import { AssetManager } from '../render/AssetManager.js';
 import { ArmIKSolver } from './ArmIKSolver.js';
 import {
+  CS2_ARMS_MODEL_PATH,
   WEAPON_SOCKET_CONFIGS,
   getWeaponSocketConfig,
   resolveWeaponClipName,
   captureBindPose,
   restoreBindPose,
+  buildCS2AnimationClips,
   buildKarambitAnimationClips,
   patchM4IdleClip,
   BoneTransformSnapshot,
@@ -78,13 +80,18 @@ export class WeaponViewmodel {
   private karambitRingSpinGroup: THREE.Group | null = null;
   private bladeTrailMesh: THREE.Mesh | null = null;
 
-  // Unified Tactical FPS Arms Rig (/models/fps_arms_tactical.glb) for ALL 5 weapons
+  // Unified CS2 First-Person Gloved Arms Rig (/models/cs2_fps_arms.glb) for ALL 5 weapons
   private armsContainer: THREE.Group;
   private armsRoot: THREE.Object3D | null = null;
   private armsMixer: THREE.AnimationMixer | null = null;
   private armIKSolver: ArmIKSolver | null = null;
   private armsActions: Map<string, THREE.AnimationAction> = new Map();
   private bindPoseSnapshot: Map<string, BoneTransformSnapshot> = new Map();
+  private cs2WeaponSocket: THREE.Object3D | null = null;
+  private cs2HandRSocket: THREE.Object3D | null = null;
+  private cs2HandLSocket: THREE.Object3D | null = null;
+  private cs2ClipBone: THREE.Object3D | null = null;
+  private isCS2ArmsRig = false;
   private rifSocket: THREE.Object3D | null = null;
   private handRSocket: THREE.Object3D | null = null;
   private ikHandCtrlL: THREE.Object3D | null = null;
@@ -143,12 +150,12 @@ export class WeaponViewmodel {
     this.leftArm = this.buildTacticalGlove(true);
     this.mesh.add(this.leftArm);
 
-    // 2. Unified Rigged Tactical FPS Arms Container (/models/fps_arms_tactical.glb)
-    // Scale 0.5, rotation.y = Math.PI, position (0, -0.215, 0) places Head_Cam at (0, 0, 0)
+    // 2. Unified CS2 Rigged First-Person Gloved Arms Container (/models/cs2_fps_arms.glb)
+    // Rotation.y = Math.PI maps CS2 +Z forward to camera -Z forward
     this.armsContainer = new THREE.Group();
-    this.armsContainer.scale.setScalar(0.5);
+    this.armsContainer.scale.setScalar(1.0);
     this.armsContainer.rotation.y = Math.PI;
-    this.armsContainer.position.set(0, -0.215, 0);
+    this.armsContainer.position.set(0.032, -0.895, -0.095);
     this.armsContainer.visible = false;
     this.mesh.add(this.armsContainer);
 
@@ -462,27 +469,39 @@ export class WeaponViewmodel {
   private async loadExternalModels(): Promise<void> {
     const assetManager = AssetManager.getInstance();
 
-    // 1. Load Unified Tactical FPS Gloved Arms Rig (22 firearm clips + 6 authored Karambit clips)
+    // 1. Load Unified CS2 First-Person Gloved Arms Rig (/models/cs2_fps_arms.glb)
     try {
-      const armsRes = await assetManager.loadModelWithAnimations('/models/fps_arms_tactical.glb', {
-        envMapIntensity: 1.65,
+      const armsRes = await assetManager.loadModelWithAnimations(CS2_ARMS_MODEL_PATH, {
+        envMapIntensity: 1.45,
         castShadow: false,
         receiveShadow: false,
       });
 
       if (armsRes && armsRes.animations.length > 0) {
         const armsModel = armsRes.model;
-        armsModel.traverse((node) => {
-          if ((node as THREE.SkinnedMesh).isSkinnedMesh) {
-            this.sealArmSleeveCutoffs(node as THREE.SkinnedMesh);
-          }
-        });
         this.armsRoot = armsModel;
         this.bindPoseSnapshot = captureBindPose(armsModel);
+
+        // Detect CS2 Rigify sockets (weapon_hand_r_5, DEF-handR_357, DEF-handL_233, clip bone)
+        this.cs2WeaponSocket = armsModel.getObjectByName('weapon_hand_r_5') || null;
+        this.cs2HandRSocket = armsModel.getObjectByName('DEF-handR_357') || null;
+        this.cs2HandLSocket = armsModel.getObjectByName('DEF-handL_233') || null;
+        this.cs2ClipBone = armsModel.getObjectByName('v_weapon_m4a1_clip_1') || null;
+        this.isCS2ArmsRig = this.cs2WeaponSocket !== null;
+
+        // Legacy rig socket fallback
         this.rifSocket = armsModel.getObjectByName('Rif') || null;
         this.handRSocket = armsModel.getObjectByName('Hand_R') || null;
         this.ikHandCtrlL = armsModel.getObjectByName('IK_Hand_Cntrl_L') || null;
         this.handL = armsModel.getObjectByName('Hand_L') || null;
+
+        if (!this.isCS2ArmsRig) {
+          armsModel.traverse((node) => {
+            if ((node as THREE.SkinnedMesh).isSkinnedMesh) {
+              this.sealArmSleeveCutoffs(node as THREE.SkinnedMesh);
+            }
+          });
+        }
 
         this.fingerBones.clear();
         armsModel.traverse((node) => {
@@ -491,7 +510,6 @@ export class WeaponViewmodel {
           }
         });
 
-        // Extract AK_Idle frame 0 finger curl quaternions to wrap fingers around forend
         this.akFingerPose.clear();
         const akIdle = armsRes.animations.find((a) => a.name === 'AK_Idle');
         if (akIdle) {
@@ -519,11 +537,12 @@ export class WeaponViewmodel {
         this.armIKSolver = new ArmIKSolver(armsModel);
         this.armsActions.clear();
 
-        const allClips = [
-          ...armsRes.animations,
-          ...buildKarambitAnimationClips(armsRes.animations),
-        ];
-        patchM4IdleClip(allClips);
+        const allClips = this.isCS2ArmsRig
+          ? [...buildCS2AnimationClips(armsRes.animations), ...armsRes.animations]
+          : [...armsRes.animations, ...buildKarambitAnimationClips(armsRes.animations)];
+        if (!this.isCS2ArmsRig) {
+          patchM4IdleClip(allClips);
+        }
 
         for (const clip of allClips) {
           const action = mixer.clipAction(clip);
@@ -538,6 +557,7 @@ export class WeaponViewmodel {
           this.armsActions.set(clip.name, action);
         }
 
+        // Enhance CS2 tactical glove & sleeve PBR sheen
         armsModel.traverse((child) => {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
@@ -546,9 +566,10 @@ export class WeaponViewmodel {
               if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
                 const std = m as THREE.MeshStandardMaterial;
                 std.side = THREE.DoubleSide;
-                std.roughness = Math.max(0.65, std.roughness);
-                std.metalness = Math.min(0.20, std.metalness);
-                std.envMapIntensity = 1.2;
+                std.roughness = Math.max(0.58, std.roughness);
+                std.metalness = Math.min(0.24, std.metalness);
+                std.envMapIntensity = 1.35;
+                std.needsUpdate = true;
               }
             }
           }
@@ -558,7 +579,7 @@ export class WeaponViewmodel {
         this.armsLoaded = true;
       }
     } catch {
-      console.warn('[WeaponViewmodel] Failed to load fps_arms_tactical.glb; using procedural glove fallback.');
+      console.warn('[WeaponViewmodel] Failed to load cs2_fps_arms.glb; using procedural glove fallback.');
     }
 
     // 2. Load All 5 High-Fidelity CS2 Weapon GLBs in parallel and bind them to their calibrated skeletal socket bones
@@ -676,7 +697,13 @@ export class WeaponViewmodel {
           }
 
           const targetSocket =
-            cfg.socketBone === 'Hand_R' ? this.handRSocket : this.rifSocket;
+            cfg.socketBone === 'weapon_hand_r_5'
+              ? this.cs2WeaponSocket || this.rifSocket
+              : cfg.socketBone === 'DEF-handR_357'
+                ? this.cs2HandRSocket || this.handRSocket
+                : cfg.socketBone === 'Hand_R'
+                  ? this.handRSocket || this.cs2HandRSocket
+                  : this.rifSocket || this.cs2WeaponSocket;
 
           if (this.armsLoaded && targetSocket) {
             socketHolder.visible = weaponId === this.currentWeaponId;
@@ -843,7 +870,8 @@ export class WeaponViewmodel {
       cfg.armsOffset[2]
     );
     this.syncArmVisibility();
-    this.playWeaponAnimation(cfg.clips.draw ? 'draw' : 'idle', 1.8);
+    const drawScale = this.isCS2ArmsRig ? 1.65 : 1.8;
+    this.playWeaponAnimation(cfg.clips.draw ? 'draw' : 'idle', drawScale);
   }
 
   private syncMuzzleTipPosition(): void {
@@ -1133,7 +1161,7 @@ export class WeaponViewmodel {
         const act = this.armsActions.get(clipName);
         // Scale reload clip duration to align with weapon reload timer
         const clipDur = act ? act.getClip().duration : 2.2;
-        const timeScale = Math.max(0.85, Math.min(1.65, clipDur / 2.25));
+        const timeScale = Math.max(0.85, Math.min(2.2, clipDur / 2.25));
         this.playWeaponAnimation(reloadState, timeScale);
       } else if (!this.isReloading && this.wasReloading) {
         this.playWeaponAnimation('idle', 1.0);
@@ -1155,9 +1183,8 @@ export class WeaponViewmodel {
         }
       }
 
-      // Smoothly blend leftHandLockWeight: 1.0 for idle/walk/fire (firearms only), 0.0 for reload/draw/inspect/karambit
+      // Smoothly blend leftHandLockWeight: 1.0 for idle/walk/fire, 0.0 for reload/draw/inspect
       const shouldLockLeftHand =
-        this.currentWeaponId !== 'garam-karambit' &&
         !this.isReloading &&
         !this.isInspecting &&
         this.drawProgress >= 1.0;
@@ -1169,96 +1196,120 @@ export class WeaponViewmodel {
 
       this.armsMixer.update(safeDt);
 
-      if (this.currentWeaponId === 'garam-karambit') {
-        const armL = this.armsRoot?.getObjectByName('Arm_L');
-        if (armL) {
-          armL.scale.set(0.0001, 0.0001, 0.0001);
-          armL.position.set(0, -10, 0);
-        }
-        if (this.ikHandCtrlL) {
-          this.ikHandCtrlL.scale.set(0.0001, 0.0001, 0.0001);
-          this.ikHandCtrlL.position.set(0, -10, 0);
+      if (this.isCS2ArmsRig) {
+        // CS2 Rigify continuous arm skeleton:
+        // - Rifles use baked CS2 handguard cradle directly (zero seam, zero fighting)
+        // - Desert Eagle pulls left hand to cup directly beneath right hand / trigger guard
+        // - Karambit lowers left arm into clean low-left CQC guard out of crosshair
+        this.armsContainer.updateMatrixWorld(true);
+        const cfg = getWeaponSocketConfig(this.currentWeaponId);
+
+        if (cfg.leftArmPoseMode === 'pistol' && !this.isReloading && !this.isInspecting && this.cs2HandRSocket && this.cs2HandLSocket && this.armIKSolver) {
+          this.cs2HandRSocket.getWorldPosition(_vA);
+          this.cs2HandLSocket.getWorldPosition(_vB);
+          // Target left wrist just underneath & forward-left of right hand for CS2 weaver pistol grip
+          _vC.set(_vA.x - 0.022, _vA.y - 0.024, _vA.z - 0.044);
+          _vB.lerp(_vC, this.leftHandLockWeight);
+          _vD.set(_vA.x - 0.24, _vA.y - 0.26, _vA.z + 0.08);
+          this.armIKSolver.solveCS2LeftHandToTarget(_vB, _vD);
+        } else if (cfg.leftArmPoseMode === 'karambit' && this.cs2HandLSocket && this.armIKSolver) {
+          // Drop left arm cleanly into low-left tactical guard outside the viewport center
+          _vC.set(-0.20, -0.34, -0.22);
+          this.mesh.localToWorld(_vC);
+          _vD.set(-0.34, -0.45, -0.05);
+          this.mesh.localToWorld(_vD);
+          this.armIKSolver.solveCS2LeftHandToTarget(_vC, _vD);
         }
       } else {
-        const armL = this.armsRoot?.getObjectByName('Arm_L');
-        if (armL && (armL.scale.x < 0.5 || armL.position.y < -5)) {
-          armL.scale.set(1, 1, 1);
-          armL.position.set(0, 0.2158, 0);
+        if (this.currentWeaponId === 'garam-karambit') {
+          const armL = this.armsRoot?.getObjectByName('Arm_L');
+          if (armL) {
+            armL.scale.set(0.0001, 0.0001, 0.0001);
+            armL.position.set(0, -10, 0);
+          }
+          if (this.ikHandCtrlL) {
+            this.ikHandCtrlL.scale.set(0.0001, 0.0001, 0.0001);
+            this.ikHandCtrlL.position.set(0, -10, 0);
+          }
+        } else {
+          const armL = this.armsRoot?.getObjectByName('Arm_L');
+          if (armL && (armL.scale.x < 0.5 || armL.position.y < -5)) {
+            armL.scale.set(1, 1, 1);
+            armL.position.set(0, 0.2158, 0);
+          }
+          if (this.ikHandCtrlL && (this.ikHandCtrlL.scale.x < 0.5 || this.ikHandCtrlL.position.y < -5)) {
+            this.ikHandCtrlL.scale.set(1, 1, 1);
+          }
         }
-        if (this.ikHandCtrlL && (this.ikHandCtrlL.scale.x < 0.5 || this.ikHandCtrlL.position.y < -5)) {
-          this.ikHandCtrlL.scale.set(1, 1, 1);
-        }
-      }
 
-      this.armsContainer.updateMatrixWorld(true);
+        this.armsContainer.updateMatrixWorld(true);
 
-      // Lock left hand to weapon handguard/forend underside anchor
-      if (this.leftHandLockWeight > 0.001 && this.ikHandCtrlL) {
-        const gripAnchor = this.leftHandGripAnchors.get(this.currentWeaponId);
-        const cfg = getWeaponSocketConfig(this.currentWeaponId);
-        if (gripAnchor) {
-          // 1. Curl fingers FIRST so knuckle world positions reflect the curled hand grip!
-          if (
-            this.akFingerPose.size > 0 &&
-            (this.currentWeaponId === 'garam-47' ||
-              this.currentWeaponId === 'vanguard-m4' ||
-              this.currentWeaponId === 'sovereign-awp' ||
-              this.currentWeaponId === 'desert-eagle')
-          ) {
-            this.akFingerPose.forEach((qTarget, boneName) => {
-              const bone = this.fingerBones.get(boneName);
-              if (bone) {
-                bone.quaternion.slerp(qTarget, this.leftHandLockWeight);
+        // Lock left hand to weapon handguard/forend underside anchor (legacy rig)
+        if (this.leftHandLockWeight > 0.001 && this.ikHandCtrlL && this.currentWeaponId !== 'garam-karambit') {
+          const gripAnchor = this.leftHandGripAnchors.get(this.currentWeaponId);
+          const cfg = getWeaponSocketConfig(this.currentWeaponId);
+          if (gripAnchor) {
+            if (
+              this.akFingerPose.size > 0 &&
+              (this.currentWeaponId === 'garam-47' ||
+                this.currentWeaponId === 'vanguard-m4' ||
+                this.currentWeaponId === 'sovereign-awp' ||
+                this.currentWeaponId === 'desert-eagle')
+            ) {
+              this.akFingerPose.forEach((qTarget, boneName) => {
+                const bone = this.fingerBones.get(boneName);
+                if (bone) {
+                  bone.quaternion.slerp(qTarget, this.leftHandLockWeight);
+                }
+              });
+              this.handL?.updateMatrixWorld(true);
+            }
+
+            gripAnchor.updateMatrixWorld(true);
+            gripAnchor.getWorldPosition(_vA);
+
+            const b5 = this.fingerBones.get('Bone_L005') || this.fingerBones.get('Bone_L.005');
+            const b9 = this.fingerBones.get('Bone_L009') || this.fingerBones.get('Bone_L.009');
+            const b13 = this.fingerBones.get('Bone_L013') || this.fingerBones.get('Bone_L.013');
+            if (b5 && b9 && b13 && this.handL) {
+              b5.getWorldPosition(_vB);
+              b9.getWorldPosition(_vC);
+              b13.getWorldPosition(_vD);
+              _vC.add(_vB).add(_vD).multiplyScalar(1 / 3);
+              this.handL.getWorldPosition(_vD);
+              _vC.sub(_vD);
+              _vA.sub(_vC);
+            }
+
+            const upArm = this.armsRoot?.getObjectByName('UpArm_L');
+            const upArmPos = upArm ? upArm.getWorldPosition(_vB) : null;
+            const reachDist = upArmPos ? _vA.distanceTo(upArmPos) : 0.35;
+            const isGripValid = reachDist >= 0.02 && reachDist <= 0.75;
+            if (isGripValid) {
+              if (this.ikHandCtrlL.parent) {
+                this.ikHandCtrlL.parent.updateMatrixWorld(true);
+                this.ikHandCtrlL.parent.worldToLocal(_vB.copy(_vA));
+                this.ikHandCtrlL.position.lerp(_vB, this.leftHandLockWeight);
+              } else {
+                this.ikHandCtrlL.position.lerp(_vA, this.leftHandLockWeight);
               }
-            });
-            this.handL?.updateMatrixWorld(true);
-          }
-
-          gripAnchor.updateMatrixWorld(true);
-          gripAnchor.getWorldPosition(_vA);
-
-          // 2. Compute palm centroid offset from Hand_L to eliminate float/detachment
-          const b5 = this.fingerBones.get('Bone_L005') || this.fingerBones.get('Bone_L.005');
-          const b9 = this.fingerBones.get('Bone_L009') || this.fingerBones.get('Bone_L.009');
-          const b13 = this.fingerBones.get('Bone_L013') || this.fingerBones.get('Bone_L.013');
-          if (b5 && b9 && b13 && this.handL) {
-            b5.getWorldPosition(_vB);
-            b9.getWorldPosition(_vC);
-            b13.getWorldPosition(_vD);
-            _vC.add(_vB).add(_vD).multiplyScalar(1 / 3);
-            this.handL.getWorldPosition(_vD);
-            _vC.sub(_vD);
-            _vA.sub(_vC);
-          }
-
-          const upArm = this.armsRoot?.getObjectByName('UpArm_L');
-          const upArmPos = upArm ? upArm.getWorldPosition(_vB) : null;
-          const reachDist = upArmPos ? _vA.distanceTo(upArmPos) : 0.35;
-          const isGripValid = reachDist >= 0.02 && reachDist <= 0.75;
-          if (isGripValid) {
-            if (this.ikHandCtrlL.parent) {
-              this.ikHandCtrlL.parent.updateMatrixWorld(true);
-              this.ikHandCtrlL.parent.worldToLocal(_vB.copy(_vA));
-              this.ikHandCtrlL.position.lerp(_vB, this.leftHandLockWeight);
-            } else {
-              this.ikHandCtrlL.position.lerp(_vA, this.leftHandLockWeight);
-            }
-            this.ikHandCtrlL.updateMatrixWorld(true);
-            if (this.handL && cfg.leftHandRelRotEuler) {
-              _euler.set(
-                cfg.leftHandRelRotEuler[0],
-                cfg.leftHandRelRotEuler[1],
-                cfg.leftHandRelRotEuler[2],
-                'XYZ'
-              );
-              _qDelta.setFromEuler(_euler);
-              this.handL.quaternion.slerp(_qDelta, this.leftHandLockWeight);
+              this.ikHandCtrlL.updateMatrixWorld(true);
+              if (this.handL && cfg.leftHandRelRotEuler) {
+                _euler.set(
+                  cfg.leftHandRelRotEuler[0],
+                  cfg.leftHandRelRotEuler[1],
+                  cfg.leftHandRelRotEuler[2],
+                  'XYZ'
+                );
+                _qDelta.setFromEuler(_euler);
+                this.handL.quaternion.slerp(_qDelta, this.leftHandLockWeight);
+              }
             }
           }
         }
-      }
 
-      this.armIKSolver?.solve(this.currentWeaponId === 'garam-karambit');
+        this.armIKSolver?.solve(this.currentWeaponId === 'garam-karambit');
+      }
     } else {
       this.wasReloading = this.isReloading;
     }
@@ -1332,22 +1383,22 @@ export class WeaponViewmodel {
         this.slashTime = 0;
         if (this.bladeTrailMesh)
           (this.bladeTrailMesh.material as THREE.MeshBasicMaterial).opacity = 0;
-      } else if (!usesUnifiedArms) {
+      } else if (!usesUnifiedArms || this.isCS2ArmsRig) {
         const arc = Math.sin(this.slashTime);
-        meleeYaw = this.slashDirection * arc * 0.54;
-        meleePitch = -arc * 0.32;
-        meleeZ = -arc * 0.06;
+        meleeYaw = this.slashDirection * arc * 0.42;
+        meleePitch = -arc * 0.24;
+        meleeZ = -arc * 0.05;
       }
     } else if (this.isStabbing) {
       this.stabTime += safeDt * (Math.PI / 0.46);
       if (this.stabTime >= Math.PI) {
         this.isStabbing = false;
         this.stabTime = 0;
-      } else if (!usesUnifiedArms) {
+      } else if (!usesUnifiedArms || this.isCS2ArmsRig) {
         const p = this.stabTime / Math.PI;
         const lunge = Math.sin(p * Math.PI);
-        meleeZ = -lunge * 0.20;
-        meleePitch = -lunge * 0.32;
+        meleeZ = -lunge * 0.16;
+        meleePitch = -lunge * 0.24;
       }
     }
 
@@ -1371,16 +1422,16 @@ export class WeaponViewmodel {
       }
     }
 
-    // Fallback magazine reload choreography when procedural mesh is active
+    // Reload magazine choreography synced to CS2 clip bone (or Pmag fallback)
     let reloadY = 0;
     let reloadRoll = 0;
     const currentMag = this.magMeshes.get(this.currentWeaponId);
 
     if (this.isReloading && usesUnifiedArms) {
-      const pmag = this.armsRoot?.getObjectByName('Pmag');
-      if (pmag && currentMag && this.reloadProgress >= 0.18 && this.reloadProgress <= 0.78) {
-        pmag.updateMatrixWorld(true);
-        pmag.getWorldPosition(_vA);
+      const magRefBone = this.cs2ClipBone || this.armsRoot?.getObjectByName('Pmag');
+      if (magRefBone && currentMag && this.reloadProgress >= 0.18 && this.reloadProgress <= 0.78) {
+        magRefBone.updateMatrixWorld(true);
+        magRefBone.getWorldPosition(_vA);
         if (currentMag.parent) {
           currentMag.parent.worldToLocal(_vB.copy(_vA));
           currentMag.position.lerp(_vB, 0.45);

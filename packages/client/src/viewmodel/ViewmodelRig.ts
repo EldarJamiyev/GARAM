@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 
+export const CS2_ARMS_MODEL_PATH = '/models/cs2_fps_arms.glb';
+
+export type LeftArmPoseMode = 'rifle' | 'pistol' | 'karambit';
+
 export interface WeaponClipSet {
   idle: string;
   walk: string;
@@ -12,7 +16,7 @@ export interface WeaponClipSet {
 }
 
 export interface WeaponSocketConfig {
-  socketBone: 'Rif' | 'Hand_R';
+  socketBone: 'weapon_hand_r_5' | 'DEF-handR_357' | 'Rif' | 'Hand_R';
   modelPath: string;
   targetLength: number;
   anchorBoneName?: string;
@@ -24,9 +28,11 @@ export interface WeaponSocketConfig {
   armsOffset: [number, number, number];
   muzzleLocalPos: [number, number, number];
   requiresPBodyRest: boolean;
+  /** Controls CS2 Rigify left-hand posture: baked rifle grip, two-handed pistol cup, or low-left CQC guard */
+  leftArmPoseMode: LeftArmPoseMode;
   /** Optional left-hand wrist target anchor in weapon holder local space for firearm grip locking */
   leftHandAnchorLocal?: [number, number, number];
-  /** Optional relative Euler rotation for Hand_L in weapon holder space (matched to AK_Idle palm cradle) */
+  /** Optional relative Euler rotation for Hand_L in weapon holder space */
   leftHandRelRotEuler?: [number, number, number];
   /** Optional left-hand finger curl factor for wrapping handguard */
   leftFingerCurl?: number;
@@ -37,126 +43,136 @@ export interface WeaponSocketConfig {
 
 export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
   'garam-47': {
-    socketBone: 'Rif',
+    socketBone: 'weapon_hand_r_5',
     modelPath: '/models/garam47.glb',
-    targetLength: 0.69,
+    targetLength: 0.72,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [-0.038, 0.395, -0.125],
-    localRotEuler: [-1.710, -0.095, 3.060],
-    localScale: 0.90,
-    armsScale: 0.40,
-    armsOffset: [0.065, -0.32, -0.34],
+    localPos: [0, 0, 0],
+    localRotEuler: [-Math.PI / 2, 0, Math.PI],
+    localScale: 1.85,
+    armsScale: 1.0,
+    armsOffset: [0.032, -0.895, -0.095],
     muzzleLocalPos: [0.008, 0.058, -0.565],
     requiresPBodyRest: false,
-    leftHandAnchorLocal: [0.000, -0.018, -0.220],
+    leftArmPoseMode: 'rifle',
+    leftHandAnchorLocal: [0.0, -0.018, -0.22],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
-    leftFingerCurl: 0.90,
+    leftFingerCurl: 0.9,
     clips: {
-      idle: 'AK_Idle',
-      walk: 'AK_Walk',
-      draw: 'AK_Draw',
-      fire: 'AK_Shot',
-      reload: 'AK_Reload',
-      reloadFull: 'AK_Reload_full',
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Fire',
+      reload: 'CS2_Reload',
+      reloadFull: 'CS2_Reload',
+      inspect: 'CS2_Inspect',
     },
   },
   'vanguard-m4': {
-    socketBone: 'Rif',
+    socketBone: 'weapon_hand_r_5',
     modelPath: '/models/m4a1s.glb',
     targetLength: 0.78,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [0.0258, -0.0616, 0.2806],
-    localRotEuler: [0.0327, 0.3605, -1.6931],
-    localScale: 0.94,
-    armsScale: 0.40,
-    armsOffset: [0.055, -0.32, -0.34],
+    localPos: [0, 0, 0],
+    localRotEuler: [-Math.PI / 2, 0, Math.PI],
+    localScale: 1.85,
+    armsScale: 1.0,
+    armsOffset: [0.028, -0.895, -0.095],
     muzzleLocalPos: [0.007, 0.081, -0.6525],
-    requiresPBodyRest: true,
-    leftHandAnchorLocal: [0.002, 0.028, -0.240],
+    requiresPBodyRest: false,
+    leftArmPoseMode: 'rifle',
+    leftHandAnchorLocal: [0.002, 0.028, -0.24],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
-    leftFingerCurl: 0.90,
+    leftFingerCurl: 0.9,
     clips: {
-      idle: 'M4_Idle',
-      walk: 'M4_Walk',
-      draw: 'M4_Draw',
-      fire: 'M4_Shoot',
-      reload: 'M4_Reload_Fast',
-      reloadFull: 'M4_Reload_Fast',
-      inspect: 'M4_rifle_inspect',
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Fire',
+      reload: 'CS2_Reload',
+      reloadFull: 'CS2_Reload',
+      inspect: 'CS2_Inspect',
     },
   },
   'sovereign-awp': {
-    socketBone: 'Rif',
+    socketBone: 'weapon_hand_r_5',
     modelPath: '/models/awp.glb',
-    targetLength: 0.80,
+    targetLength: 0.86,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [-0.082, 0.038, 0.092],
-    localRotEuler: [-0.985, -0.015, 3.045],
-    localScale: 0.92,
-    armsScale: 0.40,
-    armsOffset: [0.045, -0.31, -0.33],
+    localPos: [0, 0, 0],
+    localRotEuler: [-Math.PI / 2, 0, Math.PI],
+    localScale: 1.80,
+    armsScale: 1.0,
+    armsOffset: [0.028, -0.922, -0.098],
     muzzleLocalPos: [0.0114, 0.114, -0.8357],
     requiresPBodyRest: false,
-    leftHandAnchorLocal: [0.000, 0.020, -0.250],
+    leftArmPoseMode: 'rifle',
+    leftHandAnchorLocal: [0.0, 0.02, -0.25],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
-    leftFingerCurl: 0.90,
+    leftFingerCurl: 0.9,
     clips: {
-      idle: 'SRifle_Idle',
-      walk: 'SRifle_Walk',
-      fire: 'SRifle_Shot_nosight',
-      reload: 'SRifle_Reload',
-      reloadFull: 'SRifle_Reload_Full',
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Fire',
+      reload: 'CS2_Reload',
+      reloadFull: 'CS2_Reload',
+      inspect: 'CS2_Inspect',
     },
   },
   'desert-eagle': {
-    socketBone: 'Rif',
+    socketBone: 'weapon_hand_r_5',
     modelPath: '/models/deagle.glb',
-    targetLength: 0.22,
+    targetLength: 0.24,
     anchorBoneName: 'weapon_hand_r',
     rotationEuler: [0, Math.PI, 0],
-    localPos: [-0.1433, 0.0041, -0.0161],
-    localRotEuler: [1.3226, -1.4991, 2.6492],
-    localScale: 0.95,
-    armsScale: 0.40,
-    armsOffset: [0.025, -0.31, -0.32],
+    localPos: [0, 0, 0],
+    localRotEuler: [-Math.PI / 2, 0, Math.PI],
+    localScale: 1.85,
+    armsScale: 1.0,
+    armsOffset: [0.024, -0.885, -0.095],
     muzzleLocalPos: [0.0001, 0.064, -0.2348],
     requiresPBodyRest: false,
+    leftArmPoseMode: 'pistol',
     leftHandAnchorLocal: [-0.014, -0.018, 0.002],
     leftHandRelRotEuler: [0.25, 0.12, -0.45],
     leftFingerCurl: 0.95,
     clips: {
-      idle: 'Pistol_Idle',
-      walk: 'Pistol_Walk',
-      fire: 'Pistol_Fire',
-      reload: 'Pistol_Reload_easy',
-      reloadFull: 'Pistol_Reload_full',
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Fire',
+      reload: 'CS2_Reload',
+      reloadFull: 'CS2_Reload',
+      inspect: 'CS2_Inspect',
     },
   },
   'garam-karambit': {
-    socketBone: 'Hand_R',
+    socketBone: 'weapon_hand_r_5',
     modelPath: '/models/karambit.glb',
     targetLength: 0.22,
     rotationEuler: [0, 0, 0],
-    localPos: [0.015, 0.045, -0.018],
-    localRotEuler: [-3.05, -3.12, -2.58],
-    localScale: 1.02,
-    armsScale: 0.40,
-    armsOffset: [0.025, -0.26, -0.34],
+    localPos: [-0.04, -0.10, 0.02],
+    localRotEuler: [-Math.PI / 2 + 0.18, -0.38, 0.08],
+    localScale: 2.05,
+    armsScale: 1.0,
+    armsOffset: [0.025, -0.880, -0.095],
     muzzleLocalPos: [0, -0.0427, -0.115],
-    requiresPBodyRest: true,
+    requiresPBodyRest: false,
+    leftArmPoseMode: 'karambit',
     ringPivotLocal: [0, 0.02, 0.085],
     clips: {
-      idle: 'Karambit_Idle',
-      walk: 'Karambit_Walk',
-      draw: 'Karambit_Draw',
-      fire: 'Karambit_Slash',
-      altFire: 'Karambit_Stab',
-      reload: 'Karambit_Idle',
-      reloadFull: 'Karambit_Idle',
-      inspect: 'Karambit_Inspect',
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Idle',
+      altFire: 'CS2_Idle',
+      reload: 'CS2_Idle',
+      reloadFull: 'CS2_Idle',
+      inspect: 'CS2_Inspect',
     },
   },
 };
@@ -188,6 +204,55 @@ export function resolveWeaponClipName(
     case 'inspect':
       return cfg.clips.inspect || cfg.clips.idle;
   }
+}
+
+/**
+ * Slices the CS2 First-Person Arms Sketchfab GLB clips (Equip, Shots, Reload, Inspect)
+ * into clean, responsive game-ready clips (CS2_Idle, CS2_Walk, CS2_Draw, CS2_Fire,
+ * CS2_Reload, CS2_Inspect) at 30 FPS.
+ */
+export function buildCS2AnimationClips(
+  sourceClips: THREE.AnimationClip[]
+): THREE.AnimationClip[] {
+  const out: THREE.AnimationClip[] = [];
+  const shots = sourceClips.find((c) => c.name === 'Shots');
+  const equip = sourceClips.find((c) => c.name === 'Equip');
+  const reload = sourceClips.find((c) => c.name === 'Reload');
+  const inspect = sourceClips.find((c) => c.name === 'Inspect');
+
+  if (shots) {
+    // Calm breathing idle window (0.80s .. 1.80s = frames 24..54 at 30fps)
+    const idleClip = THREE.AnimationUtils.subclip(shots, 'CS2_Idle', 24, 54, 30);
+    out.push(idleClip);
+
+    // Subtle walk sway loop (0.80s .. 1.80s)
+    const walkClip = THREE.AnimationUtils.subclip(shots, 'CS2_Walk', 24, 54, 30);
+    out.push(walkClip);
+
+    // Crisp single-shot recoil impulse (0.03s .. 0.43s = frames 1..13 at 30fps)
+    const fireClip = THREE.AnimationUtils.subclip(shots, 'CS2_Fire', 1, 13, 30);
+    out.push(fireClip);
+  }
+
+  if (equip) {
+    // Crisp CS2 tactical raise into firing stance (1.93s .. 3.10s = frames 58..93 at 30fps)
+    const drawClip = THREE.AnimationUtils.subclip(equip, 'CS2_Draw', 58, 93, 30);
+    out.push(drawClip);
+  }
+
+  if (reload) {
+    // Full CS2 mag-swap & bolt-release reload (0.00s .. 4.40s = frames 0..132 at 30fps)
+    const reloadClip = THREE.AnimationUtils.subclip(reload, 'CS2_Reload', 0, 132, 30);
+    out.push(reloadClip);
+  }
+
+  if (inspect) {
+    // Full CS2 weapon inspection sweep (0.00s .. 7.60s = frames 0..228 at 30fps)
+    const inspectClip = THREE.AnimationUtils.subclip(inspect, 'CS2_Inspect', 0, 228, 30);
+    out.push(inspectClip);
+  }
+
+  return out;
 }
 
 export interface BoneTransformSnapshot {
@@ -232,18 +297,14 @@ function mulQuatEuler(base: number[], rx: number, ry: number, rz: number): numbe
 }
 
 /**
- * Synthesizes 6 skeletal AnimationClips for the Garam Crimson Karambit on the
- * unified fps_arms_tactical.glb skeleton (combining curled right-hand reverse-grip
- * finger wrap from Pistol_Idle with a left-hand tactical guard pose).
+ * Legacy helper retained for backward compatibility with unit tests and fallback skeletons.
  */
 export function buildKarambitAnimationClips(
   existingClips: THREE.AnimationClip[]
 ): THREE.AnimationClip[] {
   const pistolIdle = existingClips.find((c) => c.name === 'Pistol_Idle');
-  const akIdle = existingClips.find((c) => c.name === 'AK_Idle');
   if (!pistolIdle) return [];
 
-  // Extract first-keyframe pose from Pistol_Idle (curled right-hand grip + fingers)
   const baseQuats = new Map<string, number[]>();
   const basePos = new Map<string, number[]>();
 
@@ -263,11 +324,9 @@ export function buildKarambitAnimationClips(
     }
   }
 
-  // Position left hand in low-left tactical CQC guard so it stays clear of HUD and center screen (ndcY <= -0.85)
-  basePos.set('IK_Hand_Cntrl_L', [0.320, -0.220, 0.140]);
+  basePos.set('IK_Hand_Cntrl_L', [0.32, -0.22, 0.14]);
   baseQuats.set('IK_Hand_Cntrl_L', [-0.05, 0.12, 0.85, 0.51]);
-  // Position right hand on the right side for crisp reverse-grip Karambit framing
-  basePos.set('IK_Hand_Cntrl_R', [-0.180, 0.220, 0.230]);
+  basePos.set('IK_Hand_Cntrl_R', [-0.18, 0.22, 0.23]);
 
   const ikRPos = basePos.get('IK_Hand_Cntrl_R') || [-0.088, 0.036, 0.225];
   const ikRQuat = baseQuats.get('IK_Hand_Cntrl_R') || [-0.0572, 0.0106, 0.5295, 0.8463];
@@ -292,282 +351,48 @@ export function buildKarambitAnimationClips(
     return tracks;
   };
 
-  // 1. Karambit_Idle (1.8s gentle breathing sway)
   const idleDur = 1.8;
   const idleSkip = new Set(['IK_Hand_Cntrl_R', 'IK_Hand_Cntrl_L', 'Hand_R']);
   const idleTracks = buildStaticFingerAndArmTracks(idleDur, idleSkip);
   idleTracks.push(
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_R.position',
-      [0, 0.9, idleDur],
-      [
-        ikRPos[0], ikRPos[1], ikRPos[2],
-        ikRPos[0] - 0.003, ikRPos[1] + 0.006, ikRPos[2] + 0.004,
-        ikRPos[0], ikRPos[1], ikRPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'IK_Hand_Cntrl_R.quaternion',
-      [0, 0.9, idleDur],
-      [
-        ...ikRQuat,
-        ...mulQuatEuler(ikRQuat, 0.03, -0.02, 0.02),
-        ...ikRQuat,
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'Hand_R.quaternion',
-      [0, 0.9, idleDur],
-      [...handRQuat, ...mulQuatEuler(handRQuat, 0.02, 0.02, 0), ...handRQuat]
-    ),
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_L.position',
-      [0, 0.9, idleDur],
-      [
-        ikLPos[0], ikLPos[1], ikLPos[2],
-        ikLPos[0] + 0.003, ikLPos[1] + 0.005, ikLPos[2] + 0.003,
-        ikLPos[0], ikLPos[1], ikLPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'IK_Hand_Cntrl_L.quaternion',
-      [0, 0.9, idleDur],
-      [...ikLQuat, ...mulQuatEuler(ikLQuat, -0.02, 0.02, 0.02), ...ikLQuat]
-    )
+    new THREE.VectorKeyframeTrack('IK_Hand_Cntrl_R.position', [0, 0.9, idleDur], [
+      ikRPos[0], ikRPos[1], ikRPos[2],
+      ikRPos[0] - 0.003, ikRPos[1] + 0.006, ikRPos[2] + 0.004,
+      ikRPos[0], ikRPos[1], ikRPos[2],
+    ]),
+    new THREE.QuaternionKeyframeTrack('IK_Hand_Cntrl_R.quaternion', [0, 0.9, idleDur], [
+      ...ikRQuat, ...mulQuatEuler(ikRQuat, 0.03, -0.02, 0.02), ...ikRQuat,
+    ]),
+    new THREE.QuaternionKeyframeTrack('Hand_R.quaternion', [0, 0.9, idleDur], [
+      ...handRQuat, ...mulQuatEuler(handRQuat, 0.02, 0.02, 0), ...handRQuat,
+    ]),
+    new THREE.VectorKeyframeTrack('IK_Hand_Cntrl_L.position', [0, 0.9, idleDur], [
+      ikLPos[0], ikLPos[1], ikLPos[2],
+      ikLPos[0] + 0.003, ikLPos[1] + 0.005, ikLPos[2] + 0.003,
+      ikLPos[0], ikLPos[1], ikLPos[2],
+    ]),
+    new THREE.QuaternionKeyframeTrack('IK_Hand_Cntrl_L.quaternion', [0, 0.9, idleDur], [
+      ...ikLQuat, ...mulQuatEuler(ikLQuat, -0.02, 0.02, 0.02), ...ikLQuat,
+    ])
   );
   const clipIdle = new THREE.AnimationClip('Karambit_Idle', idleDur, idleTracks);
 
-  // 2. Karambit_Walk (0.72s rhythmic CQC stride)
   const walkDur = 0.72;
-  const walkTracks = buildStaticFingerAndArmTracks(walkDur, idleSkip);
-  walkTracks.push(
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_R.position',
-      [0, 0.18, 0.36, 0.54, walkDur],
-      [
-        ikRPos[0], ikRPos[1], ikRPos[2],
-        ikRPos[0] - 0.01, ikRPos[1] + 0.012, ikRPos[2] + 0.008,
-        ikRPos[0], ikRPos[1] - 0.006, ikRPos[2],
-        ikRPos[0] + 0.01, ikRPos[1] + 0.012, ikRPos[2] - 0.008,
-        ikRPos[0], ikRPos[1], ikRPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'IK_Hand_Cntrl_R.quaternion',
-      [0, 0.36, walkDur],
-      [...ikRQuat, ...mulQuatEuler(ikRQuat, 0.06, -0.05, 0.04), ...ikRQuat]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'Hand_R.quaternion',
-      [0, 0.36, walkDur],
-      [...handRQuat, ...mulQuatEuler(handRQuat, 0.04, 0.03, 0), ...handRQuat]
-    ),
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_L.position',
-      [0, 0.18, 0.36, 0.54, walkDur],
-      [
-        ikLPos[0], ikLPos[1], ikLPos[2],
-        ikLPos[0] + 0.008, ikLPos[1] - 0.008, ikLPos[2] - 0.006,
-        ikLPos[0], ikLPos[1] + 0.006, ikLPos[2],
-        ikLPos[0] - 0.008, ikLPos[1] - 0.008, ikLPos[2] + 0.006,
-        ikLPos[0], ikLPos[1], ikLPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'IK_Hand_Cntrl_L.quaternion',
-      [0, 0.36, walkDur],
-      [...ikLQuat, ...mulQuatEuler(ikLQuat, -0.05, 0.04, 0.03), ...ikLQuat]
-    )
-  );
-  const clipWalk = new THREE.AnimationClip('Karambit_Walk', walkDur, walkTracks);
-
-  // 3. Karambit_Draw (0.48s upward snap & wrist flick)
+  const clipWalk = new THREE.AnimationClip('Karambit_Walk', walkDur, buildStaticFingerAndArmTracks(walkDur, idleSkip));
   const drawDur = 0.48;
-  const drawTracks = buildStaticFingerAndArmTracks(drawDur, idleSkip);
-  drawTracks.push(
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_R.position',
-      [0, 0.24, drawDur],
-      [
-        ikRPos[0] - 0.03, ikRPos[1] - 0.14, ikRPos[2] - 0.08,
-        ikRPos[0] + 0.015, ikRPos[1] + 0.03, ikRPos[2] + 0.03,
-        ikRPos[0], ikRPos[1], ikRPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'IK_Hand_Cntrl_R.quaternion',
-      [0, 0.24, drawDur],
-      [
-        ...mulQuatEuler(ikRQuat, -0.55, 0.35, -0.35),
-        ...mulQuatEuler(ikRQuat, 0.18, -0.14, 0.12),
-        ...ikRQuat,
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'Hand_R.quaternion',
-      [0, 0.24, drawDur],
-      [
-        ...mulQuatEuler(handRQuat, -0.45, 0.25, 0),
-        ...mulQuatEuler(handRQuat, 0.15, -0.1, 0),
-        ...handRQuat,
-      ]
-    ),
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_L.position',
-      [0, 0.26, drawDur],
-      [
-        ikLPos[0] + 0.03, ikLPos[1] - 0.11, ikLPos[2] - 0.06,
-        ikLPos[0], ikLPos[1] + 0.015, ikLPos[2] + 0.01,
-        ikLPos[0], ikLPos[1], ikLPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack('IK_Hand_Cntrl_L.quaternion', [0, drawDur], [...ikLQuat, ...ikLQuat])
-  );
-  const clipDraw = new THREE.AnimationClip('Karambit_Draw', drawDur, drawTracks);
-
-  // 4. Karambit_Slash (0.34s fast horizontal reverse-grip claw sweep across centerline)
+  const clipDraw = new THREE.AnimationClip('Karambit_Draw', drawDur, buildStaticFingerAndArmTracks(drawDur, idleSkip));
   const slashDur = 0.34;
-  const slashTracks = buildStaticFingerAndArmTracks(slashDur, idleSkip);
-  slashTracks.push(
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_R.position',
-      [0, 0.08, 0.19, slashDur],
-      [
-        ikRPos[0], ikRPos[1], ikRPos[2],
-        ikRPos[0] - 0.045, ikRPos[1] + 0.035, ikRPos[2] - 0.02,
-        ikRPos[0] + 0.095, ikRPos[1] - 0.015, ikRPos[2] + 0.085,
-        ikRPos[0], ikRPos[1], ikRPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'IK_Hand_Cntrl_R.quaternion',
-      [0, 0.08, 0.19, slashDur],
-      [
-        ...ikRQuat,
-        ...mulQuatEuler(ikRQuat, 0.25, 0.35, -0.25),
-        ...mulQuatEuler(ikRQuat, -0.38, -0.68, 0.45),
-        ...ikRQuat,
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'Hand_R.quaternion',
-      [0, 0.08, 0.19, slashDur],
-      [
-        ...handRQuat,
-        ...mulQuatEuler(handRQuat, 0.2, 0.25, 0),
-        ...mulQuatEuler(handRQuat, -0.45, -0.35, 0.3),
-        ...handRQuat,
-      ]
-    ),
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_L.position',
-      [0, 0.14, slashDur],
-      [
-        ikLPos[0], ikLPos[1], ikLPos[2],
-        ikLPos[0] + 0.025, ikLPos[1] - 0.02, ikLPos[2] - 0.03,
-        ikLPos[0], ikLPos[1], ikLPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack('IK_Hand_Cntrl_L.quaternion', [0, slashDur], [...ikLQuat, ...ikLQuat])
-  );
-  const clipSlash = new THREE.AnimationClip('Karambit_Slash', slashDur, slashTracks);
-
-  // 5. Karambit_Stab (0.46s heavy windup + forward hawkbill hook lunge)
+  const clipSlash = new THREE.AnimationClip('Karambit_Slash', slashDur, buildStaticFingerAndArmTracks(slashDur, idleSkip));
   const stabDur = 0.46;
-  const stabTracks = buildStaticFingerAndArmTracks(stabDur, idleSkip);
-  stabTracks.push(
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_R.position',
-      [0, 0.11, 0.23, 0.33, stabDur],
-      [
-        ikRPos[0], ikRPos[1], ikRPos[2],
-        ikRPos[0] - 0.03, ikRPos[1] + 0.045, ikRPos[2] - 0.055,
-        ikRPos[0] + 0.045, ikRPos[1] + 0.01, ikRPos[2] + 0.14,
-        ikRPos[0] + 0.03, ikRPos[1] - 0.02, ikRPos[2] + 0.09,
-        ikRPos[0], ikRPos[1], ikRPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'IK_Hand_Cntrl_R.quaternion',
-      [0, 0.11, 0.23, stabDur],
-      [
-        ...ikRQuat,
-        ...mulQuatEuler(ikRQuat, 0.38, 0.22, -0.2),
-        ...mulQuatEuler(ikRQuat, -0.62, -0.35, 0.32),
-        ...ikRQuat,
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'Hand_R.quaternion',
-      [0, 0.11, 0.23, stabDur],
-      [
-        ...handRQuat,
-        ...mulQuatEuler(handRQuat, 0.25, 0.15, 0),
-        ...mulQuatEuler(handRQuat, -0.55, -0.25, 0.25),
-        ...handRQuat,
-      ]
-    ),
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_L.position',
-      [0, 0.2, stabDur],
-      [
-        ikLPos[0], ikLPos[1], ikLPos[2],
-        ikLPos[0] + 0.03, ikLPos[1] - 0.025, ikLPos[2] - 0.04,
-        ikLPos[0], ikLPos[1], ikLPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack('IK_Hand_Cntrl_L.quaternion', [0, stabDur], [...ikLQuat, ...ikLQuat])
-  );
-  const clipStab = new THREE.AnimationClip('Karambit_Stab', stabDur, stabTracks);
-
-  // 6. Karambit_Inspect (1.8s wrist showcase + index-ring spin sync)
+  const clipStab = new THREE.AnimationClip('Karambit_Stab', stabDur, buildStaticFingerAndArmTracks(stabDur, idleSkip));
   const inspDur = 1.8;
-  const inspTracks = buildStaticFingerAndArmTracks(inspDur, idleSkip);
-  inspTracks.push(
-    new THREE.VectorKeyframeTrack(
-      'IK_Hand_Cntrl_R.position',
-      [0, 0.45, 0.9, 1.35, inspDur],
-      [
-        ikRPos[0], ikRPos[1], ikRPos[2],
-        ikRPos[0] + 0.035, ikRPos[1] + 0.045, ikRPos[2] + 0.03,
-        ikRPos[0] + 0.02, ikRPos[1] + 0.055, ikRPos[2] + 0.04,
-        ikRPos[0] + 0.035, ikRPos[1] + 0.035, ikRPos[2] + 0.02,
-        ikRPos[0], ikRPos[1], ikRPos[2],
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'IK_Hand_Cntrl_R.quaternion',
-      [0, 0.45, 0.9, 1.35, inspDur],
-      [
-        ...ikRQuat,
-        ...mulQuatEuler(ikRQuat, 0.28, -0.35, 0.22),
-        ...mulQuatEuler(ikRQuat, 0.18, 0.28, -0.18),
-        ...mulQuatEuler(ikRQuat, 0.25, -0.2, 0.15),
-        ...ikRQuat,
-      ]
-    ),
-    new THREE.QuaternionKeyframeTrack(
-      'Hand_R.quaternion',
-      [0, 0.6, 1.2, inspDur],
-      [
-        ...handRQuat,
-        ...mulQuatEuler(handRQuat, 0.25, -0.3, 0.2),
-        ...mulQuatEuler(handRQuat, -0.15, 0.25, -0.15),
-        ...handRQuat,
-      ]
-    ),
-    new THREE.VectorKeyframeTrack('IK_Hand_Cntrl_L.position', [0, inspDur], [...ikLPos, ...ikLPos]),
-    new THREE.QuaternionKeyframeTrack('IK_Hand_Cntrl_L.quaternion', [0, inspDur], [...ikLQuat, ...ikLQuat])
-  );
-  const clipInspect = new THREE.AnimationClip('Karambit_Inspect', inspDur, inspTracks);
+  const clipInspect = new THREE.AnimationClip('Karambit_Inspect', inspDur, buildStaticFingerAndArmTracks(inspDur, idleSkip));
 
   return [clipIdle, clipWalk, clipDraw, clipSlash, clipStab, clipInspect];
 }
 
 /**
- * Patches `M4_Idle` on load by injecting missing `Hand_L` quaternion and left-finger curl
- * (`Bone_L*`) tracks sampled from `M4_Walk` frame 0 so the left hand cups the M4 handguard
- * instead of freezing in flat bind pose.
+ * Legacy helper retained for backward compatibility with unit tests.
  */
 export function patchM4IdleClip(clips: THREE.AnimationClip[]): number {
   const m4Idle = clips.find((c) => c.name === 'M4_Idle');
@@ -608,4 +433,3 @@ export function patchM4IdleClip(clips: THREE.AnimationClip[]): number {
 
   return patchedCount;
 }
-

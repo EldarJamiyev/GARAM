@@ -29,6 +29,7 @@ const CATALOG = [
   { out: 'operator_syndicate.glb', uid: 'a1497ad74c5b41e9a2db063ba1b69aca', maxAlbedo: 1024, maxData: 512, label: 'AGENT | Balkan Dragomir (CS2)' },
   { out: 'c4.glb', uid: 'ca14fcc22cda4b2dbd8bf6c936285bac', maxAlbedo: 512, maxData: 512, label: 'BOMB | C4 Explosive (CS2)' },
   { out: 'grenade.glb', uid: '0a248ad637794f378797e7e2a2325839', maxAlbedo: 512, maxData: 512, label: 'UTILITY | Frag Grenade M67' },
+  { out: 'm4a1s_fp.glb', uid: '440c4299f3d64cd897eddcd19400eabb', extractArmsOnly: true, label: 'ARMS | CS2 First-Person Gloved Arms (1Matzh/epal)' },
 ];
 
 async function main() {
@@ -63,11 +64,19 @@ async function main() {
       continue;
     }
     fs.writeFileSync(rawPath, Buffer.from(await binRes.arrayBuffer()));
-    execFileSync(
-      'python3',
-      ['scripts/optimize-glb.py', rawPath, finalPath, String(item.maxAlbedo), String(item.maxData)],
-      { stdio: 'inherit' }
-    );
+    if (item.extractArmsOnly) {
+      execFileSync(
+        'node',
+        ['scripts/build-cs2-arms.mjs', rawPath, path.join(outDir, 'cs2_fps_arms.glb')],
+        { stdio: 'inherit' }
+      );
+    } else {
+      execFileSync(
+        'python3',
+        ['scripts/optimize-glb.py', rawPath, finalPath, String(item.maxAlbedo), String(item.maxData)],
+        { stdio: 'inherit' }
+      );
+    }
   }
 }
 

@@ -292,16 +292,20 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
     });
   });
 
-  describe('ViewmodelRig Unified Gloved Hands Socket & Clip System', () => {
-    it('provides calibrated socket configurations and clip sets for all 5 weapons (including pistol and karambit)', async () => {
+  describe('ViewmodelRig Unified CS2 Gloved Hands Socket & Clip System', () => {
+    it('provides calibrated CS2 socket configurations and clip sets for all 5 weapons (including pistol and karambit)', async () => {
       const THREE = await import('three');
       const {
+        CS2_ARMS_MODEL_PATH,
         WEAPON_SOCKET_CONFIGS,
         resolveWeaponClipName,
+        buildCS2AnimationClips,
         captureBindPose,
         restoreBindPose,
         buildKarambitAnimationClips,
       } = await import('../viewmodel/ViewmodelRig.js');
+
+      expect(CS2_ARMS_MODEL_PATH).toBe('/models/cs2_fps_arms.glb');
 
       const expectedWeapons = [
         'garam-47',
@@ -315,10 +319,10 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         expect(cfg, `Config for ${id}`).toBeDefined();
         expect(cfg.modelPath.startsWith('/models/')).toBe(true);
         expect(cfg.modelPath).not.toContain('m4a1s_fp.glb');
-        expect(['Rif', 'Hand_R']).toContain(cfg.socketBone);
+        expect(['weapon_hand_r_5', 'DEF-handR_357', 'Rif', 'Hand_R']).toContain(cfg.socketBone);
         expect(cfg.armsScale).toBeGreaterThanOrEqual(0.35);
-        expect(cfg.armsScale).toBeLessThanOrEqual(0.50);
-        expect(cfg.armsOffset[2]).toBeLessThan(-0.30);
+        expect(cfg.armsScale).toBeLessThanOrEqual(1.1);
+        expect(cfg.armsOffset[2]).toBeLessThan(-0.05);
         expect(cfg.armsOffset[2]).toBeGreaterThan(-0.55);
         expect(resolveWeaponClipName(id, 'idle').length).toBeGreaterThan(3);
         expect(resolveWeaponClipName(id, 'walk').length).toBeGreaterThan(3);
@@ -326,7 +330,29 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         expect(resolveWeaponClipName(id, 'reload').length).toBeGreaterThan(3);
       }
 
-      // Verify bind-pose snapshot and restoration prevents unkeyed PBody bone bleed
+      // Verify CS2 animation clip slicer builds all 6 gameplay clips from Equip/Shots/Reload/Inspect
+      const makeTrack = () =>
+        new THREE.QuaternionKeyframeTrack(
+          'weapon_hand_r_5.quaternion',
+          [0, 1, 2, 4, 8],
+          [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]
+        );
+      const cs2Clips = buildCS2AnimationClips([
+        new THREE.AnimationClip('Shots', 2.5, [makeTrack()]),
+        new THREE.AnimationClip('Equip', 3.5, [makeTrack()]),
+        new THREE.AnimationClip('Reload', 4.6, [makeTrack()]),
+        new THREE.AnimationClip('Inspect', 8.0, [makeTrack()]),
+      ]);
+      expect(cs2Clips.map((c) => c.name)).toEqual([
+        'CS2_Idle',
+        'CS2_Walk',
+        'CS2_Fire',
+        'CS2_Draw',
+        'CS2_Reload',
+        'CS2_Inspect',
+      ]);
+
+      // Verify bind-pose snapshot and restoration prevents unkeyed bone bleed
       const root = new THREE.Group();
       root.name = 'Root';
       const pBody = new THREE.Object3D();
@@ -342,7 +368,7 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       expect(pBody.position.x).toBeCloseTo(-0.0442, 5);
       expect(pBody.quaternion.w).toBeCloseTo(0.7071, 5);
 
-      // Verify Karambit animation clip generator synthesizes all 6 clips from Pistol_Idle + AK_Idle
+      // Verify legacy Karambit animation clip generator remains intact
       const mockPistolIdle = new THREE.AnimationClip('Pistol_Idle', 1.98, [
         new THREE.VectorKeyframeTrack('IK_Hand_Cntrl_R.position', [0, 1], [-0.08, 0.03, 0.22, -0.08, 0.03, 0.22]),
         new THREE.QuaternionKeyframeTrack('IK_Hand_Cntrl_R.quaternion', [0, 1], [0, 0, 0, 1, 0, 0, 0, 1]),

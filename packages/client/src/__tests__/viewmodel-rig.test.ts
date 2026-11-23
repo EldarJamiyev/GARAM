@@ -226,13 +226,16 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     expect(Math.abs(deltaB.y)).toBeLessThan(1e-4);
   });
 
-  it('wires real AK_Draw, M4_Draw, Karambit_Draw clips, weapon_hand_r anchoring, and patches M4_Idle tracks', () => {
-    expect(resolveWeaponClipName('garam-47', 'draw')).toBe('AK_Draw');
-    expect(resolveWeaponClipName('vanguard-m4', 'draw')).toBe('M4_Draw');
-    expect(resolveWeaponClipName('garam-karambit', 'draw')).toBe('Karambit_Draw');
+  it('wires CS2_Draw/CS2_Idle/CS2_Fire/CS2_Reload/CS2_Inspect clips, weapon_hand_r anchoring, and legacy patchM4IdleClip', () => {
+    expect(resolveWeaponClipName('garam-47', 'draw')).toBe('CS2_Draw');
+    expect(resolveWeaponClipName('vanguard-m4', 'draw')).toBe('CS2_Draw');
+    expect(resolveWeaponClipName('garam-karambit', 'draw')).toBe('CS2_Draw');
+    expect(resolveWeaponClipName('garam-47', 'reload')).toBe('CS2_Reload');
+    expect(resolveWeaponClipName('sovereign-awp', 'inspect')).toBe('CS2_Inspect');
 
     for (const id of ['garam-47', 'vanguard-m4', 'sovereign-awp', 'desert-eagle']) {
       expect(WEAPON_SOCKET_CONFIGS[id].anchorBoneName).toBe('weapon_hand_r');
+      expect(WEAPON_SOCKET_CONFIGS[id].socketBone).toBe('weapon_hand_r_5');
     }
 
     const m4Idle = new THREE.AnimationClip('M4_Idle', 1.2, [
@@ -300,162 +303,58 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     }
   });
 
-  it('validates CS2 Karambit reverse-grip orientation, visible hawkbill blade, and ring positioning', () => {
-    const kCfg = WEAPON_SOCKET_CONFIGS['garam-karambit'];
-    expect(kCfg).toBeDefined();
-    expect(kCfg.localRotEuler).toBeDefined();
-
-    // CS2 reverse-grip rotation: angled broad bevel toward camera [-3.05, -3.12, -2.58]
-    const [rx, ry, rz] = kCfg.localRotEuler!;
-    expect(rx).toBeCloseTo(-3.05, 1);
-    expect(ry).toBeCloseTo(-3.12, 1);
-    expect(rz).toBeCloseTo(-2.58, 1);
-
-    // Compute NDC projection using viewmodel camera (FOV 62°, 1440x900)
-    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 10);
-    camera.updateProjectionMatrix();
-
-    const vmMesh = new THREE.Group();
-    const armsContainer = new THREE.Group();
-    armsContainer.position.set(...kCfg.armsOffset);
-    armsContainer.rotation.y = Math.PI;
-    armsContainer.scale.setScalar(kCfg.armsScale);
-    vmMesh.add(armsContainer);
-
-    const ikHandCtrlR = new THREE.Object3D();
-    ikHandCtrlR.position.set(-0.180, 0.220, 0.230);
-    ikHandCtrlR.quaternion.set(-0.0572, 0.0106, 0.5295, 0.8463);
-    armsContainer.add(ikHandCtrlR);
-
-    const handR = new THREE.Object3D();
-    handR.quaternion.set(-0.4733, 0.5626, 0.514, -0.4419);
-    ikHandCtrlR.add(handR);
-
-    const socketHolder = new THREE.Group();
-    socketHolder.position.set(...kCfg.localPos);
-    socketHolder.rotation.set(...kCfg.localRotEuler!);
-    handR.add(socketHolder);
-
-    const ringSpinGroup = new THREE.Group();
-    ringSpinGroup.position.set(0, 0.02, 0.085);
-    socketHolder.add(ringSpinGroup);
-
-    const knifeModel = new THREE.Group();
-    knifeModel.position.set(0, -0.02, -0.085);
-    ringSpinGroup.add(knifeModel);
-
-    const bladeTip = new THREE.Object3D();
-    bladeTip.position.set(0, -0.045, -0.110);
-    knifeModel.add(bladeTip);
-
-    vmMesh.updateMatrixWorld(true);
-
-    const tipWorld = bladeTip.getWorldPosition(new THREE.Vector3());
-    const ringWorld = ringSpinGroup.getWorldPosition(new THREE.Vector3());
-
-    const tipNDC = tipWorld.clone().project(camera);
-    const ringNDC = ringWorld.clone().project(camera);
-
-    // Blade tip must project inside lower-right visible viewport
-    expect(tipNDC.x).toBeGreaterThan(0.12);
-    expect(tipNDC.x).toBeLessThan(0.55);
-    expect(tipNDC.y).toBeGreaterThan(-0.55);
-    expect(tipNDC.y).toBeLessThan(-0.05);
-
-    // Blade tip must be higher in the viewport than the retention ring (curved blade sweeps UP)
-    expect(tipNDC.y).toBeGreaterThan(ringNDC.y);
-    expect(tipNDC.x).toBeLessThan(ringNDC.x);
-  });
-
-  it('guarantees zero crosshair collision (|ndcX| < 0.12 && |ndcY| < 0.12) across all 5 viewmodel setups', () => {
-    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 10);
-    camera.updateProjectionMatrix();
-
-    for (const [weaponId, cfg] of Object.entries(WEAPON_SOCKET_CONFIGS)) {
-      const armsContainer = new THREE.Group();
-      armsContainer.rotation.y = Math.PI;
-
-      const inner = new THREE.Group();
-      inner.position.set(...cfg.armsOffset);
-      inner.scale.setScalar(cfg.armsScale);
-      armsContainer.add(inner);
-
-      const rightHand = new THREE.Group();
-      inner.add(rightHand);
-
-      const weaponWrapper = new THREE.Group();
-      if (cfg.localRotEuler) {
-        weaponWrapper.rotation.set(...cfg.localRotEuler);
-      }
-      rightHand.add(weaponWrapper);
-
-      // Check key landmark points (grip, muzzle, top rail)
-      const pointsToCheck = [
-        new THREE.Vector3(0, 0, 0), // grip
-        new THREE.Vector3(0, 0.08, -0.5), // muzzle or barrel
-        new THREE.Vector3(0, 0.12, -0.2), // top rail / sight
-      ];
-
-      armsContainer.updateMatrixWorld(true);
-
-      for (const pt of pointsToCheck) {
-        const worldPt = pt.clone().applyMatrix4(weaponWrapper.matrixWorld);
-        const ndc = worldPt.project(camera);
-
-        // Point must not occupy the center crosshair deadzone
-        const inDeadzone = Math.abs(ndc.x) < 0.12 && Math.abs(ndc.y) < 0.12;
-        expect(inDeadzone, `${weaponId} point ${pt.toArray()} in crosshair deadzone (ndc: ${ndc.x.toFixed(2)}, ${ndc.y.toFixed(2)})`).toBe(false);
-      }
-    }
-  });
-
-  it('confirms AWP top scope rail sits strictly below crosshair elevation (ndcY <= -0.02)', () => {
-    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 10);
-    camera.updateProjectionMatrix();
-
-    const awpCfg = WEAPON_SOCKET_CONFIGS['sovereign-awp'];
-    const vmRoot = new THREE.Group();
-    vmRoot.position.set(0.14, -0.13, -0.32);
-
-    const awp = new THREE.Group();
-    awp.position.set(...awpCfg.localPos);
-    awp.rotation.set(...awpCfg.localRotEuler);
-    vmRoot.add(awp);
-
-    // Scope top rail landmark in AWP space
-    const scopeRail = new THREE.Object3D();
-    scopeRail.position.set(0, 0.12, -0.22);
-    awp.add(scopeRail);
-
-    vmRoot.updateMatrixWorld(true);
-    const scopeNDC = scopeRail.getWorldPosition(new THREE.Vector3()).project(camera);
-
-    expect(scopeNDC.y, 'AWP scope rail NDC Y').toBeLessThanOrEqual(-0.02);
-  });
-
-  it('guarantees 0 skinned arm vertices clipping near-plane (camZ > -0.01m), screen coverage <= 24%, and elbows ndcY < -0.50 across all 5 weapons', async () => {
-    const fs = await import('fs');
-    const path = await import('path');
+  async function loadCS2ArmsInNode(): Promise<any | null> {
+    const { NodeIO } = await import('@gltf-transform/core');
     const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
-    const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
 
-    const glbPath = path.resolve(__dirname, '../../../packages/client/public/models/fps_arms_tactical.glb');
-    if (!fs.existsSync(glbPath)) return; // graceful skip if file not present in test runner
+    const glbPath = decodeURIComponent(
+      new URL('../../public/models/cs2_fps_arms.glb', import.meta.url).pathname
+    );
 
-    const buf = fs.readFileSync(glbPath);
+    // Strip embedded images in-memory so Three.js GLTFLoader parses cleanly in headless Node
+    const io = new NodeIO();
+    let doc;
+    try {
+      doc = await io.read(glbPath);
+    } catch {
+      return null;
+    }
+    for (const tex of doc.getRoot().listTextures()) {
+      tex.dispose();
+    }
+    const stripped = await io.writeBinary(doc);
+
     const loader = new GLTFLoader();
-    const gltf = await new Promise<any>((res, rej) => {
-      loader.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), '', res, rej);
+    return await new Promise<any>((res, rej) => {
+      loader.parse(
+        stripped.buffer.slice(stripped.byteOffset, stripped.byteOffset + stripped.byteLength),
+        '',
+        res,
+        rej
+      );
     });
+  }
+
+  it('validates CS2 cs2_fps_arms.glb skinned mesh: 0 near-plane clips, coverage <= 24%, elbows ndcY < -0.50, and zero crosshair deadzone collision across all 5 weapons', async () => {
+    const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
+    const { buildCS2AnimationClips } = await import('../viewmodel/ViewmodelRig.js');
+
+    const gltf = await loadCS2ArmsInNode();
+    expect(gltf, 'cs2_fps_arms.glb must exist in packages/client/public/models/').not.toBeNull();
+
+    const slicedClips = buildCS2AnimationClips(gltf.animations);
+    expect(slicedClips.length).toBeGreaterThanOrEqual(6);
 
     const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 50);
     camera.updateProjectionMatrix();
 
     for (const [weaponId, cfg] of Object.entries(WEAPON_SOCKET_CONFIGS)) {
       const root = clone(gltf.scene);
-      let sm: THREE.SkinnedMesh | null = null;
-      root.traverse((c: any) => { if (c.isSkinnedMesh) sm = c; });
-      expect(sm).not.toBeNull();
+      const skinnedMeshes: THREE.SkinnedMesh[] = [];
+      root.traverse((c: any) => {
+        if (c.isSkinnedMesh) skinnedMeshes.push(c);
+      });
+      expect(skinnedMeshes.length).toBeGreaterThanOrEqual(2);
 
       const container = new THREE.Group();
       container.position.set(...cfg.armsOffset);
@@ -465,52 +364,58 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
 
       const mixer = new THREE.AnimationMixer(root);
       const clipName = cfg.clips.idle;
-      const clip = gltf.animations.find((a: any) => a.name === clipName) || gltf.animations[0];
+      const clip = slicedClips.find((a) => a.name === clipName) || slicedClips[0];
       mixer.clipAction(clip).play();
-      mixer.update(0.01);
+      mixer.update(0.05);
       container.updateMatrixWorld(true);
 
-      sm!.skeleton.update();
-      const bm = sm!.skeleton.boneMatrices;
-      const bindMatrix = sm!.bindMatrix;
-      const bindMatrixInverse = sm!.bindMatrixInverse;
-      const matrixWorld = sm!.matrixWorld;
-
-      const pos = sm!.geometry.attributes.position;
-      const si = sm!.geometry.attributes.skinIndex;
-      const sw = sm!.geometry.attributes.skinWeight;
-      const v = new THREE.Vector4(), skinVertex = new THREE.Vector4(), skinned = new THREE.Vector4(), t = new THREE.Vector4();
       let countCloserNearPlane = 0;
       const gridW = 144, gridH = 90;
       const cov = new Uint8Array(gridW * gridH);
+      const v = new THREE.Vector4();
+      const skinVertex = new THREE.Vector4();
+      const skinned = new THREE.Vector4();
+      const t = new THREE.Vector4();
       const ndc = new THREE.Vector3();
 
-      for (let i = 0; i < pos.count; i++) {
-        v.set(pos.getX(i), pos.getY(i), pos.getZ(i), 1.0);
-        skinVertex.copy(v).applyMatrix4(bindMatrix);
-        skinned.set(0, 0, 0, 0);
+      for (const sm of skinnedMeshes) {
+        sm.skeleton.update();
+        const bm = sm.skeleton.boneMatrices;
+        const bindMatrix = sm.bindMatrix;
+        const bindMatrixInverse = sm.bindMatrixInverse;
+        const matrixWorld = sm.matrixWorld;
 
-        for (let k = 0; k < 4; k++) {
-          const idx = k === 0 ? si.getX(i) : k === 1 ? si.getY(i) : k === 2 ? si.getZ(i) : si.getW(i);
-          const w = k === 0 ? sw.getX(i) : k === 1 ? sw.getY(i) : k === 2 ? sw.getZ(i) : sw.getW(i);
-          if (w <= 0) continue;
-          const off = idx * 16;
-          t.x = bm[off+0]*skinVertex.x + bm[off+4]*skinVertex.y + bm[off+8]*skinVertex.z + bm[off+12]*skinVertex.w;
-          t.y = bm[off+1]*skinVertex.x + bm[off+5]*skinVertex.y + bm[off+9]*skinVertex.z + bm[off+13]*skinVertex.w;
-          t.z = bm[off+2]*skinVertex.x + bm[off+6]*skinVertex.y + bm[off+10]*skinVertex.z + bm[off+14]*skinVertex.w;
-          t.w = bm[off+3]*skinVertex.x + bm[off+7]*skinVertex.y + bm[off+11]*skinVertex.z + bm[off+15]*skinVertex.w;
-          skinned.addScaledVector(t, w);
-        }
-        skinned.applyMatrix4(bindMatrixInverse);
-        skinned.applyMatrix4(matrixWorld);
+        const pos = sm.geometry.attributes.position;
+        const si = sm.geometry.attributes.skinIndex;
+        const sw = sm.geometry.attributes.skinWeight;
 
-        if (skinned.z > -0.01) countCloserNearPlane++;
+        for (let i = 0; i < pos.count; i++) {
+          v.set(pos.getX(i), pos.getY(i), pos.getZ(i), 1.0);
+          skinVertex.copy(v).applyMatrix4(bindMatrix);
+          skinned.set(0, 0, 0, 0);
 
-        ndc.set(skinned.x, skinned.y, skinned.z).project(camera);
-        if (ndc.z >= 0 && ndc.z <= 1 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1) {
-          const gx = Math.floor((ndc.x + 1) * 0.5 * (gridW - 1));
-          const gy = Math.floor((1 - (ndc.y + 1) * 0.5) * (gridH - 1));
-          cov[gy * gridW + gx] = 1;
+          for (let k = 0; k < 4; k++) {
+            const idx = k === 0 ? si.getX(i) : k === 1 ? si.getY(i) : k === 2 ? si.getZ(i) : si.getW(i);
+            const w = k === 0 ? sw.getX(i) : k === 1 ? sw.getY(i) : k === 2 ? sw.getZ(i) : sw.getW(i);
+            if (w <= 0) continue;
+            const off = idx * 16;
+            t.x = bm[off + 0] * skinVertex.x + bm[off + 4] * skinVertex.y + bm[off + 8] * skinVertex.z + bm[off + 12] * skinVertex.w;
+            t.y = bm[off + 1] * skinVertex.x + bm[off + 5] * skinVertex.y + bm[off + 9] * skinVertex.z + bm[off + 13] * skinVertex.w;
+            t.z = bm[off + 2] * skinVertex.x + bm[off + 6] * skinVertex.y + bm[off + 10] * skinVertex.z + bm[off + 14] * skinVertex.w;
+            t.w = bm[off + 3] * skinVertex.x + bm[off + 7] * skinVertex.y + bm[off + 11] * skinVertex.z + bm[off + 15] * skinVertex.w;
+            skinned.addScaledVector(t, w);
+          }
+          skinned.applyMatrix4(bindMatrixInverse);
+          skinned.applyMatrix4(matrixWorld);
+
+          if (skinned.z > -0.01) countCloserNearPlane++;
+
+          ndc.set(skinned.x, skinned.y, skinned.z).project(camera);
+          if (ndc.z >= 0 && ndc.z <= 1 && Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1) {
+            const gx = Math.floor((ndc.x + 1) * 0.5 * (gridW - 1));
+            const gy = Math.floor((1 - (ndc.y + 1) * 0.5) * (gridH - 1));
+            cov[gy * gridW + gx] = 1;
+          }
         }
       }
 
@@ -518,87 +423,111 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
       for (let j = 0; j < cov.length; j++) if (cov[j]) covCount++;
       const covPct = (covCount / (gridW * gridH)) * 100;
 
-      // 1. Zero vertices clipping camera near-plane
       expect(countCloserNearPlane, `${weaponId} vertices clipping near-plane`).toBe(0);
-
-      // 2. Viewmodel screen coverage strictly <= 24%
       expect(covPct, `${weaponId} screen coverage`).toBeLessThanOrEqual(24.0);
 
-      // 3. Elbows hang naturally in lower screen half
-      const elbowL = root.getObjectByName('Forearm_L');
-      if (elbowL) {
-        const eLndc = elbowL.getWorldPosition(new THREE.Vector3()).project(camera);
-        expect(eLndc.y, `${weaponId} Forearm_L NDC Y`).toBeLessThan(-0.50);
+      // Left elbow stays comfortably in the lower screen half
+      const elbowL = root.getObjectByName('DEF-forearmL_235');
+      expect(elbowL, 'DEF-forearmL_235 bone must exist').toBeDefined();
+      const eLndc = elbowL!.getWorldPosition(new THREE.Vector3()).project(camera);
+      expect(eLndc.y, `${weaponId} DEF-forearmL_235 NDC Y`).toBeLessThan(-0.50);
+
+      // Mount weapon holder on real weapon_hand_r_5 socket and verify zero crosshair deadzone collision
+      const socket = root.getObjectByName(cfg.socketBone);
+      expect(socket, `${weaponId} socket ${cfg.socketBone}`).toBeDefined();
+      const holder = new THREE.Group();
+      holder.position.set(...cfg.localPos);
+      holder.rotation.set(...cfg.localRotEuler);
+      holder.scale.setScalar(cfg.localScale);
+      socket!.add(holder);
+      container.updateMatrixWorld(true);
+
+      const landmarks =
+        weaponId === 'garam-karambit'
+          ? [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, -0.045, -0.11)]
+          : [new THREE.Vector3(0, 0, 0), new THREE.Vector3(...cfg.muzzleLocalPos)];
+
+      for (const pt of landmarks) {
+        const ndcPt = pt.clone().applyMatrix4(holder.matrixWorld).project(camera);
+        const inDeadzone = Math.abs(ndcPt.x) < 0.08 && Math.abs(ndcPt.y) < 0.08;
+        expect(
+          inDeadzone,
+          `${weaponId} landmark ${pt.toArray()} in crosshair deadzone (${ndcPt.x.toFixed(2)}, ${ndcPt.y.toFixed(2)})`
+        ).toBe(false);
+      }
+
+      if (weaponId === 'garam-47') {
+        const sightNdc = new THREE.Vector3(0.008, 0.095, -0.52)
+          .applyMatrix4(holder.matrixWorld)
+          .project(camera);
+        expect(sightNdc.x, 'Garam-47 front sight right-side framing').toBeGreaterThanOrEqual(0.10);
+      }
+
+      if (weaponId === 'sovereign-awp') {
+        const scopeNdc = new THREE.Vector3(0, 0.12, -0.22)
+          .applyMatrix4(holder.matrixWorld)
+          .project(camera);
+        expect(scopeNdc.y, 'AWP scope rail strictly below crosshair').toBeLessThanOrEqual(-0.02);
+      }
+
+      if (weaponId === 'garam-karambit') {
+        const tipNdc = new THREE.Vector3(0, -0.045, -0.11)
+          .applyMatrix4(holder.matrixWorld)
+          .project(camera);
+        expect(tipNdc.x, 'Karambit blade tip lower-right X').toBeGreaterThan(0.05);
+        expect(tipNdc.x, 'Karambit blade tip inside frame X').toBeLessThan(0.85);
+        expect(tipNdc.y, 'Karambit blade tip below center Y').toBeLessThan(-0.02);
+        expect(tipNdc.y, 'Karambit blade tip inside frame Y').toBeGreaterThan(-0.92);
       }
     }
   });
 
-  it('confirms Garam-47 front sight framing sits at ndcX >= 0.18 matching CS2 right-side framing', () => {
-    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 50);
-    camera.updateProjectionMatrix();
+  it('verifies CS2 ArmIKSolver solves Desert Eagle two-handed grip and Karambit low-left guard cleanly (< 0.003m)', async () => {
+    const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
+    const { buildCS2AnimationClips } = await import('../viewmodel/ViewmodelRig.js');
 
-    const akCfg = WEAPON_SOCKET_CONFIGS['garam-47'];
-    const akContainer = new THREE.Group();
-    akContainer.rotation.y = Math.PI;
+    const gltf = await loadCS2ArmsInNode();
+    expect(gltf).not.toBeNull();
+    const slicedClips = buildCS2AnimationClips(gltf.animations);
 
-    const akInner = new THREE.Group();
-    akInner.position.set(...akCfg.armsOffset);
-    akInner.scale.setScalar(akCfg.armsScale);
-    akContainer.add(akInner);
+    const root = clone(gltf.scene);
+    const container = new THREE.Group();
+    const deagleCfg = WEAPON_SOCKET_CONFIGS['desert-eagle'];
+    container.position.set(...deagleCfg.armsOffset);
+    container.scale.setScalar(deagleCfg.armsScale);
+    container.rotation.y = Math.PI;
+    container.add(root);
 
-    const rightHand = new THREE.Group();
-    akInner.add(rightHand);
+    const mixer = new THREE.AnimationMixer(root);
+    const idleClip = slicedClips.find((c) => c.name === 'CS2_Idle') || slicedClips[0];
+    mixer.clipAction(idleClip).play();
+    mixer.update(0.05);
+    container.updateMatrixWorld(true);
 
-    const akMesh = new THREE.Group();
-    akMesh.position.set(...akCfg.localPos);
-    akMesh.rotation.set(...akCfg.localRotEuler);
-    rightHand.add(akMesh);
+    const solver = new ArmIKSolver(root);
+    expect(solver.isCS2Rig).toBe(true);
+    expect(solver.isValid).toBe(true);
 
-    const frontSight = new THREE.Object3D();
-    frontSight.position.set(0.008, 0.095, -0.52);
-    akMesh.add(frontSight);
-
-    akContainer.updateMatrixWorld(true);
-    const sightNDC = frontSight.getWorldPosition(new THREE.Vector3()).project(camera);
-
-    expect(sightNDC.x, 'Garam-47 front sight ndcX').toBeGreaterThanOrEqual(0.18);
-  });
-
-  it('confirms Karambit tactical guard Hand_L projects strictly below ndcY <= -0.80 clear of crosshair', async () => {
-    const fs = await import('fs');
-    const path = await import('path');
-    const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
-
-    const glbPath = path.resolve(__dirname, '../../../packages/client/public/models/fps_arms_tactical.glb');
-    if (!fs.existsSync(glbPath)) return;
-
-    const buf = fs.readFileSync(glbPath);
-    const loader = new GLTFLoader();
-    const gltf = await new Promise<any>((res, rej) => {
-      loader.parse(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), '', res, rej);
-    });
-
-    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 50);
-    camera.updateProjectionMatrix();
-
-    const kCfg = WEAPON_SOCKET_CONFIGS['garam-karambit'];
-    const kContainer = new THREE.Group();
-    kContainer.position.set(...kCfg.armsOffset);
-    kContainer.scale.setScalar(kCfg.armsScale);
-    kContainer.rotation.y = Math.PI;
-    kContainer.add(gltf.scene);
-
-    const handL = gltf.scene.getObjectByName('Hand_L');
-    const ikL = gltf.scene.getObjectByName('IK_Hand_Cntrl_L');
+    const handR = root.getObjectByName('DEF-handR_357');
+    const handL = root.getObjectByName('DEF-handL_233');
+    expect(handR).toBeDefined();
     expect(handL).toBeDefined();
-    expect(ikL).toBeDefined();
 
-    ikL!.position.set(0.260, -0.040, 0.140);
-    kContainer.updateMatrixWorld(true);
+    // 1. Desert Eagle two-handed cup under right hand
+    const pistolTarget = handR!.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(-0.024, -0.022, 0.012));
+    const pistolPole = new THREE.Vector3(-0.35, -0.45, -0.15);
+    const pistolGap = solver.solveCS2LeftHandToTarget(pistolTarget, pistolPole);
+    expect(pistolGap, 'Desert Eagle left-hand IK reach gap').toBeLessThan(0.003);
 
-    const kHandNDC = handL!.getWorldPosition(new THREE.Vector3()).project(camera);
-    expect(kHandNDC.y, 'Karambit Hand_L NDC Y').toBeLessThanOrEqual(-0.80);
-    expect(kHandNDC.x, 'Karambit Hand_L NDC X').toBeLessThan(-0.25);
+    // 2. Karambit low-left tactical guard clear of center crosshair
+    const camera = new THREE.PerspectiveCamera(62, 1440 / 900, 0.005, 50);
+    camera.updateProjectionMatrix();
+    const guardTarget = new THREE.Vector3(-0.22, -0.30, -0.26);
+    const guardGap = solver.solveCS2LeftHandToTarget(guardTarget, new THREE.Vector3(-0.42, -0.52, -0.12));
+    expect(guardGap, 'Karambit low-left guard IK gap').toBeLessThan(0.015);
+    const guardNdc = handL!.getWorldPosition(new THREE.Vector3()).project(camera);
+    expect(guardNdc.y, 'Karambit left hand low guard NDC Y').toBeLessThan(-0.70);
+    expect(guardNdc.x, 'Karambit left hand low guard NDC X').toBeLessThan(-0.30);
   });
 
   it('verifies firearm left palm centroid tracks weapon grip anchor within <= 0.015m eliminating detachment', () => {

@@ -1,6 +1,6 @@
 # Asset Attribution & Licensing Manifest
 
-All 3D models, skeletal animation packs, textures, and audio assets bundled in **GARAM: ZERO HOUR** are audited below with verified provenance and licensing. Assets carrying restrictive Non-Commercial (`CC-BY-NC`) terms (such as the previously bundled `m4a1s_fp.glb`) have been **removed** so the repository maintains clean commercial-compatible licensing (`CC-BY-4.0`, `CC0`, MIT, or original in-repo synthesis).
+All 3D models, skeletal animation packs, textures, and audio assets bundled in **GARAM: ZERO HOUR** are audited below with verified provenance and licensing. Note that the CS2 first-person arms rig (`cs2_fps_arms.glb`) carries a **CC-BY-NC 4.0** (non-commercial) license; all other weapon, agent, texture, and audio assets are `CC-BY-4.0`, `CC0`, MIT, or project-licensed.
 
 ---
 
@@ -8,7 +8,7 @@ All 3D models, skeletal animation packs, textures, and audio assets bundled in *
 
 | Asset File | Creator | Source URL | Verified License | Usage & Notes |
 | :--- | :--- | :--- | :---: | :--- |
-| `packages/client/public/models/fps_arms_tactical.glb` | **ccransh** | [FPS AK-74m animations](https://sketchfab.com/3d-models/fps-ak-74m-animations-94be8385c402474cacd39bc096c6ca14)<br>[Animated FPS hands (rifle)](https://sketchfab.com/3d-models/animated-fps-hands-rifle-animation-pack-5f2d0ed780a94724b36ab505f7564057)<br>[FPS pistol animations](https://sketchfab.com/3d-models/fps-pistol-animations-0d7a343dcb6f401197a73c91aee93f6d)<br>[FPS sniper animations](https://sketchfab.com/3d-models/fps-animations-sniper-rifle-c15ae8393d824f5b929e3f69691cdd31) | **CC-BY-4.0** | Unified first-person rigged tactical gloved arms mesh + PBR maps combined with AK, Rifle/M4, Sniper/AWP, and Pistol skeletal `AnimationClip`s; Karambit melee clips generated procedurally over the same skeleton. |
+| `packages/client/public/models/cs2_fps_arms.glb` | **1Matzh** (animations) / **epal** (CS2 arms & gloves rig) | [M4A1-S (CS2) \| First Person Animations](https://sketchfab.com/3d-models/m4a1-s-cs2-first-person-animations-440c4299f3d64cd897eddcd19400eabb) | **CC-BY-NC 4.0** | Extracted via `scripts/build-cs2-arms.mjs` (embedded M4A1-S mesh stripped). Continuous Rigify CS2 gloved hands + tactical sleeves with native `weapon_hand_r_5` socket and `Equip`, `Shots`, `Reload`, `Inspect` skeletal animations shared across all 5 weapons. Non-commercial use only. |
 
 ---
 

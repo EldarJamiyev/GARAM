@@ -287,6 +287,8 @@ export function applyForearmTwist(chain: TwoBoneIKChain): void {
 export class ArmIKSolver {
   public readonly leftChain: TwoBoneIKChain | null = null;
   public readonly rightChain: TwoBoneIKChain | null = null;
+  public readonly cs2LeftChain: TwoBoneIKChain | null = null;
+  public readonly isCS2Rig: boolean = false;
   public lastLeftGap = 0;
   public lastRightGap = 0;
 
@@ -302,6 +304,62 @@ export class ArmIKSolver {
 
     this.leftChain = this.buildFPSArmChain(byName, 'L');
     this.rightChain = this.buildFPSArmChain(byName, 'R');
+    this.cs2LeftChain = this.buildCS2ArmChain(byName, 'L');
+    this.isCS2Rig = this.cs2LeftChain !== null;
+  }
+
+  private findByPrefix(
+    byName: Map<string, THREE.Object3D>,
+    prefixes: string[]
+  ): THREE.Object3D | null {
+    for (const prefix of prefixes) {
+      const exact = byName.get(prefix);
+      if (exact) return exact;
+      for (const [name, obj] of byName) {
+        if (name.startsWith(prefix)) return obj;
+      }
+    }
+    return null;
+  }
+
+  private buildCS2ArmChain(
+    byName: Map<string, THREE.Object3D>,
+    side: 'L' | 'R'
+  ): TwoBoneIKChain | null {
+    const upper = this.findByPrefix(byName, [
+      `DEF-upper_arm${side}_`,
+      `DEF-upper_arm.${side}_`,
+    ]);
+    const lower = this.findByPrefix(byName, [
+      `DEF-forearm${side}_`,
+      `DEF-forearm.${side}_`,
+    ]);
+    const hand = this.findByPrefix(byName, [
+      `DEF-hand${side}_`,
+      `DEF-hand.${side}_`,
+    ]);
+    if (!upper || !lower || !hand) return null;
+
+    const qForearm = new THREE.Quaternion();
+    const qHand = new THREE.Quaternion();
+    lower.getWorldQuaternion(qForearm);
+    hand.getWorldQuaternion(qHand);
+    const bindForearmToHand = qForearm.invert().multiply(qHand).normalize();
+
+    return {
+      upper,
+      lower,
+      effector: hand,
+      target: hand,
+      pole: null,
+      twistBones: [],
+      twistWeights: [],
+      nestedTwistChain: false,
+      bindTwistAngles: [],
+      bindForearmToHand,
+      upperBindLocalPos: upper.position.clone(),
+      fallbackPoleDir: new THREE.Vector3(side === 'L' ? -0.68 : 0.68, -0.72, 0.12).normalize(),
+    };
   }
 
   private buildFPSArmChain(
@@ -362,7 +420,33 @@ export class ArmIKSolver {
   }
 
   public get isValid(): boolean {
-    return this.leftChain !== null || this.rightChain !== null;
+    return this.leftChain !== null || this.rightChain !== null || this.cs2LeftChain !== null;
+  }
+
+  /**
+   * Moves the CS2 Rigify left wrist (`DEF-handL`) to an explicit world target using
+   * exact 2-bone analytical IK without detaching the continuous forearm hierarchy.
+   */
+  public solveCS2LeftHandToTarget(
+    targetWorld: THREE.Vector3,
+    poleWorld: THREE.Vector3 | null = null
+  ): number {
+    const chain = this.cs2LeftChain;
+    if (!chain) return 0;
+
+    // Keep shoulder's animated local position intact (do not overwrite with bind local pos)
+    const gap = solveTwoBoneIK(
+      chain.upper,
+      chain.lower,
+      chain.effector,
+      targetWorld,
+      poleWorld,
+      false,
+      undefined,
+      chain.fallbackPoleDir
+    );
+    this.lastLeftGap = gap;
+    return gap;
   }
 
   /**
