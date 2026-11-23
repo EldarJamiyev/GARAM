@@ -10,7 +10,7 @@ import {
   SpatialGrid,
   KinematicPlayerController,
 } from '@garam/shared';
-import { settingsStore, BotDifficulty, CrosshairConfig, PlayerFaction } from './SettingsStore.js';
+import { settingsStore, BotDifficulty, CrosshairConfig, PlayerFaction, GraphicsQuality } from './SettingsStore.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
 import { BotAISystem, BotAISystemCallbacks } from '../match/BotAISystem.js';
 import { WeaponController, WeaponCombatCallbacks } from '../combat/WeaponController.js';
@@ -62,6 +62,7 @@ export interface GameContext {
   isInteracting: { value: boolean };
   cameraPunchPitch: { value: number };
   syncActiveWeapon: () => void;
+  applyGraphicsQuality?: (quality: GraphicsQuality) => void;
   // Late-initialized controllers populated during GaramGame constructor
   weaponController?: WeaponController;
   roundManager?: RoundManager;
@@ -254,7 +255,7 @@ export function buildWeaponControllerCallbacks(ctx: GameContext): WeaponCombatCa
     onFire: (weapon: WeaponDef, isScoped: boolean, rayDir: THREE.Vector3, isSecondaryMelee: boolean) => {
       // Alert nearby hostile bots to gunshot acoustic signature (suppressed rifles have smaller radius)
       if (weapon.category !== 'melee') {
-        const isSuppressed = weapon.id === 'vanguard-m4';
+        const isSuppressed = weapon.id === 'vanguard-m4' || weapon.id === 'usp-s';
         ctx.botAI?.onSoundEvent({
           type: isSuppressed ? 'suppressed_gunfire' : 'gunfire',
           pos: ctx.worldCamera.position,
@@ -628,6 +629,10 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
         ctx.worldCamera.rotation.set(0, nextYaw, 0, 'YXZ');
       }
     },
+    onQualityChanged: (quality: GraphicsQuality) => {
+      ctx.applyGraphicsQuality?.(quality);
+      ctx.hud.addKillfeed(`Graphics Quality: ${quality}`);
+    },
   };
 }
 
@@ -660,12 +665,9 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
 
   ctx.audio.updateListener(worldCamera);
   ctx.audio.setIndoorZone(
-    currentZone === 'SUNKEN AQUEDUCT' ||
-      currentZone === 'A CONNECTOR' ||
-      currentZone === 'B SHORT' ||
-      currentZone === 'A PALACE' ||
-      currentZone === 'B APARTMENTS' ||
-      currentZone === 'B CANAL'
+    currentZone !== 'FRONT COURTYARD' &&
+      currentZone !== 'CT SPAWN' &&
+      currentZone !== 'GARAGE'
   );
 
   const invUpdate = ctx.inventory.update(frameDelta);

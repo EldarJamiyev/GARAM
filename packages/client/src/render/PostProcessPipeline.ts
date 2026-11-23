@@ -73,6 +73,26 @@ export class PostProcessPipeline {
     }
   }
 
+  private postEnabled = true;
+
+  public setQualityTier(tier: 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH'): void {
+    if (this.isSoftwareGl || !this.composer) {
+      this.postEnabled = false;
+      return;
+    }
+    if (tier === 'POTATO' || tier === 'LOW') {
+      this.postEnabled = false;
+      return;
+    }
+    this.postEnabled = true;
+    if (this.gtaoPass) {
+      this.gtaoPass.enabled = tier === 'HIGH';
+    }
+    if (this.bloomPass) {
+      this.bloomPass.enabled = tier === 'HIGH' || tier === 'MEDIUM';
+    }
+  }
+
   public setSize(width: number, height: number): void {
     if (this.composer) {
       this.composer.setSize(width, height);
@@ -89,7 +109,7 @@ export class PostProcessPipeline {
     viewmodelCamera: THREE.PerspectiveCamera,
     renderViewmodel: boolean
   ): void {
-    if (this.composer && !this.isSoftwareGl) {
+    if (this.composer && this.postEnabled && !this.isSoftwareGl) {
       if (this.renderPass) {
         this.renderPass.scene = worldScene;
         this.renderPass.camera = worldCamera;

@@ -1,4 +1,4 @@
-import { settingsStore, BotDifficulty, PlayerFaction, GameMode } from '../core/SettingsStore.js';
+import { settingsStore, BotDifficulty, PlayerFaction, GameMode, GraphicsQuality } from '../core/SettingsStore.js';
 
 export interface LobbyUICallbacks {
   onDeploy: () => void;
@@ -9,6 +9,7 @@ export interface LobbyUICallbacks {
   onDifficultyChanged: (diff: BotDifficulty) => void;
   onModeChanged?: (mode: GameMode) => void;
   onFactionChanged?: (faction: PlayerFaction) => void;
+  onQualityChanged?: (quality: GraphicsQuality) => void;
 }
 
 export class LobbyUI {
@@ -103,6 +104,23 @@ export class LobbyUI {
             mpPanel.style.display = mode === 'multiplayer' ? 'block' : 'none';
           }
           this.callbacks.onModeChanged?.(mode);
+        }
+      });
+    });
+
+    // 3b. Graphics Quality Selector
+    const qualityBtns = document.querySelectorAll('#quality-selector .lobby-btn');
+    qualityBtns.forEach((btn) => {
+      const btnQuality = btn.getAttribute('data-quality') as GraphicsQuality | null;
+      btn.classList.toggle('active', btnQuality === settingsStore.settings.graphicsQuality);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        qualityBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const q = btn.getAttribute('data-quality') as GraphicsQuality | null;
+        if (q) {
+          settingsStore.update('graphicsQuality', q);
+          this.callbacks.onQualityChanged?.(q);
         }
       });
     });

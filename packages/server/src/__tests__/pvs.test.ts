@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import { GameRoom } from '../GameRoom.js';
-import { ClientPacket, ServerPacket } from '@garam/shared';
+import { ClientPacket, ServerPacket, SPAWN_POINTS } from '@garam/shared';
 import type { WebSocket } from 'ws';
 
 class MockWebSocket extends EventEmitter {
@@ -59,7 +59,7 @@ describe('PVS (Potentially Visible Set) Anti-Wallhack Filtering', () => {
     // should be culled by PVS
     const distantEnemies = latestSnap.players.filter((p: any) => {
       if (p.team === 'Vanguard') return false;
-      const dist = Math.hypot(p.x - (-32), p.z - (-30));
+      const dist = Math.hypot(p.x - SPAWN_POINTS.VANGUARD_CT.x, p.z - SPAWN_POINTS.VANGUARD_CT.z);
       return dist > 45;
     });
 

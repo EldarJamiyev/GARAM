@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { GraphicsQuality, QualityTier } from './SettingsStore.js';
+
+const TIER_LADDER: QualityTier[] = ['POTATO', 'LOW', 'MEDIUM', 'HIGH'];
 
 export class PerfMonitor {
   public isVisible = false;
@@ -10,13 +13,24 @@ export class PerfMonitor {
   private frameTimes: number[] = [];
   private readonly MAX_FRAMES = 120;
   private lastUpdateTime = 0;
-  private frameCount = 0;
   private currentFps = 60;
   private onePercentLow = 60;
+  private p95FrameTimeMs = 16.6;
   private avgFrameTimeMs = 16.6;
 
-  constructor(renderer: THREE.WebGLRenderer) {
+  // Adaptive quality governor state (AUTO mode)
+  private qualitySetting: GraphicsQuality = 'AUTO';
+  private activeTier: QualityTier = 'HIGH';
+  private activeDpr = 1.0;
+  private slowAccumSec = 0;
+  private fastAccumSec = 0;
+  private isSoftwareGl = false;
+  public onAdaptiveTierChanged?: (tier: QualityTier) => void;
+
+  constructor(renderer: THREE.WebGLRenderer, isSoftwareGl = false) {
     this.renderer = renderer;
+    this.isSoftwareGl = isSoftwareGl;
+    this.activeTier = isSoftwareGl ? 'LOW' : 'HIGH';
 
     this.container = document.createElement('div');
     this.container.id = 'garam-perf-monitor';
@@ -48,9 +62,20 @@ export class PerfMonitor {
     });
   }
 
+  public setQualityState(setting: GraphicsQuality, activeTier: QualityTier, dpr: number): void {
+    this.qualitySetting = setting;
+    this.activeTier = activeTier;
+    this.activeDpr = dpr;
+    this.slowAccumSec = 0;
+    this.fastAccumSec = 0;
+  }
+
   public toggle(): void {
     this.isVisible = !this.isVisible;
     this.container.style.display = this.isVisible ? 'block' : 'none';
+    if (this.isVisible) {
+      this.renderText(-1, 0, 0);
+    }
   }
 
   public recordFrame(dtMs: number, rttPingMs = -1, rxKbps = 0, txKbps = 0): void {
@@ -59,19 +84,45 @@ export class PerfMonitor {
       this.frameTimes.shift();
     }
 
-    this.frameCount++;
     const now = performance.now();
-    if (now - this.lastUpdateTime >= 250) {
-      // Calculate average FPS
+    const elapsedMs = now - this.lastUpdateTime;
+    if (elapsedMs >= 250) {
       const totalTime = this.frameTimes.reduce((acc, t) => acc + t, 0);
       this.avgFrameTimeMs = totalTime / this.frameTimes.length;
       this.currentFps = Math.round(1000 / Math.max(1, this.avgFrameTimeMs));
 
-      // Calculate 1% Low FPS
       const sorted = [...this.frameTimes].sort((a, b) => b - a);
       const lowIndex = Math.max(0, Math.floor(sorted.length * 0.01));
+      const p95Index = Math.max(0, Math.floor(sorted.length * 0.05));
       const slowestFrame = sorted[lowIndex] || this.avgFrameTimeMs;
+      this.p95FrameTimeMs = sorted[p95Index] || this.avgFrameTimeMs;
       this.onePercentLow = Math.round(1000 / Math.max(1, slowestFrame));
+
+      // Adaptive p95 frame-time governor when user selected AUTO quality (hardware GPU only)
+      if (this.qualitySetting === 'AUTO' && !this.isSoftwareGl && this.frameTimes.length >= 30) {
+        const dtSec = Math.min(0.5, elapsedMs / 1000);
+        const curIdx = TIER_LADDER.indexOf(this.activeTier);
+        if (this.p95FrameTimeMs > 22.0 && curIdx > 0) {
+          this.slowAccumSec += dtSec;
+          this.fastAccumSec = 0;
+          if (this.slowAccumSec >= 3.0) {
+            this.slowAccumSec = 0;
+            this.activeTier = TIER_LADDER[curIdx - 1];
+            this.onAdaptiveTierChanged?.(this.activeTier);
+          }
+        } else if (this.p95FrameTimeMs < 12.0 && curIdx < TIER_LADDER.length - 1) {
+          this.fastAccumSec += dtSec;
+          this.slowAccumSec = 0;
+          if (this.fastAccumSec >= 8.0) {
+            this.fastAccumSec = 0;
+            this.activeTier = TIER_LADDER[curIdx + 1];
+            this.onAdaptiveTierChanged?.(this.activeTier);
+          }
+        } else {
+          this.slowAccumSec = Math.max(0, this.slowAccumSec - dtSec * 0.5);
+          this.fastAccumSec = Math.max(0, this.fastAccumSec - dtSec * 0.5);
+        }
+      }
 
       this.lastUpdateTime = now;
 
@@ -93,12 +144,16 @@ export class PerfMonitor {
     const netBandwidth = rttPingMs >= 0
       ? `RX <span style="color: #00ff88;">${rxKbps.toFixed(1)} kbps</span> | TX <span style="color: #3b9eff;">${txKbps.toFixed(1)} kbps</span>`
       : 'LOCAL LOOPBACK';
+    const qualityLabel =
+      this.qualitySetting === 'AUTO'
+        ? `AUTO -> ${this.activeTier} (DPR ${this.activeDpr.toFixed(2)})`
+        : `${this.activeTier} (DPR ${this.activeDpr.toFixed(2)})`;
 
     this.container.innerHTML = `
       <div style="color: ${fpsColor}; font-size: 13px; margin-bottom: 2px;">
-        ${this.currentFps} FPS <span style="font-size: 10px; color: #8892a0;">(${this.avgFrameTimeMs.toFixed(1)}ms • 1% LOW: ${this.onePercentLow} FPS)</span>
+        ${this.currentFps} FPS <span style="font-size: 10px; color: #8892a0;">(${this.avgFrameTimeMs.toFixed(1)}ms • p95: ${this.p95FrameTimeMs.toFixed(1)}ms • 1% LOW: ${this.onePercentLow})</span>
       </div>
-      <div style="color: #3b9eff; letter-spacing: 0.5px;">TICK: 128Hz FIXED KINEMATICS</div>
+      <div style="color: #3b9eff; letter-spacing: 0.5px;">TICK: 128Hz FIXED | QUALITY: ${qualityLabel}</div>
       <div style="color: #cbd5e1;">DRAW CALLS: ${calls} | TRIS: ${triangles.toLocaleString()}</div>
       <div style="color: #cbd5e1;">GEOMETRIES: ${geometries} | TEXTURES: ${textures}</div>
       <div style="color: #cbd5e1;">BANDWIDTH: ${netBandwidth}</div>

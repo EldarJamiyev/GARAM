@@ -25,7 +25,7 @@ import { SpectatorManager } from './match/SpectatorManager.js';
 import { UtilityManager } from './utility/UtilityManager.js';
 import { RadarRenderer } from './ui/RadarRenderer.js';
 import { BotAISystem } from './match/BotAISystem.js';
-import { settingsStore } from './core/SettingsStore.js';
+import { settingsStore, GraphicsQuality, QualityTier } from './core/SettingsStore.js';
 import { NetworkClient } from './net/NetworkClient.js';
 import { PerfMonitor } from './core/PerfMonitor.js';
 import {
@@ -80,7 +80,17 @@ export class GaramGame {
     const effects = new EffectsManager(this.sceneManager.worldScene, this.sceneManager.worldCamera);
     const droppedWeapons = new DroppedWeaponManager(this.sceneManager.worldScene);
     const radar = new RadarRenderer();
-    this.perfMonitor = new PerfMonitor(this.renderer);
+    this.perfMonitor = new PerfMonitor(this.renderer, this.sceneManager.isSoftwareGl);
+    const applyQuality = (q: GraphicsQuality) => {
+      const tier: QualityTier = q === 'AUTO' ? (this.sceneManager.isSoftwareGl ? 'LOW' : 'HIGH') : q;
+      this.sceneManager.applyQualityTier(tier);
+      this.perfMonitor.setQualityState(q, this.sceneManager.activeQualityTier, this.sceneManager.currentDpr);
+    };
+    this.perfMonitor.onAdaptiveTierChanged = (tier) => {
+      this.sceneManager.applyQualityTier(tier);
+      this.perfMonitor.setQualityState(settingsStore.settings.graphicsQuality, tier, this.sceneManager.currentDpr);
+    };
+    applyQuality(settingsStore.settings.graphicsQuality);
     const combatReport = new CombatReportManager();
     const spectator = new SpectatorManager();
     const inventory = new InventoryManager();
@@ -147,6 +157,7 @@ export class GaramGame {
       isInteracting: { value: false },
       cameraPunchPitch: { value: 0 },
       syncActiveWeapon: () => this.syncActiveWeapon(),
+      applyGraphicsQuality: applyQuality,
     };
     this.ctx = ctxRef;
 

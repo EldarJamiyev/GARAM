@@ -4,6 +4,8 @@ import { AssetManager } from './AssetManager.js';
 import { PostProcessPipeline } from './PostProcessPipeline.js';
 import { ViewmodelLighting } from './ViewmodelLighting.js';
 
+import { QualityTier } from '../core/SettingsStore.js';
+
 export class SceneManager {
   public worldScene: THREE.Scene;
   public worldCamera: THREE.PerspectiveCamera;
@@ -19,6 +21,8 @@ export class SceneManager {
   private envRenderTarget: THREE.WebGLRenderTarget | null = null;
   private renderer: THREE.WebGLRenderer;
   public isSoftwareGl = false;
+  public activeQualityTier: QualityTier = 'HIGH';
+  public currentDpr = 1;
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
@@ -380,6 +384,53 @@ export class SceneManager {
     if (currentZone) {
       this.viewmodelLighting.update(dt, currentZone);
     }
+  }
+
+  public applyQualityTier(tier: QualityTier): void {
+    const effectiveTier: QualityTier = this.isSoftwareGl ? 'LOW' : tier;
+    this.activeQualityTier = effectiveTier;
+
+    const nativeDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    let dpr = 1;
+    let shadowsEnabled = false;
+    let shadowSize = 1024;
+
+    switch (effectiveTier) {
+      case 'POTATO':
+        dpr = 0.75;
+        shadowsEnabled = false;
+        shadowSize = 512;
+        break;
+      case 'LOW':
+        dpr = 1.0;
+        shadowsEnabled = !this.isSoftwareGl;
+        shadowSize = 1024;
+        break;
+      case 'MEDIUM':
+        dpr = Math.min(nativeDpr, 1.35);
+        shadowsEnabled = !this.isSoftwareGl;
+        shadowSize = 1024;
+        break;
+      case 'HIGH':
+      default:
+        dpr = Math.min(nativeDpr, 2.0);
+        shadowsEnabled = !this.isSoftwareGl;
+        shadowSize = 2048;
+        break;
+    }
+
+    this.currentDpr = dpr;
+    this.renderer.setPixelRatio(dpr);
+    this.renderer.shadowMap.enabled = shadowsEnabled;
+    this.sunLight.castShadow = shadowsEnabled;
+    if (shadowsEnabled && this.sunLight.shadow.mapSize.width !== shadowSize) {
+      this.sunLight.shadow.mapSize.set(shadowSize, shadowSize);
+      if (this.sunLight.shadow.map) {
+        this.sunLight.shadow.map.dispose();
+        this.sunLight.shadow.map = null;
+      }
+    }
+    this.postProcess.setQualityTier(effectiveTier);
   }
 
   public onResize(w: number, h: number): void {

@@ -15,7 +15,7 @@ export interface SurfaceMaterialProps {
 
 export const SURFACE_MATERIALS: Record<SurfaceMaterial, SurfaceMaterialProps> = {
   CONCRETE: { mu: 0.0, cost: 999, maxThickness: 0.0, isImpenetrable: true },
-  WOOD_THIN: { mu: 0.75, cost: 14, maxThickness: 2.2, isImpenetrable: false },
+  WOOD_THIN: { mu: 0.75, cost: 10, maxThickness: 2.2, isImpenetrable: false },
   DRYWALL: { mu: 0.70, cost: 18, maxThickness: 1.5, isImpenetrable: false },
   METAL_SHEET: { mu: 0.45, cost: 36, maxThickness: 1.2, isImpenetrable: false },
 };
@@ -227,8 +227,9 @@ export const CS_OFFICE_BLOCKS: MapBlockCollider[] = [
   { id: 'paper_stack_center', minX: -19.2, maxX: -16.8, minY: F, maxY: F + 1.6, minZ: 3.8, maxZ: 6.4, material: 'WOOD_THIN', theme: 'wood' },
   { id: 'paper_cubicle_wall', minX: -11.2, maxX: -10.5, minY: F, maxY: F + 1.75, minZ: 7.5, maxZ: 11.2, material: 'DRYWALL', theme: 'drywall' },
 
-  // Main Hall Central Office Island Desk & Soda Vending Machine
+  // Main Hall Central Office Island Desk, Structural Sightline Pillar & Soda Vending Machine
   { id: 'main_hall_island', minX: 1.0, maxX: 4.8, minY: F, maxY: F + 1.1, minZ: 8.5, maxZ: 10.6, material: 'WOOD_THIN', theme: 'wood' },
+  { id: 'main_hall_pillar', minX: 0.6, maxX: 4.8, minY: F, maxY: WALL_TOP, minZ: 9.2, maxZ: 10.0, material: 'CONCRETE', theme: 'drywall' },
   { id: 'main_hall_vending', minX: -5.8, maxX: -4.0, minY: F, maxY: F + 2.1, minZ: 16.2, maxZ: 18.2, material: 'METAL_SHEET', theme: 'metal' },
 
   // Bombsite A (Projector / Conference Room) Conference Table & Metal Filing Cabinets
