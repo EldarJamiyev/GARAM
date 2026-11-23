@@ -36,7 +36,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 720,
     teamwork: 90,
     preferredRole: 'entry',
-    weaponPreferences: ['garam-47', 'vanguard-m4', 'desert-eagle'],
+    weaponPreferences: ['garam-47', 'm4a4', 'vanguard-m4', 'mp9', 'usp-s'],
     tacticalPatienceSec: 3.5,
   },
   'steel': {
@@ -51,7 +51,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 540,
     teamwork: 96,
     preferredRole: 'anchor',
-    weaponPreferences: ['vanguard-m4', 'garam-47', 'desert-eagle'],
+    weaponPreferences: ['m4a4', 'vanguard-m4', 'mp9', 'usp-s'],
     tacticalPatienceSec: 6.0,
   },
   'hawk': {
@@ -66,7 +66,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 640,
     teamwork: 85,
     preferredRole: 'rotator',
-    weaponPreferences: ['sovereign-awp', 'desert-eagle', 'vanguard-m4'],
+    weaponPreferences: ['sovereign-awp', 'usp-s', 'desert-eagle', 'vanguard-m4'],
     tacticalPatienceSec: 7.5,
   },
   'aegis': {
@@ -81,7 +81,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 420,
     teamwork: 92,
     preferredRole: 'support',
-    weaponPreferences: ['vanguard-m4', 'desert-eagle'],
+    weaponPreferences: ['vanguard-m4', 'm4a4', 'mp9', 'usp-s'],
     tacticalPatienceSec: 4.5,
   },
   'sentinel': {
@@ -96,7 +96,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 400,
     teamwork: 88,
     preferredRole: 'anchor',
-    weaponPreferences: ['vanguard-m4', 'garam-47'],
+    weaponPreferences: ['m4a4', 'vanguard-m4', 'mp9', 'usp-s'],
     tacticalPatienceSec: 5.0,
   },
 
@@ -113,7 +113,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 720,
     teamwork: 70,
     preferredRole: 'entry',
-    weaponPreferences: ['sovereign-awp', 'desert-eagle', 'garam-47'],
+    weaponPreferences: ['sovereign-awp', 'garam-47', 'desert-eagle', 'glock-18'],
     tacticalPatienceSec: 4.0,
   },
   'ghost': {
@@ -128,7 +128,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 580,
     teamwork: 40,
     preferredRole: 'lurker',
-    weaponPreferences: ['garam-47', 'desert-eagle'],
+    weaponPreferences: ['garam-47', 'mp9', 'glock-18', 'desert-eagle'],
     tacticalPatienceSec: 6.5,
   },
   'razor': {
@@ -143,7 +143,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 480,
     teamwork: 65,
     preferredRole: 'entry',
-    weaponPreferences: ['garam-47', 'desert-eagle'],
+    weaponPreferences: ['garam-47', 'mp9', 'glock-18'],
     tacticalPatienceSec: 2.5,
   },
   'titan': {
@@ -158,7 +158,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 410,
     teamwork: 88,
     preferredRole: 'support',
-    weaponPreferences: ['garam-47', 'vanguard-m4'],
+    weaponPreferences: ['garam-47', 'mp9', 'glock-18'],
     tacticalPatienceSec: 4.0,
   },
   'nomad': {
@@ -173,7 +173,7 @@ export const BOT_ARCHETYPES: Record<string, BotArchetype> = {
     slewRateDegPerSec: 280,
     teamwork: 60,
     preferredRole: 'rotator',
-    weaponPreferences: ['garam-47', 'desert-eagle'],
+    weaponPreferences: ['garam-47', 'mp9', 'glock-18'],
     tacticalPatienceSec: 3.0,
   },
 };
@@ -209,7 +209,7 @@ export function resolveBotArchetype(
     slewRateDegPerSec: 400,
     teamwork: isVanguard ? 85 : 70,
     preferredRole: isVanguard ? 'anchor' : 'entry',
-    weaponPreferences: isVanguard ? ['vanguard-m4', 'garam-47'] : ['garam-47', 'vanguard-m4'],
+    weaponPreferences: isVanguard ? ['m4a4', 'vanguard-m4', 'mp9', 'usp-s'] : ['garam-47', 'mp9', 'glock-18'],
     tacticalPatienceSec: 4.0,
   };
 

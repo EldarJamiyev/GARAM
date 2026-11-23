@@ -372,11 +372,12 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 820px;
+      width: 960px;
+      max-width: 94vw;
       background: rgba(12, 16, 22, 0.98);
       border: 2px solid #3b9eff;
       border-radius: 8px;
-      padding: 28px;
+      padding: 24px 26px;
       display: none;
       box-shadow: 0 0 50px rgba(59, 158, 255, 0.4);
       z-index: 150;
@@ -387,32 +388,50 @@
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-      padding-bottom: 14px;
+      padding-bottom: 12px;
     }
     .buy-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 14px;
-      margin-top: 20px;
+      margin-top: 16px;
+      align-items: start;
+    }
+    .buy-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .buy-col-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #8892a0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 5px;
+      margin-bottom: 2px;
+      text-transform: uppercase;
     }
     .buy-card {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.14);
-      padding: 14px;
+      padding: 10px 12px;
       border-radius: 6px;
       cursor: pointer;
       text-align: left;
       font-family: inherit;
-      transition: all 0.2s ease;
+      transition: all 0.16s ease;
     }
     .buy-card:hover {
       background: rgba(59, 158, 255, 0.22);
       border-color: #3b9eff;
       transform: translateY(-2px);
     }
-    .buy-key { font-size: 11px; font-weight: 800; color: #3b9eff; margin-bottom: 4px; }
-    .buy-name { font-size: 15px; font-weight: 700; color: #fff; }
-    .buy-price { font-size: 13px; font-weight: 700; color: #00ff88; margin-top: 4px; }
+    .buy-key { font-size: 10px; font-weight: 800; color: #3b9eff; margin-bottom: 2px; }
+    .buy-name { font-size: 14px; font-weight: 700; color: #fff; }
+    .buy-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 3px; }
+    .buy-price { font-size: 12px; font-weight: 700; color: #00ff88; }
+    .buy-stat { font-size: 10px; color: #94a3b8; }
     .buy-close-btn {
       padding: 6px 14px;
       background: rgba(255, 255, 255, 0.08);
@@ -736,46 +755,101 @@
       </div>
     </div>
     <div class="buy-grid">
-      <button type="button" class="buy-card" data-buy="garam-47" data-key="1">
-        <div class="buy-key">[1] RIFLE</div>
-        <div class="buy-name">Garam-47</div>
-        <div class="buy-price">$2,700</div>
-      </button>
-      <button type="button" class="buy-card" data-buy="vanguard-m4" data-key="2">
-        <div class="buy-key">[2] RIFLE</div>
-        <div class="buy-name">Vanguard M4A1-S</div>
-        <div class="buy-price">$2,750</div>
-      </button>
-      <button type="button" class="buy-card" data-buy="sovereign-awp" data-key="3">
-        <div class="buy-key">[3] SNIPER</div>
-        <div class="buy-name">Sovereign AWP</div>
-        <div class="buy-price">$4,750</div>
-      </button>
-      <button type="button" class="buy-card" data-buy="desert-eagle" data-key="4">
-        <div class="buy-key">[4] PISTOL</div>
-        <div class="buy-name">Desert Eagle</div>
-        <div class="buy-price">$700</div>
-      </button>
-      <button type="button" class="buy-card" data-buy="kevlar" data-key="5">
-        <div class="buy-key">[5] GEAR</div>
-        <div class="buy-name">Kevlar Vest</div>
-        <div class="buy-price">$650</div>
-      </button>
-      <button type="button" class="buy-card" data-buy="kevlar-helmet" data-key="6">
-        <div class="buy-key">[6] GEAR</div>
-        <div class="buy-name">Kevlar + Helmet</div>
-        <div class="buy-price">$1,000</div>
-      </button>
-      <button type="button" class="buy-card" data-buy="defuse-kit" data-key="7">
-        <div class="buy-key">[7] GEAR</div>
-        <div class="buy-name">Defuse Kit</div>
-        <div class="buy-price">$300</div>
-      </button>
-      <button type="button" class="buy-card" data-buy="smoke-grenade" data-key="8">
-        <div class="buy-key">[8] UTILITY</div>
-        <div class="buy-name">Smoke Grenade</div>
-        <div class="buy-price">$300</div>
-      </button>
+      <!-- Column 1: PISTOLS -->
+      <div class="buy-col">
+        <div class="buy-col-title">PISTOLS</div>
+        <button type="button" class="buy-card" data-buy="usp-s" data-key="1">
+          <div class="buy-key">[1] SUPPRESSED</div>
+          <div class="buy-name">USP-S</div>
+          <div class="buy-meta"><span class="buy-price">$200</span><span class="buy-stat">12/24 • SILENCED</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="glock-18" data-key="2">
+          <div class="buy-key">[2] HIGH-CAP 9MM</div>
+          <div class="buy-name">Glock-18</div>
+          <div class="buy-meta"><span class="buy-price">$200</span><span class="buy-stat">20/120 • 400 RPM</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="desert-eagle" data-key="3">
+          <div class="buy-key">[3] HEAVY .50 AE</div>
+          <div class="buy-name">Desert Eagle</div>
+          <div class="buy-meta"><span class="buy-price">$700</span><span class="buy-stat">7/35 • 1-TAP HS</span></div>
+        </button>
+      </div>
+
+      <!-- Column 2: MID-TIER / SMG -->
+      <div class="buy-col">
+        <div class="buy-col-title">MID-TIER / SMG</div>
+        <button type="button" class="buy-card" data-buy="mp9" data-key="4">
+          <div class="buy-key">[4] COMPACT SMG</div>
+          <div class="buy-name">MP9</div>
+          <div class="buy-meta"><span class="buy-price">$1,250</span><span class="buy-stat">857 RPM • $600 KILL</span></div>
+        </button>
+        <div class="buy-col-title" style="margin-top: 8px;">GRENADES</div>
+        <button type="button" class="buy-card" data-buy="smoke-grenade">
+          <div class="buy-key">UTILITY</div>
+          <div class="buy-name">Smoke Grenade</div>
+          <div class="buy-meta"><span class="buy-price">$300</span><span class="buy-stat">LOS OCCLUSION</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="flashbang">
+          <div class="buy-key">UTILITY</div>
+          <div class="buy-name">Flashbang</div>
+          <div class="buy-meta"><span class="buy-price">$200</span><span class="buy-stat">TACTICAL BLIND</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="he-grenade">
+          <div class="buy-key">UTILITY</div>
+          <div class="buy-name">HE Grenade</div>
+          <div class="buy-meta"><span class="buy-price">$300</span><span class="buy-stat">98 MAX DMG</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="molotov">
+          <div class="buy-key">UTILITY</div>
+          <div class="buy-name">Molotov</div>
+          <div class="buy-meta"><span class="buy-price">$400</span><span class="buy-stat">AREA DENIAL</span></div>
+        </button>
+      </div>
+
+      <!-- Column 3: RIFLES & SNIPER -->
+      <div class="buy-col">
+        <div class="buy-col-title">RIFLES &amp; SNIPER</div>
+        <button type="button" class="buy-card" data-buy="garam-47" data-key="5">
+          <div class="buy-key">[5] ASSAULT RIFLE</div>
+          <div class="buy-name">Garam-47</div>
+          <div class="buy-meta"><span class="buy-price">$2,700</span><span class="buy-stat">30/90 • 1-TAP HS</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="vanguard-m4" data-key="6">
+          <div class="buy-key">[6] SILENCED RIFLE</div>
+          <div class="buy-name">Vanguard M4A1-S</div>
+          <div class="buy-meta"><span class="buy-price">$2,750</span><span class="buy-stat">25/75 • LASER</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="m4a4" data-key="7">
+          <div class="buy-key">[7] CT RIFLE</div>
+          <div class="buy-name">M4A4</div>
+          <div class="buy-meta"><span class="buy-price">$3,100</span><span class="buy-stat">30/90 • 666 RPM</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="sovereign-awp" data-key="8">
+          <div class="buy-key">[8] BOLT SNIPER</div>
+          <div class="buy-name">Sovereign AWP</div>
+          <div class="buy-meta"><span class="buy-price">$4,750</span><span class="buy-stat">5/30 • 115 DMG</span></div>
+        </button>
+      </div>
+
+      <!-- Column 4: GEAR & ARMOR -->
+      <div class="buy-col">
+        <div class="buy-col-title">GEAR &amp; ARMOR</div>
+        <button type="button" class="buy-card" data-buy="kevlar">
+          <div class="buy-key">ARMOR</div>
+          <div class="buy-name">Kevlar Vest</div>
+          <div class="buy-meta"><span class="buy-price">$650</span><span class="buy-stat">100 BODY ARMOR</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="kevlar-helmet" data-key="9">
+          <div class="buy-key">[9] FULL ARMOR</div>
+          <div class="buy-name">Kevlar + Helmet</div>
+          <div class="buy-meta"><span class="buy-price">$1,000</span><span class="buy-stat">HEAD + BODY</span></div>
+        </button>
+        <button type="button" class="buy-card" data-buy="defuse-kit">
+          <div class="buy-key">DEFENDER GEAR</div>
+          <div class="buy-name">Defuse Kit</div>
+          <div class="buy-meta"><span class="buy-price">$300</span><span class="buy-stat">5s FAST DEFUSE</span></div>
+        </button>
+      </div>
     </div>
   </div>
 
@@ -806,6 +880,16 @@
       <div class="lobby-row" id="mode-selector">
         <button class="lobby-btn active" data-mode="offline">OFFLINE 5V5 PRACTICE</button>
         <button class="lobby-btn" data-mode="multiplayer">ONLINE MULTIPLAYER (64-TICK)</button>
+      </div>
+
+      <!-- Graphics Quality Preset -->
+      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">GRAPHICS QUALITY</div>
+      <div class="lobby-row" id="quality-selector">
+        <button class="lobby-btn active" data-quality="AUTO">AUTO</button>
+        <button class="lobby-btn" data-quality="POTATO">POTATO</button>
+        <button class="lobby-btn" data-quality="LOW">LOW</button>
+        <button class="lobby-btn" data-quality="MEDIUM">MEDIUM</button>
+        <button class="lobby-btn" data-quality="HIGH">HIGH</button>
       </div>
 
       <!-- Multiplayer Config Panel (Shown when Multiplayer selected) -->

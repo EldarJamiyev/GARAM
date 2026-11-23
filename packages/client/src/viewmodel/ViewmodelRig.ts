@@ -52,7 +52,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.032, -0.895, -0.095],
+    armsOffset: [0.058, -0.882, -0.135],
     muzzleLocalPos: [0.008, 0.058, -0.565],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
@@ -79,13 +79,67 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.028, -0.895, -0.095],
+    armsOffset: [0.056, -0.882, -0.135],
     muzzleLocalPos: [0.007, 0.081, -0.6525],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
     leftHandAnchorLocal: [0.002, 0.028, -0.24],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     leftFingerCurl: 0.9,
+    clips: {
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Fire',
+      reload: 'CS2_Reload',
+      reloadFull: 'CS2_Reload',
+      inspect: 'CS2_Inspect',
+    },
+  },
+  'm4a4': {
+    socketBone: 'weapon_hand_r_5',
+    modelPath: '/models/m4a4.glb',
+    targetLength: 0.76,
+    anchorBoneName: 'weapon_hand_r',
+    rotationEuler: [0, Math.PI, 0],
+    localPos: [0, 0, 0],
+    localRotEuler: [-Math.PI / 2, 0, Math.PI],
+    localScale: 1.85,
+    armsScale: 1.0,
+    armsOffset: [0.056, -0.882, -0.135],
+    muzzleLocalPos: [0.006, 0.075, -0.58],
+    requiresPBodyRest: false,
+    leftArmPoseMode: 'rifle',
+    leftHandAnchorLocal: [0.002, 0.026, -0.24],
+    leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
+    leftFingerCurl: 0.9,
+    clips: {
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Fire',
+      reload: 'CS2_Reload',
+      reloadFull: 'CS2_Reload',
+      inspect: 'CS2_Inspect',
+    },
+  },
+  'mp9': {
+    socketBone: 'weapon_hand_r_5',
+    modelPath: '/models/mp9.glb',
+    targetLength: 0.44,
+    anchorBoneName: 'weapon_hand_r',
+    rotationEuler: [0, Math.PI, 0],
+    localPos: [0, 0, 0],
+    localRotEuler: [-Math.PI / 2, 0, Math.PI],
+    localScale: 1.85,
+    armsScale: 1.0,
+    armsOffset: [0.054, -0.880, -0.135],
+    muzzleLocalPos: [0.004, 0.055, -0.34],
+    requiresPBodyRest: false,
+    leftArmPoseMode: 'rifle',
+    leftHandAnchorLocal: [0.0, -0.015, -0.16],
+    leftHandRelRotEuler: [0.55, 0.72, -1.95],
+    leftFingerCurl: 0.92,
     clips: {
       idle: 'CS2_Idle',
       walk: 'CS2_Walk',
@@ -106,7 +160,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.80,
     armsScale: 1.0,
-    armsOffset: [0.028, -0.922, -0.098],
+    armsOffset: [0.058, -0.892, -0.138],
     muzzleLocalPos: [0.0114, 0.114, -0.8357],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
@@ -133,8 +187,62 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.024, -0.885, -0.095],
+    armsOffset: [0.048, -0.880, -0.135],
     muzzleLocalPos: [0.0001, 0.064, -0.2348],
+    requiresPBodyRest: false,
+    leftArmPoseMode: 'pistol',
+    leftHandAnchorLocal: [-0.014, -0.018, 0.002],
+    leftHandRelRotEuler: [0.25, 0.12, -0.45],
+    leftFingerCurl: 0.95,
+    clips: {
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Fire',
+      reload: 'CS2_Reload',
+      reloadFull: 'CS2_Reload',
+      inspect: 'CS2_Inspect',
+    },
+  },
+  'usp-s': {
+    socketBone: 'weapon_hand_r_5',
+    modelPath: '/models/usps.glb',
+    targetLength: 0.34,
+    anchorBoneName: 'weapon_hand_r',
+    rotationEuler: [0, Math.PI, 0],
+    localPos: [0, 0, 0],
+    localRotEuler: [-Math.PI / 2, 0, Math.PI],
+    localScale: 1.85,
+    armsScale: 1.0,
+    armsOffset: [0.048, -0.880, -0.135],
+    muzzleLocalPos: [0.0, 0.062, -0.32],
+    requiresPBodyRest: false,
+    leftArmPoseMode: 'pistol',
+    leftHandAnchorLocal: [-0.014, -0.018, 0.002],
+    leftHandRelRotEuler: [0.25, 0.12, -0.45],
+    leftFingerCurl: 0.95,
+    clips: {
+      idle: 'CS2_Idle',
+      walk: 'CS2_Walk',
+      draw: 'CS2_Draw',
+      fire: 'CS2_Fire',
+      reload: 'CS2_Reload',
+      reloadFull: 'CS2_Reload',
+      inspect: 'CS2_Inspect',
+    },
+  },
+  'glock-18': {
+    socketBone: 'weapon_hand_r_5',
+    modelPath: '/models/glock18.glb',
+    targetLength: 0.21,
+    anchorBoneName: 'weapon_hand_r',
+    rotationEuler: [0, Math.PI, 0],
+    localPos: [0, 0, 0],
+    localRotEuler: [-Math.PI / 2, 0, Math.PI],
+    localScale: 1.85,
+    armsScale: 1.0,
+    armsOffset: [0.048, -0.880, -0.135],
+    muzzleLocalPos: [0.0, 0.060, -0.195],
     requiresPBodyRest: false,
     leftArmPoseMode: 'pistol',
     leftHandAnchorLocal: [-0.014, -0.018, 0.002],
@@ -155,11 +263,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     modelPath: '/models/karambit.glb',
     targetLength: 0.22,
     rotationEuler: [0, 0, 0],
-    localPos: [-0.04, -0.10, 0.02],
-    localRotEuler: [-Math.PI / 2 + 0.18, -0.38, 0.08],
-    localScale: 2.05,
+    localPos: [-0.015, -0.055, 0.035],
+    localRotEuler: [-Math.PI / 2 + 0.28, 0.32, Math.PI - 0.42],
+    localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.025, -0.880, -0.095],
+    armsOffset: [0.052, -0.880, -0.135],
     muzzleLocalPos: [0, -0.0427, -0.115],
     requiresPBodyRest: false,
     leftArmPoseMode: 'karambit',
@@ -235,8 +343,8 @@ export function buildCS2AnimationClips(
   }
 
   if (equip) {
-    // Crisp CS2 tactical raise into firing stance (1.93s .. 3.10s = frames 58..93 at 30fps)
-    const drawClip = THREE.AnimationUtils.subclip(equip, 'CS2_Draw', 58, 93, 30);
+    // Snappy CS2 tactical raise into firing stance (2.53s .. 3.10s = frames 76..93 at 30fps)
+    const drawClip = THREE.AnimationUtils.subclip(equip, 'CS2_Draw', 76, 93, 30);
     out.push(drawClip);
   }
 
@@ -256,37 +364,47 @@ export function buildCS2AnimationClips(
 }
 
 export interface BoneTransformSnapshot {
+  node: THREE.Object3D;
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
   scale: THREE.Vector3;
 }
 
-export function captureBindPose(root: THREE.Object3D): Map<string, BoneTransformSnapshot> {
-  const map = new Map<string, BoneTransformSnapshot>();
-  root.traverse((node) => {
-    if (node.name) {
-      map.set(node.name, {
-        position: node.position.clone(),
-        quaternion: node.quaternion.clone(),
-        scale: node.scale.clone(),
-      });
+export function captureBindPose(root: THREE.Object3D): Map<THREE.Object3D, BoneTransformSnapshot> {
+  const map = new Map<THREE.Object3D, BoneTransformSnapshot>();
+  const visit = (node: THREE.Object3D) => {
+    if (node.userData?.isWeaponAttachment) return;
+    map.set(node, {
+      node,
+      position: node.position.clone(),
+      quaternion: node.quaternion.clone(),
+      scale: node.scale.clone(),
+    });
+    for (let i = 0; i < node.children.length; i++) {
+      visit(node.children[i]);
     }
-  });
+  };
+  visit(root);
   return map;
 }
 
 export function restoreBindPose(
   root: THREE.Object3D,
-  snapshot: Map<string, BoneTransformSnapshot>
+  snapshot: Map<THREE.Object3D, BoneTransformSnapshot>
 ): void {
-  root.traverse((node) => {
-    const saved = snapshot.get(node.name);
+  const visit = (node: THREE.Object3D) => {
+    if (node.userData?.isWeaponAttachment) return;
+    const saved = snapshot.get(node);
     if (saved) {
       node.position.copy(saved.position);
       node.quaternion.copy(saved.quaternion);
       node.scale.copy(saved.scale);
     }
-  });
+    for (let i = 0; i < node.children.length; i++) {
+      visit(node.children[i]);
+    }
+  };
+  visit(root);
 }
 
 function mulQuatEuler(base: number[], rx: number, ry: number, rz: number): number[] {

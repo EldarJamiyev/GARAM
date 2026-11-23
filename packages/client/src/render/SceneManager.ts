@@ -39,9 +39,9 @@ export class SceneManager {
       this.isSoftwareGl ? 4 : renderer.capabilities.getMaxAnisotropy()
     );
 
-    // 1. World Scene & Camera with warm CS2 sunlit Mediterranean atmospheric perspective
+    // 1. World Scene & Camera with crisp CS_OFFICE winter daylight atmospheric perspective
     this.worldScene = new THREE.Scene();
-    this.worldScene.fog = new THREE.FogExp2(0xd8cbb8, 0.0042);
+    this.worldScene.fog = new THREE.FogExp2(0xd6e1ec, 0.0032);
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 600);
 
     // 2. Viewmodel Scene & Camera (Dual-pass at CS2 Pro 62 deg FOV, near 0.005m)
@@ -57,13 +57,13 @@ export class SceneManager {
       this.loadHdrEnvironment(renderer);
     }
 
-    // 4. Cinematic Golden-Afternoon Sun (azimuth ~40 deg, elevation ~38 deg) + Deep Shadow Contrast
-    this.hemiLight = new THREE.HemisphereLight(0x8dbde8, 0x6b5642, 0.68);
+    // 4. Crisp CS_OFFICE Winter Sun + Bright Sky Bounce GI
+    this.hemiLight = new THREE.HemisphereLight(0xc2d8f0, 0x707882, 0.92);
     this.worldScene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xfff0d4, 2.6);
-    this.sunLight.position.set(48, 56, 36);
-    this.sunLight.target.position.set(0, 2.1, 0);
+    this.sunLight = new THREE.DirectionalLight(0xfff6ea, 1.95);
+    this.sunLight.position.set(42, 58, -38);
+    this.sunLight.target.position.set(0, 1.4, 0);
     this.worldScene.add(this.sunLight.target);
     this.sunLight.castShadow = !this.isSoftwareGl;
     this.sunLight.shadow.mapSize.width = 2048;

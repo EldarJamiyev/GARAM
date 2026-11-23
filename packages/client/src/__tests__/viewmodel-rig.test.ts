@@ -233,7 +233,7 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     expect(resolveWeaponClipName('garam-47', 'reload')).toBe('CS2_Reload');
     expect(resolveWeaponClipName('sovereign-awp', 'inspect')).toBe('CS2_Inspect');
 
-    for (const id of ['garam-47', 'vanguard-m4', 'sovereign-awp', 'desert-eagle']) {
+    for (const id of ['garam-47', 'vanguard-m4', 'm4a4', 'mp9', 'sovereign-awp', 'desert-eagle', 'usp-s', 'glock-18']) {
       expect(WEAPON_SOCKET_CONFIGS[id].anchorBoneName).toBe('weapon_hand_r');
       expect(WEAPON_SOCKET_CONFIGS[id].socketBone).toBe('weapon_hand_r_5');
     }
@@ -288,8 +288,12 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     const physicalForendUnderside: Record<string, [number, number, number]> = {
       'garam-47': [0.000, -0.018, -0.235],
       'vanguard-m4': [0.002, 0.032, -0.245],
+      'm4a4': [0.002, 0.026, -0.240],
+      'mp9': [0.000, -0.015, -0.160],
       'sovereign-awp': [0.000, 0.022, -0.255],
       'desert-eagle': [-0.014, -0.018, 0.002],
+      'usp-s': [-0.014, -0.018, 0.002],
+      'glock-18': [-0.014, -0.018, 0.002],
     };
 
     for (const [weaponId, expectedPos] of Object.entries(physicalForendUnderside)) {
@@ -335,7 +339,7 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     });
   }
 
-  it('validates CS2 cs2_fps_arms.glb skinned mesh: 0 near-plane clips, coverage <= 24%, elbows ndcY < -0.50, and zero crosshair deadzone collision across all 5 weapons', async () => {
+  it('validates CS2 cs2_fps_arms.glb skinned mesh: 0 near-plane clips, coverage <= 24%, elbows ndcY < -0.50, and zero crosshair deadzone collision across all 9 weapons', async () => {
     const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
     const { buildCS2AnimationClips } = await import('../viewmodel/ViewmodelRig.js');
 
@@ -528,6 +532,41 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     const guardNdc = handL!.getWorldPosition(new THREE.Vector3()).project(camera);
     expect(guardNdc.y, 'Karambit left hand low guard NDC Y').toBeLessThan(-0.70);
     expect(guardNdc.x, 'Karambit left hand low guard NDC X').toBeLessThan(-0.30);
+  });
+
+  it('guarantees restoreBindPose never overwrites mounted weapon transforms with duplicate Sketchfab node names', async () => {
+    const { captureBindPose, restoreBindPose } = await import('../viewmodel/ViewmodelRig.js');
+
+    const armsRoot = new THREE.Group();
+    const armsScene = new THREE.Group();
+    armsScene.name = 'Sketchfab_Scene';
+    const weaponSocket = new THREE.Object3D();
+    weaponSocket.name = 'weapon_hand_r_5';
+    armsScene.add(weaponSocket);
+    armsRoot.add(armsScene);
+
+    const snapshot = captureBindPose(armsRoot);
+
+    // Mount a weapon sharing the exact same Sketchfab_Scene name with custom 180-deg flip & normalization scale
+    const holder = new THREE.Group();
+    holder.userData.isWeaponAttachment = true;
+    const weaponScene = new THREE.Group();
+    weaponScene.name = 'Sketchfab_Scene';
+    weaponScene.rotation.set(0, Math.PI, 0);
+    weaponScene.scale.setScalar(0.000603);
+    weaponScene.position.set(0.01, -0.02, 0.03);
+    holder.add(weaponScene);
+    weaponSocket.add(holder);
+
+    // Mutate arms socket, then restoreBindPose
+    weaponSocket.position.set(5, 5, 5);
+    restoreBindPose(armsRoot, snapshot);
+
+    // Arms socket is restored, while mounted weapon keeps exact rotation, scale, and position
+    expect(weaponSocket.position.length()).toBeCloseTo(0, 5);
+    expect(Math.abs(weaponScene.rotation.y)).toBeCloseTo(Math.PI, 4);
+    expect(weaponScene.scale.x).toBeCloseTo(0.000603, 6);
+    expect(weaponScene.position.z).toBeCloseTo(0.03, 5);
   });
 
   it('verifies firearm left palm centroid tracks weapon grip anchor within <= 0.015m eliminating detachment', () => {

@@ -2,11 +2,12 @@ import * as THREE from 'three';
 import {
   MapBlockCollider,
   BOMBSITES,
+  CS_OFFICE_BOUNDS,
   SmokeOccluder,
   SpatialGrid,
   hasLineOfSight,
 } from '@garam/shared';
-import { BotEntity } from '../maps/DeMeridianMap.js';
+import { BotEntity } from '../maps/CsOfficeMap.js';
 import { settingsStore } from '../core/SettingsStore.js';
 
 interface SpottedRecord {
@@ -27,8 +28,15 @@ export class RadarRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private size = 185;
-  private readonly MAP_SCALE = 2.8; // Pixels per meter tuned for CS2 ~88% radar coverage on DE_MERIDIAN
+  private readonly MAP_SCALE = 2.9; // Pixels per meter tuned for crisp CS_OFFICE coverage
   private spottedEnemies: Map<string, SpottedRecord> = new Map();
+  private bakedFloorCanvas: HTMLCanvasElement | null = null;
+  private bakeBounds = {
+    minX: CS_OFFICE_BOUNDS.minX - 2,
+    maxX: CS_OFFICE_BOUNDS.maxX + 2,
+    minZ: CS_OFFICE_BOUNDS.minZ - 2,
+    maxZ: CS_OFFICE_BOUNDS.maxZ + 2,
+  };
 
   constructor() {
     let el = document.getElementById('tactical-radar') as HTMLCanvasElement | null;
@@ -64,6 +72,78 @@ export class RadarRenderer {
     this.size = el.width;
   }
 
+  /**
+   * 1-frame orthographic top-down bake of CS_OFFICE floorplan at map boot (hiding ceiling/roof meshes
+   * & dynamic operator rigs so the minimap displays an exact architectural overview).
+   */
+  public bakeFromScene(renderer: THREE.WebGLRenderer, worldScene: THREE.Scene): void {
+    try {
+      const texSize = 512;
+      const { minX, maxX, minZ, maxZ } = this.bakeBounds;
+      const cx = (minX + maxX) * 0.5;
+      const cz = (minZ + maxZ) * 0.5;
+      const halfW = (maxX - minX) * 0.5;
+      const halfH = (maxZ - minZ) * 0.5;
+
+      const orthoCam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 1, 60);
+      orthoCam.position.set(cx, 32, cz);
+      orthoCam.up.set(0, 0, -1); // -Z (North / CT Courtyard) points UP on baked image
+      orthoCam.lookAt(cx, 0, cz);
+      orthoCam.updateMatrixWorld();
+
+      const hidden: THREE.Object3D[] = [];
+      worldScene.traverse((obj) => {
+        if (obj.visible && (obj.userData?.isOfficeRoof || obj.userData?.isOperatorRig)) {
+          obj.visible = false;
+          hidden.push(obj);
+        }
+      });
+
+      const rt = new THREE.WebGLRenderTarget(texSize, texSize, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+      });
+
+      const prevTarget = renderer.getRenderTarget();
+      const prevFog = worldScene.fog;
+      worldScene.fog = null;
+
+      renderer.setRenderTarget(rt);
+      renderer.clear();
+      renderer.render(worldScene, orthoCam);
+      renderer.setRenderTarget(prevTarget);
+      worldScene.fog = prevFog;
+
+      for (const obj of hidden) obj.visible = true;
+
+      const pixels = new Uint8Array(texSize * texSize * 4);
+      renderer.readRenderTargetPixels(rt, 0, 0, texSize, texSize, pixels);
+      rt.dispose();
+
+      const off = document.createElement('canvas');
+      off.width = texSize;
+      off.height = texSize;
+      const offCtx = off.getContext('2d');
+      if (!offCtx) return;
+
+      const img = offCtx.createImageData(texSize, texSize);
+      // Flip WebGL bottom-up rows to Canvas top-down
+      for (let y = 0; y < texSize; y++) {
+        const srcRow = (texSize - 1 - y) * texSize * 4;
+        const dstRow = y * texSize * 4;
+        for (let x = 0; x < texSize * 4; x++) {
+          img.data[dstRow + x] = pixels[srcRow + x];
+        }
+      }
+      offCtx.putImageData(img, 0, 0);
+      this.bakedFloorCanvas = off;
+    } catch {
+      // Fallback cleanly to crisp vector floorplan rendering
+      this.bakedFloorCanvas = null;
+    }
+  }
+
   public markEnemySpotted(botId: string, x: number, z: number): void {
     this.spottedEnemies.set(botId, { x, z, lastSeen: performance.now() });
   }
@@ -96,17 +176,9 @@ export class RadarRenderer {
     ctx.arc(half, half, half - 2, 0, Math.PI * 2);
     ctx.clip();
 
-    // Deep slate radar backdrop
-    ctx.fillStyle = 'rgba(11, 15, 22, 0.92)';
+    // Deep tactical slate radar backdrop
+    ctx.fillStyle = 'rgba(10, 15, 24, 0.94)';
     ctx.fillRect(0, 0, this.size, this.size);
-
-    // Subtle polar grid
-    ctx.strokeStyle = 'rgba(59, 158, 255, 0.08)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(half, half, half * 0.45, 0, Math.PI * 2);
-    ctx.arc(half, half, half * 0.8, 0, Math.PI * 2);
-    ctx.stroke();
 
     // Rotate map relative to player facing direction (player always looks UP)
     ctx.save();
@@ -116,30 +188,26 @@ export class RadarRenderer {
 
     const s = this.MAP_SCALE;
 
-    // 0. Render Walkable Main Deck Footprint (Warm Sandstone Courtyard Fill)
-    ctx.fillStyle = 'rgba(74, 62, 50, 0.42)';
-    for (const b of blocks) {
-      if (!b.id.startsWith('deck_')) continue;
-      const rx = (b.minX - playerX) * s;
-      const ry = (b.minZ - playerZ) * s;
-      const rw = (b.maxX - b.minX) * s;
-      const rh = (b.maxZ - b.minZ) * s;
-      ctx.fillRect(rx, ry, rw, rh);
+    // 0. Composite Baked Top-Down CS_OFFICE Floorplan (if available)
+    if (this.bakedFloorCanvas) {
+      const { minX, maxX, minZ, maxZ } = this.bakeBounds;
+      const dx = (minX - playerX) * s;
+      const dy = (minZ - playerZ) * s;
+      const dw = (maxX - minX) * s;
+      const dh = (maxZ - minZ) * s;
+      ctx.save();
+      ctx.globalAlpha = 0.62;
+      ctx.drawImage(this.bakedFloorCanvas, dx, dy, dw, dh);
+      ctx.restore();
+    } else {
+      // Crisp vector fallback: snowy courtyard + office interior floor
+      ctx.fillStyle = 'rgba(186, 206, 224, 0.22)';
+      ctx.fillRect((-38 - playerX) * s, (-34 - playerZ) * s, 76 * s, 22 * s);
+      ctx.fillStyle = 'rgba(66, 82, 102, 0.42)';
+      ctx.fillRect((-38 - playerX) * s, (-12 - playerZ) * s, 76 * s, 50 * s);
     }
 
-    // 1. Sunken Aqueduct Underpass (y = 0.0m) in dashed teal
-    const upX = (-3.5 - playerX) * s;
-    const upY = (-10.0 - playerZ) * s;
-    ctx.save();
-    ctx.fillStyle = 'rgba(20, 184, 166, 0.22)';
-    ctx.strokeStyle = 'rgba(20, 184, 166, 0.85)';
-    ctx.lineWidth = 1.1;
-    ctx.setLineDash([4, 3]);
-    ctx.fillRect(upX, upY, 7.0 * s, 30.8 * s);
-    ctx.strokeRect(upX, upY, 7.0 * s, 30.8 * s);
-    ctx.restore();
-
-    // 2. Render 3-Tier Map Geometry (skip deck_* foundation slabs so walkable floor stays legible)
+    // 1. Crisp Tactical Wall / Cover / Stairs / Mezzanine Outlines
     for (const b of blocks) {
       if (b.id.startsWith('deck_')) continue;
 
@@ -149,56 +217,40 @@ export class RadarRenderer {
       const rh = (b.maxZ - b.minZ) * s;
 
       if (b.id.includes('_stairs_')) {
-        ctx.fillStyle = 'rgba(234, 179, 8, 0.34)';
+        ctx.fillStyle = 'rgba(234, 179, 8, 0.35)';
         ctx.fillRect(rx, ry, rw, rh);
         continue;
       }
 
-      const isUpperOverlook =
-        b.minY >= 4.0 ||
-        b.id === 'a_palace_deck' ||
-        b.id === 'a_heaven_deck' ||
-        b.id === 'mid_nest_deck' ||
-        b.id === 'b_apps_deck';
-
-      if (isUpperOverlook) {
-        ctx.fillStyle = 'rgba(217, 119, 6, 0.42)';
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.92)';
-        ctx.lineWidth = 1.1;
-        ctx.fillRect(rx, ry, rw, rh);
-        ctx.strokeRect(rx, ry, rw, rh);
-      } else if (b.material === 'WOOD_THIN') {
-        ctx.fillStyle = 'rgba(180, 115, 55, 0.65)';
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.7)';
-        ctx.lineWidth = 0.8;
+      if (b.id === 'sniper_mezz_deck') {
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.32)';
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.92)';
+        ctx.lineWidth = 1.2;
         ctx.fillRect(rx, ry, rw, rh);
         ctx.strokeRect(rx, ry, rw, rh);
       } else if (b.material === 'DRYWALL') {
-        ctx.fillStyle = 'rgba(147, 51, 234, 0.55)';
-        ctx.strokeStyle = 'rgba(192, 132, 252, 0.85)';
-        ctx.lineWidth = 0.8;
+        ctx.fillStyle = 'rgba(226, 232, 240, 0.55)';
         ctx.fillRect(rx, ry, rw, rh);
-        ctx.strokeRect(rx, ry, rw, rh);
+      } else if (b.material === 'WOOD_THIN') {
+        ctx.fillStyle = 'rgba(196, 134, 72, 0.68)';
+        ctx.fillRect(rx, ry, rw, rh);
       } else if (b.material === 'METAL_SHEET') {
-        ctx.fillStyle = 'rgba(14, 116, 144, 0.65)';
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
-        ctx.lineWidth = 0.8;
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.62)';
         ctx.fillRect(rx, ry, rw, rh);
-        ctx.strokeRect(rx, ry, rw, rh);
       } else {
-        ctx.fillStyle = 'rgba(58, 76, 98, 0.68)';
-        ctx.strokeStyle = 'rgba(115, 152, 194, 0.42)';
-        ctx.lineWidth = 0.75;
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.48)';
+        ctx.lineWidth = 0.8;
         ctx.fillRect(rx, ry, rw, rh);
         ctx.strokeRect(rx, ry, rw, rh);
       }
     }
 
-    // 3. Bombsite A (Sanctum) & B (Foundry) Zones
+    // 2. Bombsite A (Projector Room) & B (Paper Room) Zones
     const drawSite = (site: { center: { x: number; z: number }; radius: number }, label: string, hex: string) => {
       const sx = (site.center.x - playerX) * s;
       const sy = (site.center.z - playerZ) * s;
-      ctx.fillStyle = label === 'A' ? 'rgba(217, 72, 59, 0.22)' : 'rgba(39, 163, 184, 0.22)';
+      ctx.fillStyle = label === 'A' ? 'rgba(249, 115, 22, 0.22)' : 'rgba(56, 189, 248, 0.22)';
       ctx.strokeStyle = hex;
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -216,20 +268,20 @@ export class RadarRenderer {
       ctx.fillText(label, 0, 0);
       ctx.restore();
     };
-    drawSite(BOMBSITES.A, 'A', '#ff6454');
+    drawSite(BOMBSITES.A, 'A', '#fb923c');
     drawSite(BOMBSITES.B, 'B', '#38bdf8');
 
-    // 4. Active Smoke Clouds on Radar
+    // 3. Active Smoke Clouds on Radar
     for (const sm of smokeOccluders) {
       const sx = (sm.center.x - playerX) * s;
       const sy = (sm.center.z - playerZ) * s;
-      ctx.fillStyle = 'rgba(205, 214, 224, 0.48)';
+      ctx.fillStyle = 'rgba(220, 228, 238, 0.56)';
       ctx.beginPath();
       ctx.arc(sx, sy, sm.radius * s, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // 5. Armed Bomb Pulse Marker
+    // 4. Armed Bomb Pulse Marker
     if (isBombPlanted && bombPos) {
       const bx = (bombPos.x - playerX) * s;
       const by = (bombPos.z - playerZ) * s;
@@ -240,7 +292,7 @@ export class RadarRenderer {
       ctx.fill();
     }
 
-    // 6. Allied Teammates & Smoke-Respecting LOS Enemy Spotting
+    // 5. Allied Teammates & Smoke-Respecting LOS Enemy Spotting
     const eyeA = { x: playerPos.x, y: playerPos.y + 1.65, z: playerPos.z };
     for (const bot of bots) {
       if (bot.isDead) continue;
@@ -272,8 +324,8 @@ export class RadarRenderer {
 
     ctx.restore(); // End map rotation
 
-    // 7. Local Player Center Marker & 90° FOV Cone
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    // 6. Local Player Center Marker & 90° FOV Cone
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
     ctx.beginPath();
     ctx.moveTo(half, half);
     ctx.arc(half, half, 42, -Math.PI * 0.75, -Math.PI * 0.25);

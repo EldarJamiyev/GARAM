@@ -96,14 +96,15 @@ export class BuyMenuUI {
     playerPos?: THREE.Vector3
   ): void {
     const keyMap: Record<number, string> = {
-      1: 'garam-47',
-      2: 'vanguard-m4',
-      3: 'sovereign-awp',
-      4: 'desert-eagle',
-      5: 'kevlar',
-      6: 'kevlar-helmet',
-      7: 'defuse-kit',
-      8: 'smoke-grenade',
+      1: 'usp-s',
+      2: 'glock-18',
+      3: 'desert-eagle',
+      4: 'mp9',
+      5: 'garam-47',
+      6: 'vanguard-m4',
+      7: 'm4a4',
+      8: 'sovereign-awp',
+      9: 'kevlar-helmet',
     };
     const item = keyMap[key];
     if (item) {

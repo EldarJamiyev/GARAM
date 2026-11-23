@@ -2,8 +2,13 @@ export * from './constants/kinematics.js';
 export * from './constants/weapons.js';
 export * from './constants/economy.js';
 export * from './physics/KinematicPlayerController.js';
-export * from './maps/DeMeridianData.js';
+export * from './maps/CsOfficeData.js';
 export {
+  DE_MERIDIAN_BOUNDS,
+  DE_MERIDIAN_DECK_Y,
+  DE_MERIDIAN_UPPER_Y,
+  DE_MERIDIAN_BLOCKS,
+  DE_MERIDIAN_COLLIDERS,
   DE_CITADEL_BOUNDS,
   DE_CITADEL_BLOCKS,
   DE_CITADEL_COLLIDERS,

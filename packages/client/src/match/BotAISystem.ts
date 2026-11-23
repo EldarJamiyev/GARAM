@@ -16,8 +16,8 @@ import {
   Ray,
   HitZone,
   SurfaceMaterial,
-  DE_CITADEL_NAV_GRAPH,
-  DE_CITADEL_BLOCKS,
+  CS_OFFICE_NAV_GRAPH,
+  CS_OFFICE_BLOCKS,
   findNearestNavNode,
   findPathAStar,
   rollRandomStrategies,
@@ -25,6 +25,7 @@ import {
   BotBrain,
   CombatFootworkPhase,
   PerceptionConfig,
+  PerceptionResult,
   normalizeAngleRad,
   meshYawToRaycastYaw,
   resolveBotArchetype,
@@ -38,6 +39,8 @@ export type BotDifficulty = 'Recruit' | 'Veteran' | 'Elite' | 'Sovereign';
 interface DifficultyConfig {
   reactionTimeMs: number;
   halfFovDeg: number;
+  fovealHalfFovDeg: number;
+  exposureConfirmMs: number;
   peripheralPenaltyMs: number;
   distancePenaltyMsPer10m: number;
   surprisePenaltyMs: number;
@@ -55,11 +58,13 @@ interface DifficultyConfig {
 
 const DIFFICULTY_PRESETS: Record<BotDifficulty, DifficultyConfig> = {
   Recruit: {
-    reactionTimeMs: 560,
-    halfFovDeg: 52,
-    peripheralPenaltyMs: 320,
+    reactionTimeMs: 540,
+    halfFovDeg: 50,
+    fovealHalfFovDeg: 30,
+    exposureConfirmMs: 110,
+    peripheralPenaltyMs: 280,
     distancePenaltyMsPer10m: 55,
-    surprisePenaltyMs: 220,
+    surprisePenaltyMs: 210,
     slewRateDegPerSec: 210,
     maxFireErrorDeg: 6.5,
     maxFireSpeed: 1.1,
@@ -72,11 +77,13 @@ const DIFFICULTY_PRESETS: Record<BotDifficulty, DifficultyConfig> = {
     hearingScale: 0.55,
   },
   Veteran: {
-    reactionTimeMs: 360,
-    halfFovDeg: 58,
-    peripheralPenaltyMs: 230,
+    reactionTimeMs: 350,
+    halfFovDeg: 53,
+    fovealHalfFovDeg: 32,
+    exposureConfirmMs: 90,
+    peripheralPenaltyMs: 210,
     distancePenaltyMsPer10m: 42,
-    surprisePenaltyMs: 165,
+    surprisePenaltyMs: 160,
     slewRateDegPerSec: 360,
     maxFireErrorDeg: 5.0,
     maxFireSpeed: 1.05,
@@ -89,11 +96,13 @@ const DIFFICULTY_PRESETS: Record<BotDifficulty, DifficultyConfig> = {
     hearingScale: 0.80,
   },
   Elite: {
-    reactionTimeMs: 245,
-    halfFovDeg: 64,
-    peripheralPenaltyMs: 165,
+    reactionTimeMs: 240,
+    halfFovDeg: 55,
+    fovealHalfFovDeg: 32,
+    exposureConfirmMs: 75,
+    peripheralPenaltyMs: 155,
     distancePenaltyMsPer10m: 32,
-    surprisePenaltyMs: 115,
+    surprisePenaltyMs: 110,
     slewRateDegPerSec: 520,
     maxFireErrorDeg: 4.0,
     maxFireSpeed: 0.95,
@@ -106,9 +115,11 @@ const DIFFICULTY_PRESETS: Record<BotDifficulty, DifficultyConfig> = {
     hearingScale: 0.95,
   },
   Sovereign: {
-    reactionTimeMs: 185,
-    halfFovDeg: 68,
-    peripheralPenaltyMs: 115,
+    reactionTimeMs: 180,
+    halfFovDeg: 55,
+    fovealHalfFovDeg: 32,
+    exposureConfirmMs: 60,
+    peripheralPenaltyMs: 110,
     distancePenaltyMsPer10m: 22,
     surprisePenaltyMs: 75,
     slewRateDegPerSec: 680,
@@ -169,27 +180,35 @@ const _hitPoint = new THREE.Vector3();
 const _otherPositionsScratch: Vec3[] = [];
 
 const VANGUARD_TACTICAL_HOLDS: readonly string[] = [
+  'front_hall_mid',
+  'sniper_mezz_center',
+  'front_hall_west',
+  'front_hall_east',
+  'long_hall_north',
+  'side_hall_west',
+  'storage_entry',
   'a_site_center',
-  'a_site_triple',
-  'a_heaven_balcony',
-  'a_conn_north',
-  'mid_nest_center',
-  'b_short_arch',
-  'b_site_north',
-  'b_site_bench',
-  'b_site_west',
+  'b_site_paper_center',
+  'main_hall_north',
 ];
 
 const SYNDICATE_TACTICAL_EXECUTES: readonly string[] = [
-  'a_main_choke',
-  'a_palace_balcony',
   'a_site_center',
-  'a_conn_north',
-  'underpass_north',
-  'b_short_arch',
-  'b_canal_choke',
-  'b_apps_north',
-  'b_site_center',
+  'a_site_west_door',
+  'b_site_paper_center',
+  'b_site_paper_south',
+  'main_hall_north',
+  'long_hall_mid_n',
+  'front_main_door',
+  'kitchen_north_door',
+  'side_hall_west',
+];
+
+const CS_OFFICE_SMOKE_CHOKES: readonly string[] = [
+  'front_main_door',
+  'long_hall_north',
+  'a_site_north_door',
+  'b_site_paper_east',
 ];
 
 interface BotInternalState {
@@ -197,13 +216,18 @@ interface BotInternalState {
   botName: string;
   team: 'Vanguard' | 'Syndicate';
   archetype: BotArchetype;
+  weaponId: string;
   ammo: number;
   isReloading: boolean;
   reloadTimeRemaining: number;
   burstRemaining: number;
   burstShotIndex: number;
   burstTimer: number;
-  // Human perception & zero-prefire tracking
+  // Human perception & zero-prefire tracking (staggered 20Hz LOS)
+  perceptionTimer: number;
+  cachedPlayerLos: boolean;
+  cachedBotLos: Map<string, boolean>;
+  reactionJitterMs: number;
   playerVisibleMs: number;
   playerLostSec: number;
   announcedPlayerContact: boolean;
@@ -255,6 +279,7 @@ export class BotAISystem {
   public currentStrategies: RoundStrategySelection;
   private roundStartTime = performance.now();
   private lastSmokeOccluders: SmokeOccluder[] = [];
+  private lastSpatialGrid?: SpatialGrid;
   private lastPlayerFeet = new THREE.Vector3();
   private hasLastPlayerFeet = false;
   private playerVelX = 0;
@@ -280,19 +305,26 @@ export class BotAISystem {
     bot: BotEntity,
     path: Vec3[],
     role: BotInternalState['role'],
-    indexSeed: number
+    indexSeed: number,
+    weaponId: string
   ): BotInternalState {
+    const weaponStats = WEAPONS[weaponId] ?? WEAPONS[bot.team === 'Vanguard' ? 'vanguard-m4' : 'garam-47'];
     return {
       botId: bot.id,
       botName: bot.name,
       team: bot.team,
       archetype: resolveBotArchetype(bot.id, bot.name, bot.team, this.difficulty),
-      ammo: 30,
+      weaponId: weaponStats.id,
+      ammo: weaponStats.magCapacity,
       isReloading: false,
       reloadTimeRemaining: 0,
       burstRemaining: 0,
       burstShotIndex: 0,
       burstTimer: 0,
+      perceptionTimer: 0, // Evaluate immediately on first active tick, then stagger at 20Hz
+      cachedPlayerLos: false,
+      cachedBotLos: new Map(),
+      reactionJitterMs: BotBrain.computeGaussianJitterMs(indexSeed * 17.3 + 3.1),
       playerVisibleMs: 0,
       playerLostSec: 10,
       announcedPlayerContact: false,
@@ -343,55 +375,50 @@ export class BotAISystem {
     const synBots = bots.filter((b) => b.team === 'Syndicate');
     const vgBots = bots.filter((b) => b.team === 'Vanguard');
 
+    const defaultCash = roundNumber === 1 || roundNumber === 13 ? 800 : 4800;
     const synBuys = BotBrain.evaluateTeamEconomy(
-      synBots.map(() => 4500),
+      synBots.map(() => defaultCash),
       tLossStreak,
       roundNumber,
       false
     );
     const vgBuys = BotBrain.evaluateTeamEconomy(
-      vgBots.map(() => 4500),
+      vgBots.map(() => defaultCash),
       ctLossStreak,
       roundNumber,
       true
     );
 
-    synBots.forEach((bot, idx) => {
-      const decision = synBuys[idx];
-      bot.armor = decision.buyArmor ? 100 : 0;
-      bot.hasHelmet = decision.buyHelmet;
-    });
-
-    vgBots.forEach((bot, idx) => {
-      const decision = vgBuys[idx];
-      bot.armor = decision.buyArmor ? 100 : 0;
-      bot.hasHelmet = decision.buyHelmet;
-    });
-
     synBots.forEach((bot, index) => {
+      const decision = synBuys[index];
+      bot.armor = decision.buyArmor ? 100 : 0;
+      bot.hasHelmet = decision.buyHelmet;
+      const weaponId = decision.primaryWeaponId;
+      bot.rig?.setWeapon(weaponId);
+
       let role: BotInternalState['role'] = 'entry';
       let dest: Vec3 = BOMBSITES.A.center;
 
       if (this.currentStrategies.syndicate === 'RUSH_A_LONG') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = index === 4 ? DE_CITADEL_NAV_GRAPH['top_mid_center'].pos : BOMBSITES.A.center;
+        dest = index === 4 ? CS_OFFICE_NAV_GRAPH['main_hall_north'].pos : BOMBSITES.A.center;
       } else if (this.currentStrategies.syndicate === 'SPLIT_A_MID') {
         role = index < 2 ? 'entry' : 'rotator';
-        dest = index < 2 ? BOMBSITES.A.center : DE_CITADEL_NAV_GRAPH['a_conn_north'].pos;
+        dest = index < 2 ? BOMBSITES.A.center : CS_OFFICE_NAV_GRAPH['a_site_west_door'].pos;
       } else if (this.currentStrategies.syndicate === 'RUSH_B_TUNNELS') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = index === 4 ? DE_CITADEL_NAV_GRAPH['top_mid_center'].pos : BOMBSITES.B.center;
+        dest = index === 4 ? CS_OFFICE_NAV_GRAPH['kitchen_north_door'].pos : BOMBSITES.B.center;
       } else if (this.currentStrategies.syndicate === 'MID_TO_B_SPLIT') {
         role = index < 3 ? 'entry' : 'support';
-        dest = index < 3 ? DE_CITADEL_NAV_GRAPH['b_short_arch'].pos : BOMBSITES.B.center;
+        dest = index < 3 ? CS_OFFICE_NAV_GRAPH['b_site_paper_east'].pos : CS_OFFICE_NAV_GRAPH['long_hall_mid_n'].pos;
       } else {
         role = index === 0 ? 'entry' : index === 1 ? 'lurker' : 'rotator';
         const spots = [
-          DE_CITADEL_NAV_GRAPH['a_main_choke'].pos,
-          DE_CITADEL_NAV_GRAPH['underpass_north'].pos,
-          DE_CITADEL_NAV_GRAPH['b_canal_choke'].pos,
-          DE_CITADEL_NAV_GRAPH['b_apps_north'].pos,
-          BOMBSITES.A.center,
+          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
+          CS_OFFICE_NAV_GRAPH['main_hall_north'].pos,
+          CS_OFFICE_NAV_GRAPH['long_hall_mid_n'].pos,
+          CS_OFFICE_NAV_GRAPH['b_site_paper_center'].pos,
+          CS_OFFICE_NAV_GRAPH['kitchen_center'].pos,
         ];
         dest = spots[index % spots.length];
       }
@@ -400,49 +427,55 @@ export class BotAISystem {
         { x: bot.mesh.position.x, y: bot.mesh.position.y, z: bot.mesh.position.z },
         dest,
         undefined,
-        DE_CITADEL_BLOCKS
+        CS_OFFICE_BLOCKS
       );
 
-      this.botStates.set(bot.id, this.createBotState(bot, path, role, index));
+      this.botStates.set(bot.id, this.createBotState(bot, path, role, index, weaponId));
     });
 
     vgBots.forEach((bot, index) => {
+      const decision = vgBuys[index];
+      bot.armor = decision.buyArmor ? 100 : 0;
+      bot.hasHelmet = decision.buyHelmet;
+      const weaponId = decision.primaryWeaponId;
+      bot.rig?.setWeapon(weaponId);
+
       let role: BotInternalState['role'] = 'anchor';
       let dest: Vec3 = BOMBSITES.A.center;
 
       if (this.currentStrategies.vanguard === 'STANDARD_2_1_2') {
         const spots = [
-          DE_CITADEL_NAV_GRAPH['a_site_triple'].pos,
-          DE_CITADEL_NAV_GRAPH['a_heaven_balcony'].pos,
-          DE_CITADEL_NAV_GRAPH['mid_nest_center'].pos,
-          DE_CITADEL_NAV_GRAPH['b_site_north'].pos,
+          CS_OFFICE_NAV_GRAPH['front_hall_mid'].pos,
+          CS_OFFICE_NAV_GRAPH['sniper_mezz_center'].pos,
+          CS_OFFICE_NAV_GRAPH['long_hall_north'].pos,
+          CS_OFFICE_NAV_GRAPH['side_hall_west'].pos,
         ];
         dest = spots[index % spots.length];
         role = index === 1 || index === 3 ? 'anchor' : 'rotator';
       } else if (this.currentStrategies.vanguard === 'AGGRESSIVE_MID_CONTROL') {
         const spots = [
-          DE_CITADEL_NAV_GRAPH['mid_nest_center'].pos,
-          DE_CITADEL_NAV_GRAPH['b_short_arch'].pos,
-          DE_CITADEL_NAV_GRAPH['a_site_triple'].pos,
-          DE_CITADEL_NAV_GRAPH['b_site_west'].pos,
+          CS_OFFICE_NAV_GRAPH['main_hall_north'].pos,
+          CS_OFFICE_NAV_GRAPH['front_main_door'].pos,
+          CS_OFFICE_NAV_GRAPH['b_site_paper_center'].pos,
+          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
         ];
         dest = spots[index % spots.length];
         role = index < 2 ? 'rotator' : 'anchor';
       } else if (this.currentStrategies.vanguard === 'HEAVY_A_STACK') {
         const spots = [
-          DE_CITADEL_NAV_GRAPH['a_site_triple'].pos,
-          DE_CITADEL_NAV_GRAPH['a_heaven_balcony'].pos,
-          DE_CITADEL_NAV_GRAPH['a_conn_north'].pos,
-          DE_CITADEL_NAV_GRAPH['b_site_north'].pos,
+          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
+          CS_OFFICE_NAV_GRAPH['side_hall_west'].pos,
+          CS_OFFICE_NAV_GRAPH['storage_entry'].pos,
+          CS_OFFICE_NAV_GRAPH['front_hall_west'].pos,
         ];
         dest = spots[index % spots.length];
         role = 'anchor';
       } else {
         const spots = [
-          DE_CITADEL_NAV_GRAPH['ct_ticket_lane'].pos,
-          DE_CITADEL_NAV_GRAPH['a_site_back'].pos,
-          DE_CITADEL_NAV_GRAPH['b_market_south'].pos,
-          DE_CITADEL_NAV_GRAPH['b_site_bench'].pos,
+          CS_OFFICE_NAV_GRAPH['front_hall_entry'].pos,
+          CS_OFFICE_NAV_GRAPH['sniper_mezz_center'].pos,
+          CS_OFFICE_NAV_GRAPH['long_front_door'].pos,
+          CS_OFFICE_NAV_GRAPH['storage_east'].pos,
         ];
         dest = spots[index % spots.length];
         role = index % 2 === 0 ? 'rotator' : 'anchor';
@@ -452,10 +485,10 @@ export class BotAISystem {
         { x: bot.mesh.position.x, y: bot.mesh.position.y, z: bot.mesh.position.z },
         dest,
         undefined,
-        DE_CITADEL_BLOCKS
+        CS_OFFICE_BLOCKS
       );
 
-      this.botStates.set(bot.id, this.createBotState(bot, path, role, index + 5));
+      this.botStates.set(bot.id, this.createBotState(bot, path, role, index + 5, weaponId));
     });
   }
 
@@ -495,8 +528,14 @@ export class BotAISystem {
       const dist = dist3D(botEye, flashVec);
       if (dist > 26) continue;
 
-      // Always pass active smoke occluders to preserve the deterministic smoke LOS invariant
-      const hasFlashLos = hasLineOfSight(botEye, flashVec, DE_CITADEL_BLOCKS, this.lastSmokeOccluders);
+      // Always pass active smoke occluders + spatialGrid to preserve the deterministic smoke LOS invariant
+      const hasFlashLos = hasLineOfSight(
+        botEye,
+        flashVec,
+        CS_OFFICE_BLOCKS,
+        this.lastSmokeOccluders,
+        this.lastSpatialGrid
+      );
       if (!hasFlashLos) continue;
 
       // Convert +Z meshYaw into -Z convention expected by BotBrain.calculateAntiFlashYaw
@@ -526,6 +565,40 @@ export class BotAISystem {
     }
   }
 
+  /**
+   * 3-point human visual LOS confirmation (head, upper chest, right shoulder)
+   * always passing live smoke occluders and SpatialGrid.
+   */
+  private hasThreePointVisualLOS(
+    botEye: Vec3,
+    targetFeet: Vec3,
+    targetEye: Vec3,
+    blocks: MapBlockCollider[],
+    smokeOccluders: SmokeOccluder[],
+    spatialGrid?: SpatialGrid
+  ): boolean {
+    if (hasLineOfSight(botEye, targetEye, blocks, smokeOccluders, spatialGrid)) {
+      return true;
+    }
+    const chestY = targetFeet.y + Math.max(0.75, (targetEye.y - targetFeet.y) * 0.74);
+    if (hasLineOfSight(botEye, { x: targetFeet.x, y: chestY, z: targetFeet.z }, blocks, smokeOccluders, spatialGrid)) {
+      return true;
+    }
+    // Check perpendicular shoulder offset so bots notice players peeking half-body around doorframes
+    const dx = targetFeet.x - botEye.x;
+    const dz = targetFeet.z - botEye.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const perpX = (-dz / len) * 0.24;
+    const perpZ = (dx / len) * 0.24;
+    return hasLineOfSight(
+      botEye,
+      { x: targetFeet.x + perpX, y: chestY + 0.1, z: targetFeet.z + perpZ },
+      blocks,
+      smokeOccluders,
+      spatialGrid
+    );
+  }
+
   private findSupportingFloorY(x: number, y: number, z: number, colliders: AABBCollider[]): number {
     let bestY = 0;
     const r = KINEMATICS.CAPSULE_RADIUS;
@@ -540,7 +613,11 @@ export class BotAISystem {
     return bestY;
   }
 
-  private buildPerceptionConfig(config: DifficultyConfig, arch: BotArchetype): PerceptionConfig {
+  private buildPerceptionConfig(
+    config: DifficultyConfig,
+    arch: BotArchetype,
+    reactionJitterMs: number
+  ): PerceptionConfig {
     // Enforce human-realistic floor: no difficulty tier ever produces sub-human 0ms/100ms prefires
     const baseReactionMs =
       this.difficulty === 'Sovereign'
@@ -549,10 +626,13 @@ export class BotAISystem {
 
     return {
       halfFovDeg: config.halfFovDeg,
+      fovealHalfFovDeg: config.fovealHalfFovDeg,
       baseReactionMs,
       peripheralPenaltyMs: config.peripheralPenaltyMs,
       distancePenaltyMsPer10m: config.distancePenaltyMsPer10m,
       surprisePenaltyMs: config.surprisePenaltyMs,
+      exposureConfirmMs: config.exposureConfirmMs,
+      reactionJitterMs,
     };
   }
 
@@ -565,15 +645,36 @@ export class BotAISystem {
   ): number {
     // Primary expected threat origin: bomb site if armed, else opposing spawn direction
     const threatAnchor: Vec3 = isBombArmed
-      ? (bombTargetSite === 'A' ? BOMBSITES.A.center : BOMBSITES.B.center)
-      : (team === 'Vanguard' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT);
+      ? bombTargetSite === 'A'
+        ? BOMBSITES.A.center
+        : BOMBSITES.B.center
+      : team === 'Vanguard'
+        ? SPAWN_POINTS.OBSIDIAN_T
+        : SPAWN_POINTS.VANGUARD_CT;
 
     const currentNode = findNearestNavNode(botPos, undefined, blocks);
+    const threatYaw = Math.atan2(threatAnchor.x - botPos.x, threatAnchor.z - botPos.z);
+
+    // Use CS_OFFICE pre-computed doorway watchAngles (converted from -Z to +Z mesh yaw) when available
+    if (currentNode.watchAngles && currentNode.watchAngles.length > 0) {
+      let bestYaw = threatYaw;
+      let smallestDelta = Infinity;
+      for (const rawWatch of currentNode.watchAngles) {
+        const meshWatchYaw = normalizeAngleRad(rawWatch + Math.PI);
+        const delta = Math.abs(normalizeAngleRad(meshWatchYaw - threatYaw));
+        if (delta < smallestDelta) {
+          smallestDelta = delta;
+          bestYaw = meshWatchYaw;
+        }
+      }
+      return bestYaw;
+    }
+
     let bestNeighborPos: Vec3 | null = null;
     let bestScore = Infinity;
 
     for (const neighborId of currentNode.neighbors) {
-      const neighbor = DE_CITADEL_NAV_GRAPH[neighborId];
+      const neighbor = CS_OFFICE_NAV_GRAPH[neighborId];
       if (!neighbor) continue;
       const dToThreat = dist3D(neighbor.pos, threatAnchor);
       if (dToThreat < bestScore) {
@@ -593,11 +694,33 @@ export class BotAISystem {
     const enemyDirX = toEnemyX / enemyDist;
     const enemyDirZ = toEnemyZ / enemyDist;
 
+    // 1. Prioritize pre-computed CS_OFFICE retreatNodeIds from current nav node
+    const currentNode = findNearestNavNode(botPos);
+    if (currentNode.retreatNodeIds && currentNode.retreatNodeIds.length > 0) {
+      let bestRetreat: Vec3 | null = null;
+      let bestRetreatScore = Infinity;
+      for (const retreatId of currentNode.retreatNodeIds) {
+        const rNode = CS_OFFICE_NAV_GRAPH[retreatId];
+        if (!rNode || Math.abs(rNode.pos.y - botPos.y) > 1.3) continue;
+        const dx = rNode.pos.x - botPos.x;
+        const dz = rNode.pos.z - botPos.z;
+        const dist = Math.hypot(dx, dz);
+        const dotTowardEnemy = dist > 0.2 ? (dx * enemyDirX + dz * enemyDirZ) / dist : 0;
+        const score = dist + Math.max(0, dotTowardEnemy) * 10.0;
+        if (score < bestRetreatScore) {
+          bestRetreatScore = score;
+          bestRetreat = rNode.pos;
+        }
+      }
+      if (bestRetreat) return bestRetreat;
+    }
+
+    // 2. Fallback scan across HIGH cover CS_OFFICE nodes
     let bestPos: Vec3 | null = null;
     let bestScore = Infinity;
 
-    for (const key of Object.keys(DE_CITADEL_NAV_GRAPH)) {
-      const node = DE_CITADEL_NAV_GRAPH[key];
+    for (const key of Object.keys(CS_OFFICE_NAV_GRAPH)) {
+      const node = CS_OFFICE_NAV_GRAPH[key];
       if (node.coverType !== 'HIGH') continue;
       const dx = node.pos.x - botPos.x;
       const dz = node.pos.z - botPos.z;
@@ -606,7 +729,6 @@ export class BotAISystem {
       const dist = Math.hypot(dx, dz);
       if (dist > 14.5) continue;
 
-      // Prefer cover that does NOT force the bot to run straight into the enemy's barrel
       const dotTowardEnemy = dist > 0.2 ? (dx * enemyDirX + dz * enemyDirZ) / dist : 0;
       const score = dist + Math.max(0, dotTowardEnemy) * 8.0;
       if (score < bestScore) {
@@ -718,8 +840,8 @@ export class BotAISystem {
     const config = DIFFICULTY_PRESETS[this.difficulty];
     const now = performance.now();
     const roundElapsed = (now - this.roundStartTime) / 1000;
-    const botWeapon = WEAPONS['garam-47'];
     this.lastSmokeOccluders = smokeOccluders;
+    this.lastSpatialGrid = spatialGrid;
 
     // Estimate player horizontal velocity for realistic human moving-target tracking lag
     if (this.hasLastPlayerFeet) {
@@ -735,6 +857,7 @@ export class BotAISystem {
 
     for (let bIdx = 0; bIdx < bots.length; bIdx++) {
       const bot = bots[bIdx];
+      const camDist = bot.mesh.position.distanceTo(playerEye);
 
       if (bot.isDead) {
         bot.vx = 0;
@@ -746,6 +869,7 @@ export class BotAISystem {
           healthRatio: 0,
           team: bot.team,
           name: bot.name,
+          cameraDistance: camDist,
         });
         continue;
       }
@@ -760,17 +884,29 @@ export class BotAISystem {
           healthRatio: Math.max(0, bot.health / bot.maxHealth),
           team: bot.team,
           name: bot.name,
+          cameraDistance: camDist,
         });
         continue;
       }
 
       let state = this.botStates.get(bot.id);
       if (!state) {
-        state = this.createBotState(bot, [bot.mesh.position.clone()], 'entry', bIdx);
+        const fallbackWp = bot.team === 'Vanguard' ? 'vanguard-m4' : 'garam-47';
+        state = this.createBotState(bot, [bot.mesh.position.clone()], 'entry', bIdx, fallbackWp);
         this.botStates.set(bot.id, state);
       }
 
+      const botWeapon = WEAPONS[state.weaponId] ?? WEAPONS[bot.team === 'Vanguard' ? 'vanguard-m4' : 'garam-47'];
+      const shotIntervalSec = Math.max(0.068, 60 / Math.max(60, botWeapon.fireRateRpm));
+
       state.swayPhase += clampedDt;
+      state.perceptionTimer -= clampedDt;
+      const doPerceptionTick = state.perceptionTimer <= 0;
+      if (doPerceptionTick) {
+        // Staggered 20Hz perception cadence (0.05s + small per-bot phase spread)
+        state.perceptionTimer = 0.05 + (bIdx % 3) * 0.004;
+      }
+
       const botPos = bot.mesh.position;
       const eyeHeight = state.isCrouching ? 1.24 : 1.68;
       _botEye.set(botPos.x, botPos.y + eyeHeight, botPos.z);
@@ -780,7 +916,7 @@ export class BotAISystem {
         state.reloadTimeRemaining -= clampedDt;
         if (state.reloadTimeRemaining <= 0) {
           state.isReloading = false;
-          state.ammo = 30;
+          state.ammo = botWeapon.magCapacity;
           state.burstRemaining = 0;
           state.burstShotIndex = 0;
         }
@@ -812,28 +948,31 @@ export class BotAISystem {
         }
       }
 
-      const perceptionCfg = this.buildPerceptionConfig(config, state.archetype);
+      const perceptionCfg = this.buildPerceptionConfig(config, state.archetype, state.reactionJitterMs);
       const currentHozSpeed = Math.hypot(bot.vx, bot.vz);
 
-      // --- 1. Human-Perception Player Engagement (ZERO Prefires) ---
+      // --- 1. Human-Perception Player Engagement (ZERO Prefires, 3-Point LOS @ 20Hz) ---
       let engagedPlayer = false;
       const distToPlayer = botPos.distanceTo(playerFeetPos);
 
       if (bot.team !== playerTeam && playerHealth > 0 && distToPlayer <= 52 && state.blindTimer <= 0.15) {
-        const hasLos = hasLineOfSight(
-          { x: _botEye.x, y: _botEye.y, z: _botEye.z },
-          { x: playerEye.x, y: playerEye.y, z: playerEye.z },
-          blocks,
-          smokeOccluders,
-          spatialGrid
-        );
+        if (doPerceptionTick) {
+          state.cachedPlayerLos = this.hasThreePointVisualLOS(
+            { x: _botEye.x, y: _botEye.y, z: _botEye.z },
+            { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
+            { x: playerEye.x, y: playerEye.y, z: playerEye.z },
+            blocks,
+            smokeOccluders,
+            spatialGrid
+          );
+        }
 
         const wasMovingOrSurprised = currentHozSpeed > 1.2 || state.playerLostSec > 0.35;
         const perception = BotBrain.evaluateVisualPerception(
           state.currentYaw,
           { x: _botEye.x, y: _botEye.y, z: _botEye.z },
           { x: playerEye.x, y: playerEye.y, z: playerEye.z },
-          hasLos,
+          state.cachedPlayerLos,
           perceptionCfg,
           wasMovingOrSurprised
         );
@@ -951,7 +1090,7 @@ export class BotAISystem {
 
           if (!state.isReloading && state.ammo <= 0) {
             state.isReloading = true;
-            state.reloadTimeRemaining = 2.4;
+            state.reloadTimeRemaining = botWeapon.reloadTime || 2.4;
           }
 
           // Strict anti-prefire fire gate: must have LOS + FOV + full reaction time + aligned crosshair + counter-strafed
@@ -971,14 +1110,14 @@ export class BotAISystem {
 
           if (permittedToFire && (now - bot.lastShotTime > config.burstCooldownMs || state.burstRemaining > 0)) {
             if (state.burstRemaining === 0) {
-              state.burstRemaining = config.burstCount;
+              state.burstRemaining = botWeapon.fireMode === 'semi' ? 1 : config.burstCount;
               state.burstShotIndex = 0;
               state.burstTimer = 0;
             }
 
             state.burstTimer -= clampedDt;
             if (state.burstTimer <= 0) {
-              state.burstTimer = 0.115;
+              state.burstTimer = shotIntervalSec;
               state.burstRemaining--;
               bot.lastShotTime = now;
               state.ammo--;
@@ -1064,8 +1203,7 @@ export class BotAISystem {
               }
 
               bot.rig?.triggerMuzzleFlash();
-              const botWpId = bot.team === 'Syndicate' ? 'garam-47' : 'vanguard-m4';
-              this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, botWpId);
+              this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, state.weaponId);
             }
           }
 
@@ -1077,7 +1215,10 @@ export class BotAISystem {
             team: bot.team,
             name: bot.name,
             isCrouching: state.isCrouching,
+            isReloading: state.isReloading,
             pitch: state.currentPitch,
+            yawOffset: normalizeAngleRad(desiredYaw - state.currentYaw),
+            cameraDistance: camDist,
             velocity: { x: bot.vx, z: bot.vz },
           });
           continue;
@@ -1097,12 +1238,13 @@ export class BotAISystem {
           state.announcedPlayerContact = false;
           state.burstRemaining = 0;
           state.burstShotIndex = 0;
+          state.reactionJitterMs = BotBrain.computeGaussianJitterMs(state.swayPhase * 13.7 + bIdx * 5.3);
         }
       }
 
-      // --- 2. Human-Perception Inter-Bot Combat (FOV + Reaction + Counter-Strafe) ---
+      // --- 2. Human-Perception Inter-Bot Combat (FOV + Reaction + Counter-Strafe @ 20Hz LOS) ---
       let engagedBotTarget: BotEntity | null = null;
-      let engagedBotPerception: ReturnType<typeof BotBrain.evaluateVisualPerception> | null = null;
+      let engagedBotPerception: PerceptionResult | null = null;
       const enemyTeam = bot.team === 'Syndicate' ? 'Vanguard' : 'Syndicate';
 
       if (state.blindTimer <= 0.15) {
@@ -1110,22 +1252,29 @@ export class BotAISystem {
         for (const other of bots) {
           if (other.team !== enemyTeam || other.isDead) {
             state.botVisibleMs.delete(other.id);
+            state.cachedBotLos.delete(other.id);
             continue;
           }
           const distToOther = botPos.distanceTo(other.mesh.position);
           if (distToOther > 44) {
             state.botVisibleMs.set(other.id, Math.max(0, (state.botVisibleMs.get(other.id) ?? 0) - clampedDt * 1500));
+            state.cachedBotLos.set(other.id, false);
             continue;
           }
 
           _targetEye.set(other.mesh.position.x, other.mesh.position.y + 1.68, other.mesh.position.z);
-          const los = hasLineOfSight(
-            { x: _botEye.x, y: _botEye.y, z: _botEye.z },
-            { x: _targetEye.x, y: _targetEye.y, z: _targetEye.z },
-            blocks,
-            smokeOccluders,
-            spatialGrid
-          );
+          let los = state.cachedBotLos.get(other.id) ?? false;
+          if (doPerceptionTick) {
+            los = this.hasThreePointVisualLOS(
+              { x: _botEye.x, y: _botEye.y, z: _botEye.z },
+              { x: other.mesh.position.x, y: other.mesh.position.y, z: other.mesh.position.z },
+              { x: _targetEye.x, y: _targetEye.y, z: _targetEye.z },
+              blocks,
+              smokeOccluders,
+              spatialGrid
+            );
+            state.cachedBotLos.set(other.id, los);
+          }
 
           const p = BotBrain.evaluateVisualPerception(
             state.currentYaw,
@@ -1226,7 +1375,7 @@ export class BotAISystem {
 
         if (!state.isReloading && state.ammo <= 0) {
           state.isReloading = true;
-          state.reloadTimeRemaining = 2.4;
+          state.reloadTimeRemaining = botWeapon.reloadTime || 2.4;
         }
 
         const visibleBotMs = state.botVisibleMs.get(engagedBotTarget.id) ?? 0;
@@ -1246,14 +1395,14 @@ export class BotAISystem {
 
         if (permittedToFire && (now - bot.lastShotTime > config.burstCooldownMs || state.burstRemaining > 0)) {
           if (state.burstRemaining === 0) {
-            state.burstRemaining = config.burstCount;
+            state.burstRemaining = botWeapon.fireMode === 'semi' ? 1 : config.burstCount;
             state.burstShotIndex = 0;
             state.burstTimer = 0;
           }
           state.burstTimer -= clampedDt;
 
           if (state.burstTimer <= 0) {
-            state.burstTimer = 0.115;
+            state.burstTimer = shotIntervalSec;
             state.burstRemaining--;
             bot.lastShotTime = now;
             state.ammo--;
@@ -1295,8 +1444,8 @@ export class BotAISystem {
 
             const hits = executeTacticalRaycast(
               sharedRay,
-              34,
-              0.75,
+              botWeapon.damage,
+              botWeapon.armorPenetration,
               botWeapon.penetrationPower,
               180,
               blocks,
@@ -1331,8 +1480,7 @@ export class BotAISystem {
             }
 
             bot.rig?.triggerMuzzleFlash();
-            const botWpId = bot.team === 'Syndicate' ? 'garam-47' : 'vanguard-m4';
-            this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, botWpId);
+            this.callbacks.onBotSpawnTracer?.(_botEye, _terminalPoint, state.weaponId);
           }
         }
 
@@ -1344,7 +1492,10 @@ export class BotAISystem {
           team: bot.team,
           name: bot.name,
           isCrouching: state.isCrouching,
+          isReloading: state.isReloading,
           pitch: state.currentPitch,
+          yawOffset: normalizeAngleRad(desiredYaw - state.currentYaw),
+          cameraDistance: camDist,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
@@ -1355,7 +1506,30 @@ export class BotAISystem {
       state.trackedBotId = null;
       state.currentPitch += (0 - state.currentPitch) * Math.min(1, 8 * clampedDt);
 
-      // --- 3. Tactical Objective Navigation & Angle-Holding ---
+      // --- 3. Tactical Objective Navigation, Choke Smokes & Angle-Holding ---
+      if (
+        config.canUseUtility &&
+        !state.hasThrownSmoke &&
+        roundElapsed > 7.5 &&
+        roundElapsed < 32 &&
+        state.role === 'support'
+      ) {
+        const chokeKey = CS_OFFICE_SMOKE_CHOKES[bIdx % CS_OFFICE_SMOKE_CHOKES.length];
+        const chokeNode = CS_OFFICE_NAV_GRAPH[chokeKey];
+        if (chokeNode) {
+          const distChoke = dist3D({ x: botPos.x, y: botPos.y, z: botPos.z }, chokeNode.pos);
+          if (distChoke > 9 && distChoke < 24) {
+            state.hasThrownSmoke = true;
+            this.callbacks.onBotThrowUtility?.(
+              bot,
+              'smoke',
+              new THREE.Vector3(chokeNode.pos.x, chokeNode.pos.y, chokeNode.pos.z)
+            );
+            this.callbacks.onBotRadioCallout?.(bot, `Smoking ${chokeNode.callout}!`);
+          }
+        }
+      }
+
       if (isBombArmed) {
         const bombSitePos = bombTargetSite === 'A' ? BOMBSITES.A.center : BOMBSITES.B.center;
         if (bot.team === 'Vanguard') {
@@ -1371,11 +1545,11 @@ export class BotAISystem {
           }
         } else if (bot.team === 'Syndicate' && !state.hasCommittedPostPlant) {
           state.hasCommittedPostPlant = true;
-          const defenseNodes = Object.values(DE_CITADEL_NAV_GRAPH).filter(
+          const defenseNodes = Object.values(CS_OFFICE_NAV_GRAPH).filter(
             (n) => dist3D(n.pos, bombSitePos) < 16.5 && n.coverType === 'HIGH'
           );
           const chosen =
-            defenseNodes[bIdx % Math.max(1, defenseNodes.length)] || DE_CITADEL_NAV_GRAPH['a_site_crates'];
+            defenseNodes[bIdx % Math.max(1, defenseNodes.length)] || CS_OFFICE_NAV_GRAPH['a_site_east'];
           state.path = findPathAStar(
             { x: botPos.x, y: botPos.y, z: botPos.z },
             chosen.pos,
@@ -1410,6 +1584,8 @@ export class BotAISystem {
           healthRatio: Math.max(0, bot.health / bot.maxHealth),
           team: bot.team,
           name: bot.name,
+          isReloading: state.isReloading,
+          cameraDistance: camDist,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
@@ -1450,6 +1626,8 @@ export class BotAISystem {
           healthRatio: Math.max(0, bot.health / bot.maxHealth),
           team: bot.team,
           name: bot.name,
+          isReloading: state.isReloading,
+          cameraDistance: camDist,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
@@ -1492,7 +1670,7 @@ export class BotAISystem {
             const pool = bot.team === 'Vanguard' ? VANGUARD_TACTICAL_HOLDS : SYNDICATE_TACTICAL_EXECUTES;
             const nextKey = pool[(bIdx + Math.floor(roundElapsed / 6) + bot.waypointIndex) % pool.length];
             bot.waypointIndex = (bot.waypointIndex + 1) % pool.length;
-            const nextDest = DE_CITADEL_NAV_GRAPH[nextKey]?.pos ?? bot.patrolTarget;
+            const nextDest = CS_OFFICE_NAV_GRAPH[nextKey]?.pos ?? bot.patrolTarget;
             state.path = findPathAStar(
               { x: botPos.x, y: botPos.y, z: botPos.z },
               nextDest,
@@ -1511,6 +1689,8 @@ export class BotAISystem {
             healthRatio: Math.max(0, bot.health / bot.maxHealth),
             team: bot.team,
             name: bot.name,
+            isReloading: state.isReloading,
+            cameraDistance: camDist,
             velocity: { x: bot.vx, z: bot.vz },
           });
           continue;
@@ -1729,7 +1909,9 @@ export class BotAISystem {
         team: bot.team,
         name: bot.name,
         isCrouching: false,
+        isReloading: state.isReloading,
         pitch: state.currentPitch,
+        cameraDistance: camDist,
         velocity: { x: bot.vx, z: bot.vz },
       });
     }

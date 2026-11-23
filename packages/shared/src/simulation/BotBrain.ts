@@ -22,8 +22,10 @@ export interface EcoDecision {
 export type CombatFootworkPhase = 'HOLD_FIRE' | 'STRAFE_REPOSITION' | 'SEEK_COVER' | 'ADVANCE_PRESSURE';
 
 export interface PerceptionConfig {
-  /** Half horizontal field-of-view in degrees (e.g. 55° = 110° full human cone). */
+  /** Half horizontal field-of-view in degrees (strict human cap <= 55° -> 110° full cone). */
   halfFovDeg: number;
+  /** Foveal sharp-focus half-angle in degrees (default 32°). Beyond this is peripheral vision. */
+  fovealHalfFovDeg?: number;
   /** Base visual reaction time in ms for a target dead-center at close-mid range. */
   baseReactionMs: number;
   /** Additional human recognition delay (ms) at the edge of peripheral vision. */
@@ -32,10 +34,17 @@ export interface PerceptionConfig {
   distancePenaltyMsPer10m: number;
   /** Extra surprise/acquisition delay (ms) when target newly appears while bot is moving or turning. */
   surprisePenaltyMs: number;
+  /** Continuous exposure confirmation window (ms, e.g. 60-110ms) before reaction completes. */
+  exposureConfirmMs?: number;
+  /** Optional Gaussian reaction jitter (ms, typically ±35ms) sampled per target appearance. */
+  reactionJitterMs?: number;
 }
+
+export type VisionZone = 'FOVEAL' | 'PERIPHERAL' | 'OUTSIDE';
 
 export interface PerceptionResult {
   spotted: boolean;
+  visionZone: VisionZone;
   offCenterDeg: number;
   distance: number;
   effectiveReactionMs: number;
@@ -128,7 +137,21 @@ export function meshYawToRaycastYaw(meshYaw: number): number {
  */
 export class BotBrain {
   /**
-   * Evaluates team-wide economy coordination according to competitive CS2 ladder rules.
+   * Deterministic Gaussian-like human reaction jitter in milliseconds (clamped to [-clampMs, +clampMs]).
+   * Prevents robotic identical-frame reactions across bots.
+   */
+  public static computeGaussianJitterMs(seed: number, stdDevMs = 24, clampMs = 35): number {
+    // Sum of 3 deterministic uniform hashes -> approximate Gaussian distribution (Irwin-Hall)
+    const u1 = Math.abs(Math.sin(seed * 12.9898 + 1.234) * 43758.5453) % 1;
+    const u2 = Math.abs(Math.sin(seed * 78.233 + 5.678) * 24634.6345) % 1;
+    const u3 = Math.abs(Math.sin(seed * 37.719 + 9.012) * 19283.7465) % 1;
+    const z = (u1 + u2 + u3 - 1.5) * 1.65;
+    return Math.round(Math.max(-clampMs, Math.min(clampMs, z * stdDevMs)));
+  }
+
+  /**
+   * Evaluates team-wide economy coordination according to competitive CS2 ladder rules
+   * across the full 9-weapon CS2 arsenal (USP-S, Glock-18, Deagle, MP9, M4A1-S, M4A4, Garam-47, AWP).
    */
   public static evaluateTeamEconomy(
     teamCash: number[],
@@ -138,14 +161,14 @@ export class BotBrain {
   ): EcoDecision[] {
     const avgCash = teamCash.reduce((a, b) => a + b, 0) / Math.max(1, teamCash.length);
 
-    // Round 1 (Pistols) or OT
+    // Round 1 (Pistols) or Halftime Pistol (Round 13): default sidearm + Kevlar vest
     if (roundNumber === 1 || roundNumber === 13) {
-      return teamCash.map(cash => ({
+      return teamCash.map((cash) => ({
         ecoState: 'FORCE_BUY' as TeamEcoState,
-        primaryWeaponId: 'desert-eagle',
+        primaryWeaponId: isVanguard ? 'usp-s' : 'glock-18',
         buyArmor: cash >= 650,
         buyHelmet: false,
-        buyDefuseKit: isVanguard && cash >= 1000,
+        buyDefuseKit: isVanguard && cash >= 1050,
       }));
     }
 
@@ -158,10 +181,12 @@ export class BotBrain {
       teamEcoState = 'FORCE_BUY';
     }
 
-    return teamCash.map(cash => {
+    return teamCash.map((cash, idx) => {
       if (teamEcoState === 'FULL_BUY') {
-        const rifle = isVanguard ? 'vanguard-m4' : 'garam-47';
-        const primary = cash >= 5750 && Math.random() < 0.25 ? 'sovereign-awp' : rifle;
+        const ctRifle = idx % 2 === 0 ? 'vanguard-m4' : 'm4a4';
+        const rifle = isVanguard ? ctRifle : 'garam-47';
+        const isAwpSlot = idx === 2 || (idx === 0 && !isVanguard);
+        const primary = cash >= 5750 && isAwpSlot ? 'sovereign-awp' : rifle;
         return {
           ecoState: 'FULL_BUY',
           primaryWeaponId: primary,
@@ -170,9 +195,15 @@ export class BotBrain {
           buyDefuseKit: isVanguard && cash >= 1350,
         };
       } else if (teamEcoState === 'FORCE_BUY') {
+        let primary = 'desert-eagle';
+        if (cash >= 3100) {
+          primary = isVanguard ? (idx % 2 === 0 ? 'vanguard-m4' : 'm4a4') : 'garam-47';
+        } else if (cash >= 1900) {
+          primary = 'mp9';
+        }
         return {
           ecoState: 'FORCE_BUY',
-          primaryWeaponId: cash >= 2700 ? (isVanguard ? 'vanguard-m4' : 'garam-47') : 'desert-eagle',
+          primaryWeaponId: primary,
           buyArmor: cash >= 650,
           buyHelmet: cash >= 1000,
           buyDefuseKit: isVanguard && cash >= 1300,
@@ -181,7 +212,7 @@ export class BotBrain {
         // ECO_SAVE: preserve cash for next round full buy
         return {
           ecoState: 'ECO_SAVE',
-          primaryWeaponId: 'desert-eagle',
+          primaryWeaponId: cash >= 2150 ? 'desert-eagle' : isVanguard ? 'usp-s' : 'glock-18',
           buyArmor: false,
           buyHelmet: false,
           buyDefuseKit: false,
@@ -211,8 +242,10 @@ export class BotBrain {
 
   /**
    * Human visual perception gate (+Z mesh-forward convention: yaw = atan2(dx, dz)).
-   * Prevents 360° omniscient spotting and scales reaction latency with peripheral angle,
-   * target distance, and unexpected movement/turn surprise.
+   * Enforces strict foveal (<= 32°) vs peripheral (32°–halfFovDeg) vision cones:
+   *  - Targets outside halfFovDeg are NEVER spotted (zero 360° omniscience).
+   *  - Peripheral targets suffer a 1.45× reaction multiplier + 90ms recognition surcharge.
+   *  - Exposure confirmation window & human Gaussian jitter prevent robotic frame-0 prefires.
    */
   public static evaluateVisualPerception(
     botMeshYaw: number,
@@ -230,6 +263,7 @@ export class BotBrain {
     if (!hasLos || distance < 0.001) {
       return {
         spotted: false,
+        visionZone: 'OUTSIDE',
         offCenterDeg: 180,
         distance,
         effectiveReactionMs: Infinity,
@@ -240,27 +274,42 @@ export class BotBrain {
     const deltaRad = Math.abs(normalizeAngleRad(angleToTarget - botMeshYaw));
     const offCenterDeg = (deltaRad * 180) / Math.PI;
 
-    // Close-quarters shoulder bump (< 2.4m) gives slightly wider peripheral awareness
-    const effectiveHalfFov = distance < 2.4 ? Math.min(95, config.halfFovDeg + 24) : config.halfFovDeg;
+    // Close-quarters shoulder bump (< 1.8m) grants modest peripheral awareness; otherwise strict cone
+    const effectiveHalfFov = distance < 1.8 ? Math.min(72, config.halfFovDeg + 15) : config.halfFovDeg;
     if (offCenterDeg > effectiveHalfFov) {
       return {
         spotted: false,
+        visionZone: 'OUTSIDE',
         offCenterDeg,
         distance,
         effectiveReactionMs: Infinity,
       };
     }
 
+    const fovealDeg = config.fovealHalfFovDeg ?? 32;
+    const isPeripheral = offCenterDeg > fovealDeg;
+    const visionZone: VisionZone = isPeripheral ? 'PERIPHERAL' : 'FOVEAL';
+
     const peripheralRatio = Math.min(1, offCenterDeg / Math.max(1, config.halfFovDeg));
-    const peripheralMs = peripheralRatio * peripheralRatio * config.peripheralPenaltyMs + peripheralRatio * (config.peripheralPenaltyMs * 0.35);
+    const anglePenaltyMs =
+      peripheralRatio * peripheralRatio * config.peripheralPenaltyMs +
+      peripheralRatio * (config.peripheralPenaltyMs * 0.35);
+
+    const baseWithZone = isPeripheral
+      ? config.baseReactionMs * 1.45 + 90 + anglePenaltyMs * 0.45
+      : config.baseReactionMs + anglePenaltyMs;
+
     const distMs = Math.max(0, (distance - 10) / 10) * config.distancePenaltyMsPer10m;
     const surpriseMs = wasMovingOrUnexpected ? config.surprisePenaltyMs : 0;
+    const exposureMs = config.exposureConfirmMs ?? 0;
+    const jitterMs = config.reactionJitterMs ?? 0;
 
     return {
       spotted: true,
+      visionZone,
       offCenterDeg,
       distance,
-      effectiveReactionMs: Math.round(config.baseReactionMs + peripheralMs + distMs + surpriseMs),
+      effectiveReactionMs: Math.max(140, Math.round(baseWithZone + distMs + surpriseMs + exposureMs + jitterMs)),
     };
   }
 

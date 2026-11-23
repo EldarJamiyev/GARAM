@@ -352,7 +352,11 @@ export class ProceduralAudio {
     }
 
     const t = this.ctx.currentTime;
-    const isSuppressed = weaponType === 'vanguard-m4';
+    const isSuppressed = weaponType === 'vanguard-m4' || weaponType === 'usp-s';
+    const isUSPS = weaponType === 'usp-s';
+    const isGlock = weaponType === 'glock-18';
+    const isMP9 = weaponType === 'mp9';
+    const isM4A4 = weaponType === 'm4a4';
     const isAWP = weaponType === 'sovereign-awp';
     const isDeagle = weaponType === 'desert-eagle';
 
@@ -360,22 +364,51 @@ export class ProceduralAudio {
     const osc = this.ctx.createOscillator();
     const oscGain = this.ctx.createGain();
 
-    osc.type = isAWP ? 'sawtooth' : 'triangle';
-    const startFreq = isAWP ? 180 : isDeagle ? 150 : isSuppressed ? 90 : 130;
+    osc.type = isAWP ? 'sawtooth' : isMP9 ? 'square' : 'triangle';
+    const startFreq = isAWP
+      ? 180
+      : isDeagle
+        ? 150
+        : isUSPS
+          ? 110
+          : isSuppressed
+            ? 90
+            : isMP9
+              ? 165
+              : isGlock
+                ? 175
+                : isM4A4
+                  ? 145
+                  : 130;
     osc.frequency.setValueAtTime(startFreq, t);
-    osc.frequency.exponentialRampToValueAtTime(25, t + (isAWP ? 0.25 : 0.09));
+    osc.frequency.exponentialRampToValueAtTime(28, t + (isAWP ? 0.25 : isMP9 ? 0.055 : isGlock ? 0.065 : 0.09));
 
-    const peakGain = isAWP ? 1.0 : isDeagle ? 0.9 : isSuppressed ? 0.35 : 0.8;
+    const peakGain = isAWP
+      ? 1.0
+      : isDeagle
+        ? 0.9
+        : isUSPS
+          ? 0.28
+          : isSuppressed
+            ? 0.35
+            : isMP9
+              ? 0.56
+              : isGlock
+                ? 0.52
+                : isM4A4
+                  ? 0.78
+                  : 0.8;
+    const oscDecay = isAWP ? 0.28 : isUSPS ? 0.07 : isMP9 ? 0.08 : isGlock ? 0.095 : 0.16;
     oscGain.gain.setValueAtTime(peakGain, t);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, t + (isAWP ? 0.28 : 0.16));
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + oscDecay);
 
     osc.connect(oscGain);
     oscGain.connect(destinationNode);
     osc.start(t);
-    osc.stop(t + (isAWP ? 0.28 : 0.16));
+    osc.stop(t + oscDecay);
 
     // 2. High-frequency gunpowder blast & crack (Zero-allocation via shared noise buffer)
-    const dur = isAWP ? 0.35 : isSuppressed ? 0.04 : 0.14;
+    const dur = isAWP ? 0.35 : isUSPS ? 0.032 : isSuppressed ? 0.04 : isMP9 ? 0.075 : isGlock ? 0.085 : 0.14;
     const whiteNoise = this.ctx.createBufferSource();
     if (this.sharedNoiseBuffer) {
       whiteNoise.buffer = this.sharedNoiseBuffer;
@@ -387,8 +420,11 @@ export class ProceduralAudio {
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = isAWP ? 'lowpass' : 'bandpass';
-    filter.frequency.setValueAtTime(isSuppressed ? 700 : isAWP ? 2600 : 1800, t);
-    filter.Q.setValueAtTime(isAWP ? 1.2 : 2.5, t);
+    filter.frequency.setValueAtTime(
+      isUSPS ? 1150 : isSuppressed ? 700 : isAWP ? 2600 : isMP9 ? 2350 : isGlock ? 2200 : isM4A4 ? 2100 : 1800,
+      t
+    );
+    filter.Q.setValueAtTime(isAWP ? 1.2 : isUSPS ? 3.2 : 2.5, t);
 
     const noiseGain = this.ctx.createGain();
     noiseGain.gain.setValueAtTime(isAWP ? 0.9 : peakGain * 0.8, t);
@@ -402,13 +438,16 @@ export class ProceduralAudio {
     whiteNoise.start(t, offset);
     whiteNoise.stop(t + dur);
 
-    // 3. Crisp mechanical hammer / AK bolt-carrier slap transient
+    // 3. Crisp mechanical hammer / bolt-carrier slap transient
     const clickOsc = this.ctx.createOscillator();
     const clickGain = this.ctx.createGain();
     clickOsc.type = 'square';
-    clickOsc.frequency.setValueAtTime(isSuppressed ? 1600 : isAWP ? 4200 : 3400, t);
+    clickOsc.frequency.setValueAtTime(
+      isUSPS ? 1900 : isSuppressed ? 1600 : isAWP ? 4200 : isMP9 ? 3800 : isM4A4 ? 3600 : 3400,
+      t
+    );
     clickOsc.frequency.exponentialRampToValueAtTime(380, t + 0.024);
-    clickGain.gain.setValueAtTime(isSuppressed ? 0.16 : 0.48, t);
+    clickGain.gain.setValueAtTime(isSuppressed ? 0.16 : isMP9 || isGlock ? 0.34 : 0.48, t);
     clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.028);
     clickOsc.connect(clickGain);
     clickGain.connect(destinationNode);
@@ -416,22 +455,22 @@ export class ProceduralAudio {
     clickOsc.stop(t + 0.028);
 
     // 4. Outdoor supersonic canyon crack tail for unsuppressed high-caliber rifles
-    if (!isSuppressed && this.sharedNoiseBuffer) {
+    if (!isSuppressed && !isGlock && this.sharedNoiseBuffer) {
       const tail = this.ctx.createBufferSource();
       tail.buffer = this.sharedNoiseBuffer;
       const tailFilter = this.ctx.createBiquadFilter();
       tailFilter.type = 'bandpass';
-      tailFilter.frequency.setValueAtTime(isAWP ? 950 : 1250, t + 0.03);
-      tailFilter.frequency.exponentialRampToValueAtTime(320, t + (isAWP ? 0.52 : 0.28));
+      tailFilter.frequency.setValueAtTime(isAWP ? 950 : isMP9 ? 1600 : 1250, t + 0.03);
+      tailFilter.frequency.exponentialRampToValueAtTime(320, t + (isAWP ? 0.52 : isMP9 ? 0.18 : 0.28));
       tailFilter.Q.setValueAtTime(1.4, t + 0.03);
       const tailGain = this.ctx.createGain();
-      tailGain.gain.setValueAtTime(isAWP ? 0.36 : 0.22, t + 0.025);
-      tailGain.gain.exponentialRampToValueAtTime(0.001, t + (isAWP ? 0.54 : 0.30));
+      tailGain.gain.setValueAtTime(isAWP ? 0.36 : isMP9 ? 0.14 : 0.22, t + 0.025);
+      tailGain.gain.exponentialRampToValueAtTime(0.001, t + (isAWP ? 0.54 : isMP9 ? 0.19 : 0.30));
       tail.connect(tailFilter);
       tailFilter.connect(tailGain);
       tailGain.connect(destinationNode);
       tail.start(t + 0.025, Math.random() * 1.2);
-      tail.stop(t + (isAWP ? 0.54 : 0.30));
+      tail.stop(t + (isAWP ? 0.54 : isMP9 ? 0.19 : 0.30));
     }
   }
 

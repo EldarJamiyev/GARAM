@@ -8,7 +8,7 @@ import {
 import { SceneManager } from './render/SceneManager.js';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
 import { ProceduralAudio } from './audio/ProceduralAudio.js';
-import { buildTacticalMeridianMap } from './maps/DeMeridianMap.js';
+import { buildCsOfficeMap } from './maps/CsOfficeMap.js';
 import { InventoryManager } from './combat/InventoryManager.js';
 import { WeaponController } from './combat/WeaponController.js';
 import { EffectsManager } from './combat/EffectsManager.js';
@@ -90,8 +90,9 @@ export class GaramGame {
     const spawnPos = { x: baseSpawn.x, y: baseSpawn.y, z: baseSpawn.z };
     const player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
-    const mapData = buildTacticalMeridianMap(this.sceneManager.worldScene);
-    const spatialGrid = new SpatialGrid(mapData.blocks, 10);
+    const mapData = buildCsOfficeMap(this.sceneManager.worldScene);
+    const spatialGrid = new SpatialGrid(mapData.blocks, 6);
+    radar.bakeFromScene(this.renderer, this.sceneManager.worldScene);
 
     let ctxRef!: GameContext;
     const utilityManager = new UtilityManager(
@@ -228,8 +229,8 @@ export class GaramGame {
     if (!ctx.hasMatchStarted.value) {
       ctx.viewmodel.mesh.visible = false;
       const t = now * 0.00018;
-      worldCamera.position.set(Math.sin(t) * 28, 10.5, -12 + Math.cos(t) * 20);
-      worldCamera.lookAt(0, 2.4, -14);
+      worldCamera.position.set(Math.sin(t) * 20, 8.2, -26 + Math.cos(t) * 6);
+      worldCamera.lookAt(0, 2.8, -11);
       ctx.effects.update(frameDelta);
       this.sceneManager.update(frameDelta, worldCamera.position);
       this.renderer.clear();

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { AssetManager } from '../render/AssetManager.js';
+import { buildProceduralCS2Weapon } from '../render/ProceduralWeaponBuilder.js';
 import { ArmIKSolver } from './ArmIKSolver.js';
 import {
   CS2_ARMS_MODEL_PATH,
@@ -86,7 +87,7 @@ export class WeaponViewmodel {
   private armsMixer: THREE.AnimationMixer | null = null;
   private armIKSolver: ArmIKSolver | null = null;
   private armsActions: Map<string, THREE.AnimationAction> = new Map();
-  private bindPoseSnapshot: Map<string, BoneTransformSnapshot> = new Map();
+  private bindPoseSnapshot: Map<THREE.Object3D, BoneTransformSnapshot> = new Map();
   private cs2WeaponSocket: THREE.Object3D | null = null;
   private cs2HandRSocket: THREE.Object3D | null = null;
   private cs2HandLSocket: THREE.Object3D | null = null;
@@ -155,7 +156,7 @@ export class WeaponViewmodel {
     this.armsContainer = new THREE.Group();
     this.armsContainer.scale.setScalar(1.0);
     this.armsContainer.rotation.y = Math.PI;
-    this.armsContainer.position.set(0.032, -0.895, -0.095);
+    this.armsContainer.position.set(0.058, -0.872, -0.135);
     this.armsContainer.visible = false;
     this.mesh.add(this.armsContainer);
 
@@ -575,6 +576,11 @@ export class WeaponViewmodel {
           }
         });
 
+        // Attach matte charcoal tactical rolled sleeves to upper arms so zero bare bicep stumps appear
+        if (this.isCS2ArmsRig) {
+          this.attachTacticalSleeves(armsModel);
+        }
+
         this.armsContainer.add(armsModel);
         this.armsLoaded = true;
       }
@@ -582,21 +588,62 @@ export class WeaponViewmodel {
       console.warn('[WeaponViewmodel] Failed to load cs2_fps_arms.glb; using procedural glove fallback.');
     }
 
-    // 2. Load All 5 High-Fidelity CS2 Weapon GLBs in parallel and bind them to their calibrated skeletal socket bones
+    // 2. Fetch optional asset manifest once so optional weapons never trigger 404 console errors
+    let assetManifest: Record<string, boolean> = {};
+    try {
+      const mRes = await fetch('/models/asset-manifest.json');
+      if (mRes.ok) {
+        assetManifest = (await mRes.json()) as Record<string, boolean>;
+      }
+    } catch {
+      // Proceed with bundled GLBs + procedural CS2 fallback
+    }
+
+    const OPTIONAL_MANIFEST_KEYS: Record<string, string> = {
+      m4a4: 'm4a4',
+      mp9: 'mp9',
+      'usp-s': 'usps',
+      'glock-18': 'glock18',
+    };
+
+    // 3. Load All 9 CS2 Weapons in parallel and bind them to calibrated skeletal socket bones
     const weaponIds = Object.keys(WEAPON_SOCKET_CONFIGS);
     await Promise.all(
       weaponIds.map(async (weaponId) => {
         const cfg = WEAPON_SOCKET_CONFIGS[weaponId];
         try {
-          const loadedModel = await assetManager.loadModel(cfg.modelPath, {
-            targetLength: cfg.targetLength,
-            anchorBoneName: cfg.anchorBoneName,
-            centerPivot: !cfg.anchorBoneName,
-            rotationEuler: cfg.rotationEuler,
-            envMapIntensity: 1.85,
-            castShadow: false,
-            receiveShadow: false,
-          });
+          const manifestKey = OPTIONAL_MANIFEST_KEYS[weaponId];
+          let loadedModel: THREE.Object3D | null = null;
+
+          if (!manifestKey || assetManifest[manifestKey] === true) {
+            loadedModel = await assetManager.loadModel(cfg.modelPath, {
+              targetLength: cfg.targetLength,
+              anchorBoneName: cfg.anchorBoneName,
+              centerPivot: !cfg.anchorBoneName,
+              rotationEuler: cfg.rotationEuler,
+              envMapIntensity: 1.85,
+              castShadow: false,
+              receiveShadow: false,
+            });
+          }
+
+          if (!loadedModel && manifestKey) {
+            const wrapper = new THREE.Group();
+            wrapper.name = `procedural_cs2_${weaponId}`;
+            const inner = buildProceduralCS2Weapon(weaponId);
+            // ProceduralWeaponBuilder points barrel along +Z; rotate Y=PI so barrel points -Z in 1P viewmodel
+            inner.rotation.set(0, Math.PI, 0);
+            wrapper.add(inner);
+            AssetManager.normalizeGLB(wrapper, inner, {
+              targetLength: cfg.targetLength,
+              centerPivot: true,
+              envMapIntensity: 1.85,
+            });
+            // Offset grip cleanly to (0,0,0) right-hand socket
+            inner.position.z -= cfg.targetLength * 0.16;
+            inner.position.y += 0.025;
+            loadedModel = wrapper;
+          }
 
           if (!loadedModel) return;
 
@@ -652,6 +699,7 @@ export class WeaponViewmodel {
 
           const socketHolder = new THREE.Group();
           socketHolder.name = `${weaponId}-socket-holder`;
+          socketHolder.userData.isWeaponAttachment = true;
           socketHolder.position.set(cfg.localPos[0], cfg.localPos[1], cfg.localPos[2]);
           socketHolder.rotation.set(cfg.localRotEuler[0], cfg.localRotEuler[1], cfg.localRotEuler[2]);
           socketHolder.scale.setScalar(cfg.localScale);
@@ -733,6 +781,42 @@ export class WeaponViewmodel {
     if (this.armsLoaded) {
       this.syncArmVisibility();
       this.playWeaponAnimation('idle', 1.0);
+    }
+  }
+
+  private attachTacticalSleeves(armsModel: THREE.Object3D): void {
+    const sleeveMat = new THREE.MeshStandardMaterial({
+      color: 0x1d232b,
+      roughness: 0.84,
+      metalness: 0.08,
+      envMapIntensity: 0.9,
+      side: THREE.DoubleSide,
+    });
+    const cuffMat = new THREE.MeshStandardMaterial({
+      color: 0x2b333e,
+      roughness: 0.72,
+      metalness: 0.14,
+      envMapIntensity: 1.0,
+    });
+    const sleeveGeo = new THREE.CylinderGeometry(0.056, 0.068, 0.34, 14, 1, false);
+    const cuffGeo = new THREE.CylinderGeometry(0.058, 0.058, 0.036, 14);
+
+    for (const boneName of ['DEF-upper_armL_237', 'DEF-upper_armR_361']) {
+      const bone = armsModel.getObjectByName(boneName);
+      if (!bone) continue;
+      const sleeveGroup = new THREE.Group();
+      sleeveGroup.name = `${boneName}_tactical_sleeve`;
+      sleeveGroup.userData.isWeaponAttachment = true;
+
+      const tube = new THREE.Mesh(sleeveGeo, sleeveMat);
+      tube.position.set(0, -0.02, 0);
+      sleeveGroup.add(tube);
+
+      const rolledCuff = new THREE.Mesh(cuffGeo, cuffMat);
+      rolledCuff.position.set(0, 0.145, 0);
+      sleeveGroup.add(rolledCuff);
+
+      bone.add(sleeveGroup);
     }
   }
 
@@ -870,7 +954,7 @@ export class WeaponViewmodel {
       cfg.armsOffset[2]
     );
     this.syncArmVisibility();
-    const drawScale = this.isCS2ArmsRig ? 1.65 : 1.8;
+    const drawScale = this.isCS2ArmsRig ? 1.35 : 1.8;
     this.playWeaponAnimation(cfg.clips.draw ? 'draw' : 'idle', drawScale);
   }
 
@@ -1061,9 +1145,15 @@ export class WeaponViewmodel {
     this.playWeaponAnimation('fire', fireSpeed);
     this.syncMuzzleTipPosition();
 
-    // Volumetric radial fireball muzzle flash (suppressed compact puff on M4A1-S)
-    const isSuppressed = this.currentWeaponId === 'vanguard-m4';
-    const baseScale = isSuppressed ? 0.36 : this.currentWeaponId === 'sovereign-awp' ? 1.45 : 1.0;
+    // Volumetric radial fireball muzzle flash (suppressed compact puff on M4A1-S & USP-S)
+    const isSuppressed = this.currentWeaponId === 'vanguard-m4' || this.currentWeaponId === 'usp-s';
+    const baseScale = isSuppressed
+      ? 0.34
+      : this.currentWeaponId === 'sovereign-awp'
+        ? 1.45
+        : this.currentWeaponId === 'mp9' || this.currentWeaponId === 'glock-18'
+          ? 0.75
+          : 1.0;
     const jitter = 0.85 + Math.random() * 0.42;
 
     this.flashTimer = isSuppressed ? 0.035 : 0.055;
@@ -1206,12 +1296,10 @@ export class WeaponViewmodel {
 
         if (cfg.leftArmPoseMode === 'pistol' && !this.isReloading && !this.isInspecting && this.cs2HandRSocket && this.cs2HandLSocket && this.armIKSolver) {
           this.cs2HandRSocket.getWorldPosition(_vA);
-          this.cs2HandLSocket.getWorldPosition(_vB);
-          // Target left wrist just underneath & forward-left of right hand for CS2 weaver pistol grip
+          // Instant full-weight two-handed CS2 weaver pistol cup beneath right hand / trigger guard
           _vC.set(_vA.x - 0.022, _vA.y - 0.024, _vA.z - 0.044);
-          _vB.lerp(_vC, this.leftHandLockWeight);
           _vD.set(_vA.x - 0.24, _vA.y - 0.26, _vA.z + 0.08);
-          this.armIKSolver.solveCS2LeftHandToTarget(_vB, _vD);
+          this.armIKSolver.solveCS2LeftHandToTarget(_vC, _vD);
         } else if (cfg.leftArmPoseMode === 'karambit' && this.cs2HandLSocket && this.armIKSolver) {
           // Drop left arm cleanly into low-left tactical guard outside the viewport center
           _vC.set(-0.20, -0.34, -0.22);

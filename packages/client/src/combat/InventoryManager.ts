@@ -271,12 +271,14 @@ export class InventoryManager {
     return { reloadCompleted };
   }
 
-  public resetToPistolRound(): void {
+  public resetToPistolRound(team: 'Vanguard' | 'Syndicate' = 'Vanguard'): void {
+    const starterId = team === 'Syndicate' ? 'glock-18' : 'usp-s';
+    const def = WEAPONS[starterId] || WEAPONS['desert-eagle'];
     this.slots[1] = null;
-    this.slots[2] = { weaponId: 'desert-eagle', currentAmmo: 7, reserveAmmo: 35 };
+    this.slots[2] = { weaponId: def.id, currentAmmo: def.magCapacity, reserveAmmo: def.reserveAmmo };
     this.slots[3] = { weaponId: 'garam-karambit', currentAmmo: 1, reserveAmmo: 0 };
     this.slots[4] = null;
     this.slots[5] = null;
-    this.equipSlot(2);
+    this.equipSlot(2, true);
   }
 }

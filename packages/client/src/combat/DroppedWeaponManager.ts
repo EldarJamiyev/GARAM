@@ -1,12 +1,17 @@
 import * as THREE from 'three';
 import { AABBCollider, WEAPONS } from '@garam/shared';
 import { AssetManager } from '../render/AssetManager.js';
+import { buildProceduralCS2Weapon } from '../render/ProceduralWeaponBuilder.js';
 
-const WEAPON_GLB_MAP: Record<string, { path: string; length: number }> = {
+const WEAPON_GLB_MAP: Record<string, { path: string; length: number; manifestKey?: string }> = {
   'garam-47': { path: '/models/garam47.glb', length: 0.88 },
   'vanguard-m4': { path: '/models/m4a1s.glb', length: 0.92 },
+  'm4a4': { path: '/models/m4a4.glb', length: 0.86, manifestKey: 'm4a4' },
+  'mp9': { path: '/models/mp9.glb', length: 0.48, manifestKey: 'mp9' },
   'sovereign-awp': { path: '/models/awp.glb', length: 1.15 },
   'desert-eagle': { path: '/models/deagle.glb', length: 0.28 },
+  'usp-s': { path: '/models/usps.glb', length: 0.34, manifestKey: 'usps' },
+  'glock-18': { path: '/models/glock18.glb', length: 0.22, manifestKey: 'glock18' },
 };
 
 export interface DroppedWeaponEntity {
@@ -194,21 +199,28 @@ export class DroppedWeaponManager {
     group.position.copy(pos);
     this.scene.add(group);
 
-    // Asynchronously mount real CS2 GLB weapon or C4 model
-    const spec = isBomb ? { path: '/models/c4.glb', length: 0.30 } : WEAPON_GLB_MAP[weaponId];
+    // Asynchronously mount real CS2 GLB weapon or high-craft procedural CS2 weapon (zero 404s)
+    const spec = isBomb ? { path: '/models/c4.glb', length: 0.30, manifestKey: undefined } : WEAPON_GLB_MAP[weaponId];
     if (spec) {
-      void AssetManager.getInstance()
-        .loadModel(spec.path, {
-          targetLength: spec.length,
-          centerPivot: true,
-          rotationEuler: isBomb ? [0, 0, 0] : [0, 0, Math.PI / 2],
-          envMapIntensity: 1.6,
-        })
-        .then((glb) => {
-          if (!glb || !group.parent) return;
-          proxyGroup.visible = false;
-          group.add(glb);
-        });
+      if (spec.manifestKey) {
+        const proc = buildProceduralCS2Weapon(weaponId);
+        proc.rotation.set(0, 0, Math.PI / 2);
+        proxyGroup.visible = false;
+        group.add(proc);
+      } else {
+        void AssetManager.getInstance()
+          .loadModel(spec.path, {
+            targetLength: spec.length,
+            centerPivot: true,
+            rotationEuler: isBomb ? [0, 0, 0] : [0, 0, Math.PI / 2],
+            envMapIntensity: 1.6,
+          })
+          .then((glb) => {
+            if (!glb || !group.parent) return;
+            proxyGroup.visible = false;
+            group.add(glb);
+          });
+      }
     }
 
     const tossVel = forward.clone().normalize().multiplyScalar(4.5);

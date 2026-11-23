@@ -1,6 +1,6 @@
 /**
- * Backward-compatible re-export facade aliasing DE_MERIDIAN to legacy DE_CITADEL symbol names.
- * All geometry, spawns, bombsites, callouts, and bots are sourced from DeMeridianData.ts.
+ * Backward-compatible re-export facade aliasing CS_OFFICE to legacy DE_CITADEL / DE_MERIDIAN symbol names.
+ * All geometry, spawns, bombsites, callouts, and bots are sourced from CsOfficeData.ts.
  */
 export type { AABBCollider, MapBounds } from '../physics/KinematicPlayerController.js';
 export {
@@ -11,18 +11,24 @@ export {
   type MapBlockCollider,
   type CalloutZone,
   type TacticalBotConfig,
-  DE_MERIDIAN_BOUNDS,
-  DE_MERIDIAN_DECK_Y,
-  DE_MERIDIAN_UPPER_Y,
-  DE_MERIDIAN_BLOCKS,
-  DE_MERIDIAN_COLLIDERS,
-  DE_MERIDIAN_BOUNDS as DE_CITADEL_BOUNDS,
-  DE_MERIDIAN_BLOCKS as DE_CITADEL_BLOCKS,
-  DE_MERIDIAN_COLLIDERS as DE_CITADEL_COLLIDERS,
+  CS_OFFICE_BOUNDS,
+  CS_OFFICE_COURTYARD_Y,
+  CS_OFFICE_FLOOR_Y,
+  CS_OFFICE_UPPER_Y,
+  CS_OFFICE_BLOCKS,
+  CS_OFFICE_COLLIDERS,
+  CS_OFFICE_BOUNDS as DE_MERIDIAN_BOUNDS,
+  CS_OFFICE_FLOOR_Y as DE_MERIDIAN_DECK_Y,
+  CS_OFFICE_UPPER_Y as DE_MERIDIAN_UPPER_Y,
+  CS_OFFICE_BLOCKS as DE_MERIDIAN_BLOCKS,
+  CS_OFFICE_COLLIDERS as DE_MERIDIAN_COLLIDERS,
+  CS_OFFICE_BOUNDS as DE_CITADEL_BOUNDS,
+  CS_OFFICE_BLOCKS as DE_CITADEL_BLOCKS,
+  CS_OFFICE_COLLIDERS as DE_CITADEL_COLLIDERS,
   BOMBSITES,
   SPAWN_POINTS,
   SPAWN_ZONES,
   CALLOUT_ZONES,
   getCalloutName,
   TACTICAL_BOTS,
-} from './DeMeridianData.js';
+} from './CsOfficeData.js';

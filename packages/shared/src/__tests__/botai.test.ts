@@ -262,4 +262,50 @@ describe('Anti-Prefire Human Perception, Aim Alignment & Tactical Combat AI', ()
     expect(veteranViper.skill).toBeLessThan(eliteViper.skill);
     expect(eliteViper.skill).toBeLessThan(sovereignViper.skill);
   });
+
+  it('distinguishes foveal (<=32°) vs peripheral (32°–55°) vision zones, enforces >55° blindness, and applies exposureConfirmMs & Gaussian jitter', () => {
+    const strictCfg: PerceptionConfig = {
+      halfFovDeg: 55,
+      fovealHalfFovDeg: 32,
+      baseReactionMs: 300,
+      peripheralPenaltyMs: 180,
+      distancePenaltyMsPer10m: 35,
+      surprisePenaltyMs: 120,
+      exposureConfirmMs: 85,
+    };
+
+    const botEye = { x: 0, y: 1.68, z: 0 };
+    const foveal = BotBrain.evaluateVisualPerception(0, botEye, { x: 2, y: 1.68, z: 10 }, true, strictCfg);
+    expect(foveal.spotted).toBe(true);
+    expect(foveal.visionZone).toBe('FOVEAL');
+    expect(foveal.effectiveReactionMs).toBeGreaterThanOrEqual(385);
+
+    // 45° off-center -> PERIPHERAL zone (1.45× + 90ms surcharge)
+    const periph = BotBrain.evaluateVisualPerception(0, botEye, { x: 10, y: 1.68, z: 10 }, true, strictCfg);
+    expect(periph.spotted).toBe(true);
+    expect(periph.visionZone).toBe('PERIPHERAL');
+    expect(periph.effectiveReactionMs).toBeGreaterThan(foveal.effectiveReactionMs + 150);
+
+    // 60° off-center -> OUTSIDE strict 55° cone
+    const outside = BotBrain.evaluateVisualPerception(
+      0,
+      botEye,
+      { x: Math.sin((60 * Math.PI) / 180) * 10, y: 1.68, z: Math.cos((60 * Math.PI) / 180) * 10 },
+      true,
+      strictCfg
+    );
+    expect(outside.spotted).toBe(false);
+    expect(outside.visionZone).toBe('OUTSIDE');
+
+    // Deterministic Gaussian jitter stays strictly within [-35ms, +35ms]
+    for (let i = 0; i < 30; i++) {
+      const jitter = BotBrain.computeGaussianJitterMs(i * 7.13 + 1.9);
+      expect(jitter).toBeGreaterThanOrEqual(-35);
+      expect(jitter).toBeLessThanOrEqual(35);
+    }
+
+    // Force-buy economy equips MP9 SMG for mid-tier cash ($2100-$2800)
+    const forceDecisions = BotBrain.evaluateTeamEconomy([2400, 2500, 2200, 2300, 2600], 2, 3, true);
+    expect(forceDecisions.every((d) => d.ecoState === 'FORCE_BUY' && d.primaryWeaponId === 'mp9')).toBe(true);
+  });
 });
