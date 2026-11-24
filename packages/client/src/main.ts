@@ -63,6 +63,7 @@ export class GaramGame {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const viewmodel = new WeaponViewmodel();
+    viewmodel.setViewportAspect(window.innerWidth / Math.max(1, window.innerHeight));
     viewmodel.mesh.visible = false;
     this.sceneManager.viewmodelScene.add(viewmodel.mesh);
 
@@ -185,8 +186,7 @@ export class GaramGame {
     const h = window.innerHeight;
     this.sceneManager.worldCamera.aspect = w / h;
     this.sceneManager.worldCamera.updateProjectionMatrix();
-    this.sceneManager.viewmodelCamera.aspect = w / h;
-    this.sceneManager.viewmodelCamera.updateProjectionMatrix();
+    this.ctx.viewmodel.setViewportAspect(w / Math.max(1, h));
     this.renderer.setSize(w, h);
     this.sceneManager.onResize(w, h);
   }

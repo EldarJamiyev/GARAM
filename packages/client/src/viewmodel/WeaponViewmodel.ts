@@ -138,6 +138,8 @@ export class WeaponViewmodel {
   private recoilZ = 0;
   private recoilPitch = 0;
   public isScoped = false;
+  private viewportAspect =
+    typeof window !== 'undefined' ? window.innerWidth / Math.max(1, window.innerHeight) : 16 / 9;
 
   constructor() {
     this.mesh = new THREE.Group();
@@ -558,7 +560,7 @@ export class WeaponViewmodel {
           this.armsActions.set(clip.name, action);
         }
 
-        // Enhance CS2 tactical glove & sleeve PBR sheen
+        // Enhance CS2 tactical glove & bare tattooed arm PBR sheen (zero colliding sleeve cylinders)
         armsModel.traverse((child) => {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
@@ -566,7 +568,8 @@ export class WeaponViewmodel {
             for (const m of mats) {
               if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
                 const std = m as THREE.MeshStandardMaterial;
-                std.side = THREE.DoubleSide;
+                // FrontSide prevents hollow interior backface artifacts on bare CS2 arms
+                std.side = this.isCS2ArmsRig ? THREE.FrontSide : THREE.DoubleSide;
                 std.roughness = Math.max(0.58, std.roughness);
                 std.metalness = Math.min(0.24, std.metalness);
                 std.envMapIntensity = 1.35;
@@ -576,7 +579,7 @@ export class WeaponViewmodel {
           }
         });
 
-        // Attach matte charcoal tactical rolled sleeves to upper arms so zero bare bicep stumps appear
+        // Attach anatomically-fitted rolled tactical sleeves over upper-arm bicep cutoffs
         if (this.isCS2ArmsRig) {
           this.attachTacticalSleeves(armsModel);
         }
@@ -786,22 +789,36 @@ export class WeaponViewmodel {
 
   private attachTacticalSleeves(armsModel: THREE.Object3D): void {
     const sleeveMat = new THREE.MeshStandardMaterial({
-      color: 0x1d232b,
-      roughness: 0.84,
-      metalness: 0.08,
-      envMapIntensity: 0.9,
-      side: THREE.DoubleSide,
+      color: 0x1f2630,
+      roughness: 0.86,
+      metalness: 0.06,
+      envMapIntensity: 0.85,
+      side: THREE.FrontSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
     const cuffMat = new THREE.MeshStandardMaterial({
-      color: 0x2b333e,
-      roughness: 0.72,
-      metalness: 0.14,
-      envMapIntensity: 1.0,
+      color: 0x2b3442,
+      roughness: 0.78,
+      metalness: 0.1,
+      envMapIntensity: 0.95,
+      side: THREE.FrontSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
-    const sleeveGeo = new THREE.CylinderGeometry(0.056, 0.068, 0.34, 14, 1, false);
-    const cuffGeo = new THREE.CylinderGeometry(0.058, 0.058, 0.036, 14);
+    // Measured clearance: +12mm outside cs2_fps_arms.glb bicep vertices (0.073..0.113m) so skin never clips through
+    const sleeveGeo = new THREE.CylinderGeometry(0.088, 0.128, 0.44, 20, 1, false);
+    const cuffGeo = new THREE.TorusGeometry(0.084, 0.012, 10, 24);
+    cuffGeo.rotateX(Math.PI * 0.5);
 
-    for (const boneName of ['DEF-upper_armL_237', 'DEF-upper_armR_361']) {
+    const configs: Array<{ boneName: string; cx: number; cz: number }> = [
+      { boneName: 'DEF-upper_armL_237', cx: 0.003, cz: -0.018 },
+      { boneName: 'DEF-upper_armR_361', cx: -0.014, cz: 0.003 },
+    ];
+
+    for (const { boneName, cx, cz } of configs) {
       const bone = armsModel.getObjectByName(boneName);
       if (!bone) continue;
       const sleeveGroup = new THREE.Group();
@@ -809,15 +826,34 @@ export class WeaponViewmodel {
       sleeveGroup.userData.isWeaponAttachment = true;
 
       const tube = new THREE.Mesh(sleeveGeo, sleeveMat);
-      tube.position.set(0, -0.02, 0);
+      tube.position.set(cx, -0.055, cz);
       sleeveGroup.add(tube);
 
       const rolledCuff = new THREE.Mesh(cuffGeo, cuffMat);
-      rolledCuff.position.set(0, 0.145, 0);
+      rolledCuff.position.set(cx, 0.162, cz);
       sleeveGroup.add(rolledCuff);
 
       bone.add(sleeveGroup);
     }
+  }
+
+  public setViewportAspect(aspect: number): void {
+    if (!Number.isFinite(aspect) || aspect <= 0) return;
+    this.viewportAspect = aspect;
+    this.applyArmsContainerTransform(getWeaponSocketConfig(this.currentWeaponId));
+  }
+
+  private applyArmsContainerTransform(cfg: ReturnType<typeof getWeaponSocketConfig>): void {
+    this.armsContainer.scale.setScalar(cfg.armsScale);
+    const narrowT =
+      this.viewportAspect < 1.35
+        ? THREE.MathUtils.clamp((1.35 - this.viewportAspect) / (1.35 - 0.46), 0, 1)
+        : 0;
+    this.armsContainer.position.set(
+      cfg.armsOffset[0] - 0.048 * narrowT,
+      cfg.armsOffset[1] - 0.014 * narrowT,
+      cfg.armsOffset[2] - 0.055 * narrowT
+    );
   }
 
   private playWeaponAnimation(
@@ -868,12 +904,7 @@ export class WeaponViewmodel {
 
     if (usesUnifiedArms) {
       const cfg = getWeaponSocketConfig(this.currentWeaponId);
-      this.armsContainer.scale.setScalar(cfg.armsScale);
-      this.armsContainer.position.set(
-        cfg.armsOffset[0],
-        cfg.armsOffset[1],
-        cfg.armsOffset[2]
-      );
+      this.applyArmsContainerTransform(cfg);
       this.armsContainer.visible = true;
       this.rightArm.visible = false;
       this.leftArm.visible = false;
@@ -947,12 +978,7 @@ export class WeaponViewmodel {
     }
 
     const cfg = getWeaponSocketConfig(weaponId);
-    this.armsContainer.scale.setScalar(cfg.armsScale);
-    this.armsContainer.position.set(
-      cfg.armsOffset[0],
-      cfg.armsOffset[1],
-      cfg.armsOffset[2]
-    );
+    this.applyArmsContainerTransform(cfg);
     this.syncArmVisibility();
     const drawScale = this.isCS2ArmsRig ? 1.35 : 1.8;
     this.playWeaponAnimation(cfg.clips.draw ? 'draw' : 'idle', drawScale);

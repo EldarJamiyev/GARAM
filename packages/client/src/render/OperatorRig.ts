@@ -321,6 +321,7 @@ export class OperatorRig {
     this.uiCanvas.height = 80;
     this.uiCtx = this.uiCanvas.getContext('2d')!;
     this.uiTexture = new THREE.CanvasTexture(this.uiCanvas);
+    this.uiTexture.colorSpace = THREE.SRGBColorSpace;
 
     const spriteMat = new THREE.SpriteMaterial({
       map: this.uiTexture,
@@ -329,7 +330,7 @@ export class OperatorRig {
     });
     this.uiBillboard = new THREE.Sprite(spriteMat);
     this.uiBillboard.position.set(0, 2.15, 0);
-    this.uiBillboard.scale.set(1.4, 0.44, 1);
+    this.uiBillboard.scale.set(1.25 * 0.85, 0.36 * 0.85, 1);
     this.uiBillboard.castShadow = false;
     this.root.add(this.uiBillboard);
 
@@ -747,6 +748,8 @@ export class OperatorRig {
     this.leftArm.position.y = targetArmY;
     this.weaponMesh.position.y = targetWeaponY;
     this.uiBillboard.position.y = 2.15 - 0.55 * this.crouchBlend;
+    const scaleFactor = THREE.MathUtils.clamp(camDist * 0.085, 0.24, 1.15);
+    this.uiBillboard.scale.set(1.25 * scaleFactor, 0.36 * scaleFactor, 1);
     this.headCollider.position.y = 1.66 - 0.61 * this.crouchBlend;
     this.bodyCollider.position.y = 0.95 - 0.40 * this.crouchBlend;
 
@@ -833,30 +836,30 @@ export class OperatorRig {
     const ctx = this.uiCtx;
     ctx.clearRect(0, 0, 256, 80);
 
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 2;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.92)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 1.5;
 
     ctx.fillStyle = team === 'Vanguard' ? '#38bdf8' : '#34d399';
     ctx.beginPath();
-    ctx.moveTo(128, 62);
-    ctx.lineTo(118, 48);
-    ctx.lineTo(138, 48);
+    ctx.moveTo(128, 66);
+    ctx.lineTo(120, 54);
+    ctx.lineTo(136, 54);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = '800 20px "Segoe UI", Arial, sans-serif';
+    ctx.font = '800 18px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(name, 128, 40);
+    ctx.fillText(name, 128, 44);
 
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
 
     const spriteMat = this.uiBillboard.material as THREE.SpriteMaterial;
     spriteMat.depthTest = false;
-    spriteMat.opacity = 0.85;
+    spriteMat.opacity = 0.9;
     this.uiTexture.needsUpdate = true;
   }
 }

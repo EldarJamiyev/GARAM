@@ -573,68 +573,113 @@
       max-width: 220px;
     }
 
-    /* Responsive Mobile / Split-Screen Viewport Accommodations */
-    @media (max-width: 768px) {
+    #tactical-radar {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      width: 185px;
+      height: 185px;
+      border-radius: 50%;
+      border: 2px solid rgba(59, 158, 255, 0.45);
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.75), inset 0 0 15px rgba(0, 0, 0, 0.8);
+      background: rgba(6, 10, 16, 0.92);
+      z-index: 40;
+      pointer-events: none;
+    }
+
+    /* Responsive Mobile / Narrow Split-Pane Viewport Accommodations */
+    @media (max-width: 900px) {
       #round-header {
         top: 8px;
-        grid-template-columns: minmax(110px, 140px) 76px minmax(110px, 140px);
+        max-width: calc(100vw - 16px);
+        grid-template-columns: minmax(96px, 128px) 64px minmax(96px, 128px);
       }
       .header-team {
-        padding: 6px 12px;
-        font-size: 11px;
+        padding: 4px 8px;
+        font-size: 10px;
+        letter-spacing: 0.8px;
       }
       .header-score {
-        font-size: 19px;
+        font-size: 16px;
       }
       .header-timer {
-        font-size: 15px;
+        font-size: 14px;
+        letter-spacing: 0.5px;
       }
       #hud-callout {
-        top: 54px !important;
-        font-size: 10px !important;
-        padding: 3px 10px !important;
+        top: 42px !important;
+        font-size: 9px !important;
+        padding: 2px 8px !important;
+        letter-spacing: 1.2px !important;
+      }
+      #tactical-radar {
+        top: 58px;
+        left: 10px;
+        width: 112px;
+        height: 112px;
+      }
+      #hud-velocity-block {
+        display: none;
+      }
+      body.perf-open #hud-velocity-block {
+        display: flex;
       }
       #hud-bottom {
-        bottom: 12px;
-        left: 12px;
-        right: 12px;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 8px;
-      }
-      #hud-bottom > div:first-child {
-        display: flex;
-        justify-content: space-between;
-        gap: 6px;
-      }
-      #hud-bottom > div:last-child {
-        display: flex;
+        bottom: 8px;
+        left: 8px;
+        right: 8px;
+        height: 42px;
         flex-direction: row;
-        justify-content: space-between;
         align-items: center;
+        justify-content: space-between;
         gap: 6px;
+      }
+      #hud-bottom > div {
+        gap: 5px !important;
+        min-width: 0;
       }
       .hud-block {
-        padding: 6px 12px;
+        height: 42px;
+        padding: 4px 8px;
         min-width: 0 !important;
-        flex: 1;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 2px;
+      }
+      #hud-bottom > div:last-child .hud-block {
+        align-items: flex-end;
+      }
+      .hud-label {
+        font-size: 8px;
+        letter-spacing: 0.5px;
+        margin-right: 0 !important;
       }
       .hud-val {
-        font-size: 22px;
+        font-size: 16px;
+        letter-spacing: 0.2px;
+        white-space: nowrap;
+      }
+      .hud-val.ammo span {
+        font-size: 11px !important;
       }
       .hud-val.speed {
-        font-size: 12px;
-      }
-      #slot-bar {
-        margin-bottom: 0;
-        gap: 4px;
-      }
-      .slot-item {
-        padding: 4px 6px;
-        font-size: 9px;
+        font-size: 10px;
+        padding: 2px 5px;
       }
       #hud-weapon-name {
-        max-width: 140px;
+        max-width: 84px;
+      }
+      #slot-bar {
+        bottom: 64px;
+        right: 8px;
+        gap: 2px;
+        opacity: 0.72;
+      }
+      .slot-item {
+        padding: 2px 6px;
+        font-size: 9px;
+        letter-spacing: 0.4px;
       }
     }
   </style>
@@ -691,7 +736,7 @@
           <div class="hud-label">&#x25C6; ARMOR</div>
           <div class="hud-val armor" id="hud-armor">100</div>
         </div>
-        <div class="hud-block">
+        <div class="hud-block" id="hud-velocity-block">
           <div class="hud-label">VELOCITY</div>
           <div class="hud-val speed" id="hud-speed">0.0 m/s • PINPOINT</div>
         </div>

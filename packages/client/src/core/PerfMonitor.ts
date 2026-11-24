@@ -73,6 +73,7 @@ export class PerfMonitor {
   public toggle(): void {
     this.isVisible = !this.isVisible;
     this.container.style.display = this.isVisible ? 'block' : 'none';
+    document.body.classList.toggle('perf-open', this.isVisible);
     if (this.isVisible) {
       this.renderText(-1, 0, 0);
     }

@@ -65,15 +65,6 @@ export class RadarRenderer {
       el.id = 'tactical-radar';
       el.width = this.size;
       el.height = this.size;
-      el.style.position = 'absolute';
-      el.style.top = '18px';
-      el.style.left = '18px';
-      el.style.borderRadius = '50%';
-      el.style.border = '2px solid rgba(59, 158, 255, 0.45)';
-      el.style.boxShadow = '0 0 20px rgba(0, 0, 0, 0.75), inset 0 0 15px rgba(0, 0, 0, 0.8)';
-      el.style.background = 'rgba(6, 10, 16, 0.92)';
-      el.style.zIndex = '40';
-      el.style.pointerEvents = 'none';
 
       const overlay = document.getElementById('ui-overlay');
       if (overlay) {
