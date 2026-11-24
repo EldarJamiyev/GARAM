@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
   WEAPONS,
-  SPAWN_POINTS,
+  DE_DUST2_SPAWN_POINTS,
   HitZone,
   SurfaceMaterial,
   WeaponDef,
@@ -321,8 +321,8 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
     onResetRound: () => {
       const factionSpawn =
         settingsStore.settings.faction === 'Syndicate'
-          ? SPAWN_POINTS.OBSIDIAN_T
-          : SPAWN_POINTS.VANGUARD_CT;
+          ? DE_DUST2_SPAWN_POINTS.OBSIDIAN_T
+          : DE_DUST2_SPAWN_POINTS.VANGUARD_CT;
       ctx.spawnPos.x = factionSpawn.x;
       ctx.spawnPos.y = factionSpawn.y;
       ctx.spawnPos.z = factionSpawn.z;
@@ -333,7 +333,7 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.radar.clearSpotted();
       ctx.playerManager.reset(ctx.spawnPos);
       if (ctx.inputManager) {
-        ctx.inputManager.input.yaw = settingsStore.settings.faction === 'Syndicate' ? 0 : Math.PI;
+        ctx.inputManager.input.yaw = settingsStore.settings.faction === 'Syndicate' ? -Math.PI * 0.5 : -0.35;
         ctx.inputManager.input.pitch = 0;
       }
       ctx.playerManager.respawnAllBots(ctx.bots);
@@ -563,7 +563,7 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     if (!ctx.hasMatchStarted.value) {
       ctx.hasMatchStarted.value = true;
       ctx.roundManager?.startMatch();
-      const initialYaw = settingsStore.settings.faction === 'Syndicate' ? 0 : Math.PI;
+      const initialYaw = settingsStore.settings.faction === 'Syndicate' ? -Math.PI * 0.5 : -0.35;
       if (ctx.inputManager) {
         ctx.inputManager.input.yaw = initialYaw;
         ctx.inputManager.input.pitch = 0;
@@ -609,7 +609,8 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
       ctx.hud.addKillfeed(`Bot Difficulty: ${diff.toUpperCase()}`);
     },
     onFactionChanged: (faction: PlayerFaction) => {
-      const nextSpawn = faction === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
+      const nextSpawn =
+        faction === 'Syndicate' ? DE_DUST2_SPAWN_POINTS.OBSIDIAN_T : DE_DUST2_SPAWN_POINTS.VANGUARD_CT;
       ctx.spawnPos.x = nextSpawn.x;
       ctx.spawnPos.y = nextSpawn.y;
       ctx.spawnPos.z = nextSpawn.z;
@@ -620,7 +621,7 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
         ctx.player.state.vx = 0;
         ctx.player.state.vy = 0;
         ctx.player.state.vz = 0;
-        const nextYaw = faction === 'Syndicate' ? 0 : Math.PI;
+        const nextYaw = faction === 'Syndicate' ? -Math.PI * 0.5 : -0.35;
         if (ctx.inputManager) {
           ctx.inputManager.input.yaw = nextYaw;
           ctx.inputManager.input.pitch = 0;
@@ -664,11 +665,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   if (!inputMgr || !wc || !rm || !botAI || !net) return;
 
   ctx.audio.updateListener(worldCamera);
-  ctx.audio.setIndoorZone(
-    currentZone !== 'FRONT COURTYARD' &&
-      currentZone !== 'CT SPAWN' &&
-      currentZone !== 'GARAGE'
-  );
+  ctx.audio.setIndoorZone(currentZone === 'CT SPAWN' || currentZone === 'A SHORT');
 
   const invUpdate = ctx.inventory.update(frameDelta);
   if (invUpdate.reloadCompleted) {

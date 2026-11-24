@@ -378,9 +378,36 @@ export class SceneManager {
     return instanced;
   }
 
+  /**
+   * Configures warm late-afternoon Mediterranean lighting & hides procedural skyline
+   * because de_dust2.glb supplies its own Blender desert hills and skyline backdrop.
+   */
+  public configureDust2Atmosphere(): void {
+    this.horizonMesh.visible = false;
+    this.worldScene.fog = new THREE.FogExp2(0xe6d8c3, 0.0018);
+    this.hemiLight.color.setHex(0xc8dcf4);
+    this.hemiLight.groundColor.setHex(0x8a7254);
+    this.hemiLight.intensity = 0.88;
+
+    this.sunLight.color.setHex(0xffe6c8);
+    this.sunLight.intensity = 2.15;
+    this.sunLight.position.set(52, 56, 42);
+    this.sunLight.target.position.set(-22, 3.5, 6);
+    this.sunLight.target.updateMatrixWorld();
+
+    const d = 64;
+    this.sunLight.shadow.camera.left = -d;
+    this.sunLight.shadow.camera.right = d;
+    this.sunLight.shadow.camera.top = d;
+    this.sunLight.shadow.camera.bottom = -d;
+    this.sunLight.shadow.camera.updateProjectionMatrix();
+  }
+
   public update(dt: number, cameraPos: THREE.Vector3, currentZone?: string): void {
     this.skyMesh.position.copy(cameraPos);
-    this.horizonMesh.position.set(cameraPos.x, 0, cameraPos.z);
+    if (this.horizonMesh.visible) {
+      this.horizonMesh.position.set(cameraPos.x, 0, cameraPos.z);
+    }
     if (currentZone) {
       this.viewmodelLighting.update(dt, currentZone);
     }

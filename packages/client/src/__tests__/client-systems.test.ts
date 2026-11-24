@@ -435,7 +435,8 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         },
         'Sovereign'
       );
-      const behindBot = makeBot(Math.PI); // facing -Z (North toward DE_MERIDIAN sites)
+      const behindBot = makeBot(Math.PI); // facing -Z (North toward CS_OFFICE A/B sites)
+      behindBot.mesh.position.set(0, 0, 12);
       aiBehind.startNewRound(1, [behindBot]);
       for (let f = 0; f < 120; f++) {
         aiBehind.update(
@@ -443,8 +444,8 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
           1 / 60,
           [],
           [],
-          new THREE.Vector3(0, 0, 10),
-          new THREE.Vector3(0, 1.68, 10),
+          new THREE.Vector3(0, 0, 22),
+          new THREE.Vector3(0, 1.68, 22),
           [],
           false,
           null,

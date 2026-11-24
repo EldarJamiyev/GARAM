@@ -11,6 +11,8 @@ import {
   KINEMATICS,
   BOMBSITES,
   SPAWN_POINTS,
+  DEFAULT_MAP_BOUNDS,
+  MapBounds,
   executeTacticalRaycast,
   TargetCollider,
   Ray,
@@ -18,6 +20,12 @@ import {
   SurfaceMaterial,
   CS_OFFICE_NAV_GRAPH,
   CS_OFFICE_BLOCKS,
+  DE_DUST2_NAV_GRAPH,
+  DE_DUST2_BLOCKS,
+  DE_DUST2_BOUNDS,
+  DE_DUST2_BOMBSITES,
+  DE_DUST2_SPAWN_POINTS,
+  NavNode,
   findNearestNavNode,
   findPathAStar,
   rollRandomStrategies,
@@ -33,6 +41,18 @@ import {
   WEAPONS,
 } from '@garam/shared';
 import { BotEntity } from '../maps/DeCitadelMap.js';
+
+export interface BotMapConfig {
+  navGraph: Record<string, NavNode>;
+  blocks: MapBlockCollider[];
+  bounds: MapBounds;
+  bombsites: { A: { center: Vec3; radius: number }; B: { center: Vec3; radius: number } };
+  spawnPoints: { VANGUARD_CT: Vec3; OBSIDIAN_T: Vec3 };
+  vanguardHolds: readonly string[];
+  syndicateExecutes: readonly string[];
+  smokeChokes: readonly string[];
+  postPlantFallbackNode: string;
+}
 
 export type BotDifficulty = 'Recruit' | 'Veteran' | 'Elite' | 'Sovereign';
 
@@ -211,6 +231,52 @@ const CS_OFFICE_SMOKE_CHOKES: readonly string[] = [
   'b_site_paper_east',
 ];
 
+export const CS_OFFICE_BOT_MAP_CONFIG: BotMapConfig = {
+  navGraph: CS_OFFICE_NAV_GRAPH,
+  blocks: CS_OFFICE_BLOCKS,
+  bounds: DEFAULT_MAP_BOUNDS,
+  bombsites: BOMBSITES,
+  spawnPoints: SPAWN_POINTS,
+  vanguardHolds: VANGUARD_TACTICAL_HOLDS,
+  syndicateExecutes: SYNDICATE_TACTICAL_EXECUTES,
+  smokeChokes: CS_OFFICE_SMOKE_CHOKES,
+  postPlantFallbackNode: 'a_site_east',
+};
+
+export const DE_DUST2_BOT_MAP_CONFIG: BotMapConfig = {
+  navGraph: DE_DUST2_NAV_GRAPH,
+  blocks: DE_DUST2_BLOCKS,
+  bounds: DE_DUST2_BOUNDS,
+  bombsites: DE_DUST2_BOMBSITES,
+  spawnPoints: DE_DUST2_SPAWN_POINTS,
+  vanguardHolds: [
+    'site_center',
+    'goose',
+    'ramp_top',
+    'site_sw',
+    'stairs_bot',
+    'site_e',
+    'car',
+    'triple',
+    'ninja',
+    'elbow',
+  ],
+  syndicateExecutes: [
+    'site_center',
+    'default',
+    'site_nw',
+    'site_n',
+    'short_plat',
+    'stairs_bot',
+    'long_corner',
+    'car',
+    'elbow',
+    'goose',
+  ],
+  smokeChokes: ['long_corner', 'ramp_top', 'short_plat', 'elbow'],
+  postPlantFallbackNode: 'goose',
+};
+
 interface BotInternalState {
   botId: string;
   botName: string;
@@ -284,10 +350,16 @@ export class BotAISystem {
   private hasLastPlayerFeet = false;
   private playerVelX = 0;
   private playerVelZ = 0;
+  private mapConfig: BotMapConfig;
 
-  constructor(callbacks: BotAISystemCallbacks, difficulty: BotDifficulty = 'Veteran') {
+  constructor(
+    callbacks: BotAISystemCallbacks,
+    difficulty: BotDifficulty = 'Veteran',
+    mapConfig: BotMapConfig = CS_OFFICE_BOT_MAP_CONFIG
+  ) {
     this.callbacks = callbacks;
     this.difficulty = difficulty;
+    this.mapConfig = mapConfig;
     this.currentStrategies = rollRandomStrategies();
   }
 
@@ -389,6 +461,9 @@ export class BotAISystem {
       true
     );
 
+    const { navGraph, blocks: mapBlocks, bombsites, vanguardHolds, syndicateExecutes } = this.mapConfig;
+    const nodePos = (id: string, fallback: Vec3): Vec3 => navGraph[id]?.pos ?? fallback;
+
     synBots.forEach((bot, index) => {
       const decision = synBuys[index];
       bot.armor = decision.buyArmor ? 100 : 0;
@@ -397,37 +472,40 @@ export class BotAISystem {
       bot.rig?.setWeapon(weaponId);
 
       let role: BotInternalState['role'] = 'entry';
-      let dest: Vec3 = BOMBSITES.A.center;
+      let dest: Vec3 = bombsites.A.center;
 
       if (this.currentStrategies.syndicate === 'RUSH_A_LONG') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = index === 4 ? CS_OFFICE_NAV_GRAPH['main_hall_north'].pos : BOMBSITES.A.center;
+        dest =
+          index === 4
+            ? nodePos(syndicateExecutes[4 % syndicateExecutes.length], bombsites.A.center)
+            : bombsites.A.center;
       } else if (this.currentStrategies.syndicate === 'SPLIT_A_MID') {
         role = index < 2 ? 'entry' : 'rotator';
-        dest = index < 2 ? BOMBSITES.A.center : CS_OFFICE_NAV_GRAPH['a_site_west_door'].pos;
+        dest =
+          index < 2
+            ? bombsites.A.center
+            : nodePos(syndicateExecutes[(index + 2) % syndicateExecutes.length], bombsites.A.center);
       } else if (this.currentStrategies.syndicate === 'RUSH_B_TUNNELS') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = index === 4 ? CS_OFFICE_NAV_GRAPH['kitchen_north_door'].pos : BOMBSITES.B.center;
+        dest =
+          index === 4
+            ? nodePos(syndicateExecutes[5 % syndicateExecutes.length], bombsites.B.center)
+            : bombsites.B.center;
       } else if (this.currentStrategies.syndicate === 'MID_TO_B_SPLIT') {
         role = index < 3 ? 'entry' : 'support';
-        dest = index < 3 ? CS_OFFICE_NAV_GRAPH['b_site_paper_east'].pos : CS_OFFICE_NAV_GRAPH['long_hall_mid_n'].pos;
+        dest = nodePos(syndicateExecutes[index % syndicateExecutes.length], bombsites.B.center);
       } else {
         role = index === 0 ? 'entry' : index === 1 ? 'lurker' : 'rotator';
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
-          CS_OFFICE_NAV_GRAPH['main_hall_north'].pos,
-          CS_OFFICE_NAV_GRAPH['long_hall_mid_n'].pos,
-          CS_OFFICE_NAV_GRAPH['b_site_paper_center'].pos,
-          CS_OFFICE_NAV_GRAPH['kitchen_center'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = nodePos(syndicateExecutes[index % syndicateExecutes.length], bombsites.A.center);
       }
 
       const path = findPathAStar(
         { x: bot.mesh.position.x, y: bot.mesh.position.y, z: bot.mesh.position.z },
         dest,
         undefined,
-        CS_OFFICE_BLOCKS
+        mapBlocks,
+        navGraph
       );
 
       this.botStates.set(bot.id, this.createBotState(bot, path, role, index, weaponId));
@@ -441,43 +519,19 @@ export class BotAISystem {
       bot.rig?.setWeapon(weaponId);
 
       let role: BotInternalState['role'] = 'anchor';
-      let dest: Vec3 = BOMBSITES.A.center;
+      let dest: Vec3 = bombsites.A.center;
 
       if (this.currentStrategies.vanguard === 'STANDARD_2_1_2') {
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['front_hall_mid'].pos,
-          CS_OFFICE_NAV_GRAPH['sniper_mezz_center'].pos,
-          CS_OFFICE_NAV_GRAPH['long_hall_north'].pos,
-          CS_OFFICE_NAV_GRAPH['side_hall_west'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = nodePos(vanguardHolds[index % vanguardHolds.length], bombsites.A.center);
         role = index === 1 || index === 3 ? 'anchor' : 'rotator';
       } else if (this.currentStrategies.vanguard === 'AGGRESSIVE_MID_CONTROL') {
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['main_hall_north'].pos,
-          CS_OFFICE_NAV_GRAPH['front_main_door'].pos,
-          CS_OFFICE_NAV_GRAPH['b_site_paper_center'].pos,
-          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = nodePos(vanguardHolds[(index + 4) % vanguardHolds.length], bombsites.A.center);
         role = index < 2 ? 'rotator' : 'anchor';
       } else if (this.currentStrategies.vanguard === 'HEAVY_A_STACK') {
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
-          CS_OFFICE_NAV_GRAPH['side_hall_west'].pos,
-          CS_OFFICE_NAV_GRAPH['storage_entry'].pos,
-          CS_OFFICE_NAV_GRAPH['front_hall_west'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = nodePos(vanguardHolds[(index + 2) % vanguardHolds.length], bombsites.A.center);
         role = 'anchor';
       } else {
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['front_hall_entry'].pos,
-          CS_OFFICE_NAV_GRAPH['sniper_mezz_center'].pos,
-          CS_OFFICE_NAV_GRAPH['long_front_door'].pos,
-          CS_OFFICE_NAV_GRAPH['storage_east'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = nodePos(vanguardHolds[(index + 6) % vanguardHolds.length], bombsites.A.center);
         role = index % 2 === 0 ? 'rotator' : 'anchor';
       }
 
@@ -485,7 +539,8 @@ export class BotAISystem {
         { x: bot.mesh.position.x, y: bot.mesh.position.y, z: bot.mesh.position.z },
         dest,
         undefined,
-        CS_OFFICE_BLOCKS
+        mapBlocks,
+        navGraph
       );
 
       this.botStates.set(bot.id, this.createBotState(bot, path, role, index + 5, weaponId));
@@ -532,7 +587,7 @@ export class BotAISystem {
       const hasFlashLos = hasLineOfSight(
         botEye,
         flashVec,
-        CS_OFFICE_BLOCKS,
+        this.mapConfig.blocks,
         this.lastSmokeOccluders,
         this.lastSpatialGrid
       );
@@ -644,18 +699,19 @@ export class BotAISystem {
     blocks: MapBlockCollider[]
   ): number {
     // Primary expected threat origin: bomb site if armed, else opposing spawn direction
+    const { navGraph, bombsites, spawnPoints } = this.mapConfig;
     const threatAnchor: Vec3 = isBombArmed
       ? bombTargetSite === 'A'
-        ? BOMBSITES.A.center
-        : BOMBSITES.B.center
+        ? bombsites.A.center
+        : bombsites.B.center
       : team === 'Vanguard'
-        ? SPAWN_POINTS.OBSIDIAN_T
-        : SPAWN_POINTS.VANGUARD_CT;
+        ? spawnPoints.OBSIDIAN_T
+        : spawnPoints.VANGUARD_CT;
 
-    const currentNode = findNearestNavNode(botPos, undefined, blocks);
+    const currentNode = findNearestNavNode(botPos, undefined, blocks, navGraph);
     const threatYaw = Math.atan2(threatAnchor.x - botPos.x, threatAnchor.z - botPos.z);
 
-    // Use CS_OFFICE pre-computed doorway watchAngles (converted from -Z to +Z mesh yaw) when available
+    // Use pre-computed doorway watchAngles (converted from -Z to +Z mesh yaw) when available
     if (currentNode.watchAngles && currentNode.watchAngles.length > 0) {
       let bestYaw = threatYaw;
       let smallestDelta = Infinity;
@@ -674,7 +730,7 @@ export class BotAISystem {
     let bestScore = Infinity;
 
     for (const neighborId of currentNode.neighbors) {
-      const neighbor = CS_OFFICE_NAV_GRAPH[neighborId];
+      const neighbor = navGraph[neighborId];
       if (!neighbor) continue;
       const dToThreat = dist3D(neighbor.pos, threatAnchor);
       if (dToThreat < bestScore) {
@@ -688,19 +744,20 @@ export class BotAISystem {
   }
 
   private findNearbyCoverPos(botPos: Vec3, enemyPos: Vec3): Vec3 | null {
+    const { navGraph } = this.mapConfig;
     const toEnemyX = enemyPos.x - botPos.x;
     const toEnemyZ = enemyPos.z - botPos.z;
     const enemyDist = Math.hypot(toEnemyX, toEnemyZ) || 1;
     const enemyDirX = toEnemyX / enemyDist;
     const enemyDirZ = toEnemyZ / enemyDist;
 
-    // 1. Prioritize pre-computed CS_OFFICE retreatNodeIds from current nav node
-    const currentNode = findNearestNavNode(botPos);
+    // 1. Prioritize pre-computed retreatNodeIds from current nav node
+    const currentNode = findNearestNavNode(botPos, undefined, undefined, navGraph);
     if (currentNode.retreatNodeIds && currentNode.retreatNodeIds.length > 0) {
       let bestRetreat: Vec3 | null = null;
       let bestRetreatScore = Infinity;
       for (const retreatId of currentNode.retreatNodeIds) {
-        const rNode = CS_OFFICE_NAV_GRAPH[retreatId];
+        const rNode = navGraph[retreatId];
         if (!rNode || Math.abs(rNode.pos.y - botPos.y) > 1.3) continue;
         const dx = rNode.pos.x - botPos.x;
         const dz = rNode.pos.z - botPos.z;
@@ -715,12 +772,12 @@ export class BotAISystem {
       if (bestRetreat) return bestRetreat;
     }
 
-    // 2. Fallback scan across HIGH cover CS_OFFICE nodes
+    // 2. Fallback scan across HIGH cover nav nodes
     let bestPos: Vec3 | null = null;
     let bestScore = Infinity;
 
-    for (const key of Object.keys(CS_OFFICE_NAV_GRAPH)) {
-      const node = CS_OFFICE_NAV_GRAPH[key];
+    for (const key of Object.keys(navGraph)) {
+      const node = navGraph[key];
       if (node.coverType !== 'HIGH') continue;
       const dx = node.pos.x - botPos.x;
       const dz = node.pos.z - botPos.z;
@@ -770,7 +827,8 @@ export class BotAISystem {
       state.isCrouching ? KINEMATICS.CAPSULE_HEIGHT_CROUCH : KINEMATICS.CAPSULE_HEIGHT_STAND,
       colliders,
       true,
-      KINEMATICS.STEP_HEIGHT
+      KINEMATICS.STEP_HEIGHT,
+      this.mapConfig.bounds
     );
 
     const floorY = this.findSupportingFloorY(resolved.x, resolved.y, resolved.z, colliders);
@@ -1094,15 +1152,18 @@ export class BotAISystem {
           }
 
           // Strict anti-prefire fire gate: must have LOS + FOV + full reaction time + aligned crosshair + counter-strafed
+          const minReactionMs =
+            this.difficulty === 'Recruit' ? 480 : this.difficulty === 'Veteran' ? 310 : this.difficulty === 'Elite' ? 220 : 175;
+          const fireThresholdDeg = state.weaponId === 'sovereign-awp' ? Math.min(config.maxFireErrorDeg, 2.5) : config.maxFireErrorDeg;
           const permittedToFire = BotBrain.canBotFire({
             spotted: true,
             isReloading: state.isReloading,
             ammo: state.ammo,
             blindTimerSec: state.blindTimer,
             visibleDurationMs: state.playerVisibleMs,
-            effectiveReactionMs: perception.effectiveReactionMs,
+            effectiveReactionMs: Math.max(minReactionMs, perception.effectiveReactionMs),
             aimErrorDeg: aimRes.totalErrorDeg,
-            maxFireErrorDeg: config.maxFireErrorDeg,
+            maxFireErrorDeg: fireThresholdDeg,
             horizontalSpeed: moveRes.speed,
             maxFireSpeed: config.maxFireSpeed,
             targetDistance: distToPlayer,
@@ -1379,15 +1440,18 @@ export class BotAISystem {
         }
 
         const visibleBotMs = state.botVisibleMs.get(engagedBotTarget.id) ?? 0;
+        const minBotReactionMs =
+          this.difficulty === 'Recruit' ? 480 : this.difficulty === 'Veteran' ? 310 : this.difficulty === 'Elite' ? 220 : 175;
+        const botFireThresholdDeg = state.weaponId === 'sovereign-awp' ? Math.min(config.maxFireErrorDeg, 2.5) : config.maxFireErrorDeg;
         const permittedToFire = BotBrain.canBotFire({
           spotted: true,
           isReloading: state.isReloading,
           ammo: state.ammo,
           blindTimerSec: state.blindTimer,
           visibleDurationMs: visibleBotMs,
-          effectiveReactionMs: engagedBotPerception.effectiveReactionMs,
+          effectiveReactionMs: Math.max(minBotReactionMs, engagedBotPerception.effectiveReactionMs),
           aimErrorDeg: aimRes.totalErrorDeg,
-          maxFireErrorDeg: config.maxFireErrorDeg,
+          maxFireErrorDeg: botFireThresholdDeg,
           horizontalSpeed: moveRes.speed,
           maxFireSpeed: config.maxFireSpeed,
           targetDistance: engagedBotPerception.distance,
@@ -1514,8 +1578,8 @@ export class BotAISystem {
         roundElapsed < 32 &&
         state.role === 'support'
       ) {
-        const chokeKey = CS_OFFICE_SMOKE_CHOKES[bIdx % CS_OFFICE_SMOKE_CHOKES.length];
-        const chokeNode = CS_OFFICE_NAV_GRAPH[chokeKey];
+        const chokeKey = this.mapConfig.smokeChokes[bIdx % this.mapConfig.smokeChokes.length];
+        const chokeNode = this.mapConfig.navGraph[chokeKey];
         if (chokeNode) {
           const distChoke = dist3D({ x: botPos.x, y: botPos.y, z: botPos.z }, chokeNode.pos);
           if (distChoke > 9 && distChoke < 24) {
@@ -1531,30 +1595,35 @@ export class BotAISystem {
       }
 
       if (isBombArmed) {
-        const bombSitePos = bombTargetSite === 'A' ? BOMBSITES.A.center : BOMBSITES.B.center;
+        const bombSitePos =
+          bombTargetSite === 'A' ? this.mapConfig.bombsites.A.center : this.mapConfig.bombsites.B.center;
         if (bot.team === 'Vanguard') {
           if (state.path.length === 0 || dist3D(state.path[state.path.length - 1], bombSitePos) > 4.0) {
             state.path = findPathAStar(
               { x: botPos.x, y: botPos.y, z: botPos.z },
               bombSitePos,
               undefined,
-              blocks
+              blocks,
+              this.mapConfig.navGraph
             );
             state.pathIndex = 0;
             state.holdAngleTimer = 0;
           }
         } else if (bot.team === 'Syndicate' && !state.hasCommittedPostPlant) {
           state.hasCommittedPostPlant = true;
-          const defenseNodes = Object.values(CS_OFFICE_NAV_GRAPH).filter(
+          const defenseNodes = Object.values(this.mapConfig.navGraph).filter(
             (n) => dist3D(n.pos, bombSitePos) < 16.5 && n.coverType === 'HIGH'
           );
           const chosen =
-            defenseNodes[bIdx % Math.max(1, defenseNodes.length)] || CS_OFFICE_NAV_GRAPH['a_site_east'];
+            defenseNodes[bIdx % Math.max(1, defenseNodes.length)] ||
+            this.mapConfig.navGraph[this.mapConfig.postPlantFallbackNode] ||
+            Object.values(this.mapConfig.navGraph)[0];
           state.path = findPathAStar(
             { x: botPos.x, y: botPos.y, z: botPos.z },
             chosen.pos,
             undefined,
-            blocks
+            blocks,
+            this.mapConfig.navGraph
           );
           state.pathIndex = 0;
           state.holdAngleTimer = 0;
@@ -1667,15 +1736,17 @@ export class BotAISystem {
             state.holdAngleTimer = Math.max(1.4, holdBase * roleMul);
 
             // Pre-plan next meaningful tactical rotation node (never jog back into own spawn)
-            const pool = bot.team === 'Vanguard' ? VANGUARD_TACTICAL_HOLDS : SYNDICATE_TACTICAL_EXECUTES;
+            const pool =
+              bot.team === 'Vanguard' ? this.mapConfig.vanguardHolds : this.mapConfig.syndicateExecutes;
             const nextKey = pool[(bIdx + Math.floor(roundElapsed / 6) + bot.waypointIndex) % pool.length];
             bot.waypointIndex = (bot.waypointIndex + 1) % pool.length;
-            const nextDest = CS_OFFICE_NAV_GRAPH[nextKey]?.pos ?? bot.patrolTarget;
+            const nextDest = this.mapConfig.navGraph[nextKey]?.pos ?? bot.patrolTarget;
             state.path = findPathAStar(
               { x: botPos.x, y: botPos.y, z: botPos.z },
               nextDest,
               undefined,
-              blocks
+              blocks,
+              this.mapConfig.navGraph
             );
             state.pathIndex = 0;
             state.consecutiveStuckCount = 0;
@@ -1801,7 +1872,8 @@ export class BotAISystem {
                 { x: botPos.x, y: botPos.y, z: botPos.z },
                 goal,
                 undefined,
-                blocks
+                blocks,
+                this.mapConfig.navGraph
               );
               state.pathIndex = 0;
             }

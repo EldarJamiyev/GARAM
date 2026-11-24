@@ -605,7 +605,7 @@ export class KinematicPlayerController {
         const cz = Math.max(b.minZ, Math.min(this.state.z, b.maxZ));
         const dx = this.state.x - cx;
         const dz = this.state.z - cz;
-        if ((dx * dx + dz * dz) <= (this.radius * this.radius * 0.75)) {
+        if ((dx * dx + dz * dz) <= (this.radius * this.radius)) {
           if (b.maxY > bestLandingY) {
             bestLandingY = b.maxY;
           }

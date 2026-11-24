@@ -229,7 +229,7 @@ export const CS_OFFICE_BLOCKS: MapBlockCollider[] = [
 
   // Main Hall Central Office Island Desk, Structural Sightline Pillar & Soda Vending Machine
   { id: 'main_hall_island', minX: 1.0, maxX: 4.8, minY: F, maxY: F + 1.1, minZ: 8.5, maxZ: 10.6, material: 'WOOD_THIN', theme: 'wood' },
-  { id: 'main_hall_pillar', minX: 0.6, maxX: 4.8, minY: F, maxY: WALL_TOP, minZ: 9.2, maxZ: 10.0, material: 'CONCRETE', theme: 'drywall' },
+  { id: 'main_hall_pillar', minX: -1.2, maxX: 4.8, minY: F, maxY: WALL_TOP, minZ: 9.2, maxZ: 10.0, material: 'CONCRETE', theme: 'drywall' },
   { id: 'main_hall_vending', minX: -5.8, maxX: -4.0, minY: F, maxY: F + 2.1, minZ: 16.2, maxZ: 18.2, material: 'METAL_SHEET', theme: 'metal' },
 
   // Bombsite A (Projector / Conference Room) Conference Table & Metal Filing Cabinets

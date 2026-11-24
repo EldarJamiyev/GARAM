@@ -273,10 +273,12 @@ export class BotBrain {
     const angleToTarget = Math.atan2(dx, dz);
     const deltaRad = Math.abs(normalizeAngleRad(angleToTarget - botMeshYaw));
     const offCenterDeg = (deltaRad * 180) / Math.PI;
+    const horizDist = Math.hypot(dx, dz);
+    const pitchDeg = (Math.abs(Math.atan2(dy, Math.max(0.001, horizDist))) * 180) / Math.PI;
 
-    // Close-quarters shoulder bump (< 1.8m) grants modest peripheral awareness; otherwise strict cone
-    const effectiveHalfFov = distance < 1.8 ? Math.min(72, config.halfFovDeg + 15) : config.halfFovDeg;
-    if (offCenterDeg > effectiveHalfFov) {
+    // Strict human FOV cone: horizontal <= halfFovDeg (max 55°) AND vertical pitch <= 38°
+    const effectiveHalfFov = distance < 1.8 ? Math.min(72, config.halfFovDeg + 15) : Math.min(55, config.halfFovDeg);
+    if (offCenterDeg > effectiveHalfFov || pitchDeg > 38) {
       return {
         spotted: false,
         visionZone: 'OUTSIDE',

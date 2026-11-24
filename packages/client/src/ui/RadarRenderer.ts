@@ -3,6 +3,7 @@ import {
   MapBlockCollider,
   BOMBSITES,
   CS_OFFICE_BOUNDS,
+  MapBounds,
   SmokeOccluder,
   SpatialGrid,
   hasLineOfSight,
@@ -14,6 +15,11 @@ interface SpottedRecord {
   x: number;
   z: number;
   lastSeen: number;
+}
+
+export interface RadarBombsitesConfig {
+  A: { center: { x: number; z: number }; radius: number };
+  B?: { center: { x: number; z: number }; radius: number };
 }
 
 /**
@@ -28,15 +34,29 @@ export class RadarRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private size = 185;
-  private readonly MAP_SCALE = 2.9; // Pixels per meter tuned for crisp CS_OFFICE coverage
+  private mapScale = 2.6;
   private spottedEnemies: Map<string, SpottedRecord> = new Map();
   private bakedFloorCanvas: HTMLCanvasElement | null = null;
+  private hideVoxelOverlayWhenBaked = false;
+  private bombsites: RadarBombsitesConfig = BOMBSITES;
   private bakeBounds = {
     minX: CS_OFFICE_BOUNDS.minX - 2,
     maxX: CS_OFFICE_BOUNDS.maxX + 2,
     minZ: CS_OFFICE_BOUNDS.minZ - 2,
     maxZ: CS_OFFICE_BOUNDS.maxZ + 2,
   };
+
+  public configureMap(bounds: MapBounds, bombsites: RadarBombsitesConfig, isGlbMap = false): void {
+    this.bakeBounds = {
+      minX: bounds.minX - 2,
+      maxX: bounds.maxX + 2,
+      minZ: bounds.minZ - 2,
+      maxZ: bounds.maxZ + 2,
+    };
+    this.bombsites = bombsites;
+    this.hideVoxelOverlayWhenBaked = isGlbMap;
+    this.mapScale = isGlbMap ? 2.45 : 2.9;
+  }
 
   constructor() {
     let el = document.getElementById('tactical-radar') as HTMLCanvasElement | null;
@@ -85,15 +105,18 @@ export class RadarRenderer {
       const halfW = (maxX - minX) * 0.5;
       const halfH = (maxZ - minZ) * 0.5;
 
-      const orthoCam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 1, 60);
-      orthoCam.position.set(cx, 32, cz);
-      orthoCam.up.set(0, 0, -1); // -Z (North / CT Courtyard) points UP on baked image
+      const orthoCam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 1, 90);
+      orthoCam.position.set(cx, 48, cz);
+      orthoCam.up.set(0, 0, -1); // -Z (North) points UP on baked image
       orthoCam.lookAt(cx, 0, cz);
       orthoCam.updateMatrixWorld();
 
       const hidden: THREE.Object3D[] = [];
       worldScene.traverse((obj) => {
-        if (obj.visible && (obj.userData?.isOfficeRoof || obj.userData?.isOperatorRig)) {
+        if (
+          obj.visible &&
+          (obj.userData?.isOfficeRoof || obj.userData?.isOperatorRig || obj.userData?.isSkyBackdrop)
+        ) {
           obj.visible = false;
           hidden.push(obj);
         }
@@ -186,9 +209,9 @@ export class RadarRenderer {
     const radarRot = computeRadarRotationRad(playerYaw);
     ctx.rotate(radarRot);
 
-    const s = this.MAP_SCALE;
+    const s = this.mapScale;
 
-    // 0. Composite Baked Top-Down CS_OFFICE Floorplan (if available)
+    // 0. Composite Baked Top-Down Floorplan (if available)
     if (this.bakedFloorCanvas) {
       const { minX, maxX, minZ, maxZ } = this.bakeBounds;
       const dx = (minX - playerX) * s;
@@ -196,57 +219,59 @@ export class RadarRenderer {
       const dw = (maxX - minX) * s;
       const dh = (maxZ - minZ) * s;
       ctx.save();
-      ctx.globalAlpha = 0.62;
+      ctx.globalAlpha = this.hideVoxelOverlayWhenBaked ? 0.92 : 0.62;
       ctx.drawImage(this.bakedFloorCanvas, dx, dy, dw, dh);
       ctx.restore();
     } else {
-      // Crisp vector fallback: snowy courtyard + office interior floor
-      ctx.fillStyle = 'rgba(186, 206, 224, 0.22)';
-      ctx.fillRect((-38 - playerX) * s, (-34 - playerZ) * s, 76 * s, 22 * s);
-      ctx.fillStyle = 'rgba(66, 82, 102, 0.42)';
-      ctx.fillRect((-38 - playerX) * s, (-12 - playerZ) * s, 76 * s, 50 * s);
+      // Crisp vector fallback: arena footprint
+      const { minX, maxX, minZ, maxZ } = this.bakeBounds;
+      ctx.fillStyle = 'rgba(66, 82, 102, 0.35)';
+      ctx.fillRect((minX - playerX) * s, (minZ - playerZ) * s, (maxX - minX) * s, (maxZ - minZ) * s);
     }
 
-    // 1. Crisp Tactical Wall / Cover / Stairs / Mezzanine Outlines
-    for (const b of blocks) {
-      if (b.id.startsWith('deck_')) continue;
+    // 1. Tactical Wall / Cover Outlines (skipped on GLB maps once crisp top-down PBR bake is ready)
+    if (!this.bakedFloorCanvas || !this.hideVoxelOverlayWhenBaked) {
+      for (const b of blocks) {
+        if (b.id.startsWith('deck_')) continue;
+        if (this.hideVoxelOverlayWhenBaked && b.maxY - b.minY < 0.8) continue;
 
-      const rx = (b.minX - playerX) * s;
-      const ry = (b.minZ - playerZ) * s;
-      const rw = (b.maxX - b.minX) * s;
-      const rh = (b.maxZ - b.minZ) * s;
+        const rx = (b.minX - playerX) * s;
+        const ry = (b.minZ - playerZ) * s;
+        const rw = (b.maxX - b.minX) * s;
+        const rh = (b.maxZ - b.minZ) * s;
 
-      if (b.id.includes('_stairs_')) {
-        ctx.fillStyle = 'rgba(234, 179, 8, 0.35)';
-        ctx.fillRect(rx, ry, rw, rh);
-        continue;
-      }
+        if (b.id.includes('_stairs_')) {
+          ctx.fillStyle = 'rgba(234, 179, 8, 0.35)';
+          ctx.fillRect(rx, ry, rw, rh);
+          continue;
+        }
 
-      if (b.id === 'sniper_mezz_deck') {
-        ctx.fillStyle = 'rgba(245, 158, 11, 0.32)';
-        ctx.strokeStyle = 'rgba(251, 191, 36, 0.92)';
-        ctx.lineWidth = 1.2;
-        ctx.fillRect(rx, ry, rw, rh);
-        ctx.strokeRect(rx, ry, rw, rh);
-      } else if (b.material === 'DRYWALL') {
-        ctx.fillStyle = 'rgba(226, 232, 240, 0.55)';
-        ctx.fillRect(rx, ry, rw, rh);
-      } else if (b.material === 'WOOD_THIN') {
-        ctx.fillStyle = 'rgba(196, 134, 72, 0.68)';
-        ctx.fillRect(rx, ry, rw, rh);
-      } else if (b.material === 'METAL_SHEET') {
-        ctx.fillStyle = 'rgba(56, 189, 248, 0.62)';
-        ctx.fillRect(rx, ry, rw, rh);
-      } else {
-        ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.48)';
-        ctx.lineWidth = 0.8;
-        ctx.fillRect(rx, ry, rw, rh);
-        ctx.strokeRect(rx, ry, rw, rh);
+        if (b.id === 'sniper_mezz_deck') {
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.32)';
+          ctx.strokeStyle = 'rgba(251, 191, 36, 0.92)';
+          ctx.lineWidth = 1.2;
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeRect(rx, ry, rw, rh);
+        } else if (b.material === 'DRYWALL') {
+          ctx.fillStyle = 'rgba(226, 232, 240, 0.55)';
+          ctx.fillRect(rx, ry, rw, rh);
+        } else if (b.material === 'WOOD_THIN') {
+          ctx.fillStyle = 'rgba(196, 134, 72, 0.68)';
+          ctx.fillRect(rx, ry, rw, rh);
+        } else if (b.material === 'METAL_SHEET') {
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.62)';
+          ctx.fillRect(rx, ry, rw, rh);
+        } else {
+          ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.48)';
+          ctx.lineWidth = 0.8;
+          ctx.fillRect(rx, ry, rw, rh);
+          ctx.strokeRect(rx, ry, rw, rh);
+        }
       }
     }
 
-    // 2. Bombsite A (Projector Room) & B (Paper Room) Zones
+    // 2. Active Bombsite Zones
     const drawSite = (site: { center: { x: number; z: number }; radius: number }, label: string, hex: string) => {
       const sx = (site.center.x - playerX) * s;
       const sy = (site.center.z - playerZ) * s;
@@ -268,8 +293,10 @@ export class RadarRenderer {
       ctx.fillText(label, 0, 0);
       ctx.restore();
     };
-    drawSite(BOMBSITES.A, 'A', '#fb923c');
-    drawSite(BOMBSITES.B, 'B', '#38bdf8');
+    drawSite(this.bombsites.A, 'A', '#fb923c');
+    if (this.bombsites.B) {
+      drawSite(this.bombsites.B, 'B', '#38bdf8');
+    }
 
     // 3. Active Smoke Clouds on Radar
     for (const sm of smokeOccluders) {
