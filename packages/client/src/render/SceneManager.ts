@@ -3,6 +3,7 @@ import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { AssetManager } from './AssetManager.js';
 import { PostProcessPipeline } from './PostProcessPipeline.js';
 import { ViewmodelLighting } from './ViewmodelLighting.js';
+import { computeViewmodelFov, VIEWMODEL_NEAR_PLANE } from '../viewmodel/ViewmodelRig.js';
 
 import { QualityTier } from '../core/SettingsStore.js';
 
@@ -48,9 +49,14 @@ export class SceneManager {
     this.worldScene.fog = new THREE.FogExp2(0xd6e1ec, 0.0032);
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 600);
 
-    // 2. Viewmodel Scene & Camera (Dual-pass at CS2 Pro 62 deg FOV, Hor+ widened on narrow viewports)
+    // 2. Viewmodel Scene & Camera (Dual-pass at CS2 Default 60 deg FOV, max 66 deg narrow, near 0.05m)
     this.viewmodelScene = new THREE.Scene();
-    this.viewmodelCamera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.005, 10);
+    this.viewmodelCamera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      VIEWMODEL_NEAR_PLANE,
+      10
+    );
     this.updateViewmodelProjection(window.innerWidth, window.innerHeight);
 
     // 3. PMREM Image-Based Lighting (IBL)
@@ -464,15 +470,8 @@ export class SceneManager {
   public updateViewmodelProjection(w: number, h: number): void {
     const aspect = w / Math.max(1, h);
     this.viewmodelCamera.aspect = aspect;
-    if (aspect < 1.35) {
-      const targetHFovRad = THREE.MathUtils.degToRad(92);
-      const vFovDeg = THREE.MathUtils.radToDeg(
-        2 * Math.atan(Math.tan(targetHFovRad * 0.5) / aspect)
-      );
-      this.viewmodelCamera.fov = THREE.MathUtils.clamp(vFovDeg, 62, 96);
-    } else {
-      this.viewmodelCamera.fov = 62;
-    }
+    this.viewmodelCamera.near = VIEWMODEL_NEAR_PLANE;
+    this.viewmodelCamera.fov = computeViewmodelFov(aspect);
     this.viewmodelCamera.updateProjectionMatrix();
   }
 

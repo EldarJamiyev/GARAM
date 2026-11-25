@@ -5,6 +5,8 @@ import { ArmIKSolver } from './ArmIKSolver.js';
 import {
   CS2_ARMS_MODEL_PATH,
   WEAPON_SOCKET_CONFIGS,
+  WeaponSocketConfig,
+  computeNarrowAspectOffsetX,
   getWeaponSocketConfig,
   resolveWeaponClipName,
   captureBindPose,
@@ -54,6 +56,178 @@ export function computeRecoilStepPerMeter(
       ? wrapper.userData.normalizationScale
       : 1.0;
   return rearAxisWrapper.clone().divideScalar(normScale);
+}
+
+const _ikA = new THREE.Vector3();
+const _ikB = new THREE.Vector3();
+const _ikC = new THREE.Vector3();
+const _ikD = new THREE.Vector3();
+const _ikE = new THREE.Vector3();
+const _ikF = new THREE.Vector3();
+const _ikG = new THREE.Vector3();
+const _ikQ1 = new THREE.Quaternion();
+const _ikQ2 = new THREE.Quaternion();
+
+/**
+ * Shared single-source-of-truth CS2 arm IK posture solver used both at runtime
+ * (`WeaponViewmodel.update`) and in the automated skinned-vertex Vitest gate.
+ *
+ * - Rifles/SMGs: Locks left palm centroid flush (`<= 0.012m`) onto `gripAnchorWorld`
+ *   with a strictly downward left elbow pole so the tattooed left forearm rises cleanly
+ *   from off the bottom screen edge.
+ * - Pistols: Extends the right hand + weapon socket slightly forward into CS2's crisp
+ *   two-handed stance while keeping shoulders/biceps behind the camera, and cups the
+ *   left hand directly beneath the right pistol grip with both elbows below `ndcY < -1.0`.
+ * - Karambit: Extends the right fist into lower-right reverse grip and positions the
+ *   left gloved hand in relaxed open lower-left CQC guard with both wrists exiting
+ *   cleanly off the bottom screen border.
+ */
+export function applyCS2WeaponHandPosture(params: {
+  armsRoot: THREE.Object3D;
+  meshRoot: THREE.Object3D;
+  armIKSolver: ArmIKSolver;
+  cfg: WeaponSocketConfig;
+  weaponSocket: THREE.Object3D | null;
+  handRSocket: THREE.Object3D | null;
+  handLSocket: THREE.Object3D | null;
+  gripAnchorWorld: THREE.Vector3 | null;
+  leftHandLockWeight: number;
+  isReloading: boolean;
+  isInspecting: boolean;
+  narrowOffsetX?: number;
+}): void {
+  const {
+    armsRoot,
+    meshRoot,
+    armIKSolver,
+    cfg,
+    weaponSocket,
+    handRSocket,
+    handLSocket,
+    gripAnchorWorld,
+    leftHandLockWeight,
+    isReloading,
+    isInspecting,
+    narrowOffsetX = 0,
+  } = params;
+
+  if (cfg.leftArmPoseMode === 'rifle') {
+    if (isReloading || isInspecting || leftHandLockWeight <= 0.01 || !handLSocket || !gripAnchorWorld) {
+      return;
+    }
+    const fIdx = armsRoot.getObjectByName('DEF-f_index01L_147');
+    const fMid = armsRoot.getObjectByName('DEF-f_middle01L_180');
+    const fRing = armsRoot.getObjectByName('DEF-f_ring01L_199');
+    handLSocket.getWorldPosition(_ikA);
+    const startWristX = _ikA.x;
+    const startWristY = _ikA.y;
+    const startWristZ = _ikA.z;
+
+    for (let iter = 0; iter < 3; iter++) {
+      handLSocket.updateWorldMatrix(true, false);
+      handLSocket.getWorldPosition(_ikA);
+      if (fIdx && fMid && fRing) {
+        fIdx.updateWorldMatrix(true, false);
+        fMid.updateWorldMatrix(true, false);
+        fRing.updateWorldMatrix(true, false);
+        fIdx.getWorldPosition(_ikB);
+        fMid.getWorldPosition(_ikC);
+        fRing.getWorldPosition(_ikD);
+        _ikB.add(_ikC).add(_ikD).multiplyScalar(1 / 3);
+        // palmOffset = palmCenter - handL
+        _ikE.subVectors(_ikB, _ikA);
+        // targetWrist = gripAnchorWorld - palmOffset
+        _ikF.subVectors(gripAnchorWorld, _ikE);
+      } else {
+        _ikF.copy(gripAnchorWorld);
+      }
+
+      if (leftHandLockWeight < 0.999) {
+        _ikF.x = THREE.MathUtils.lerp(startWristX, _ikF.x, leftHandLockWeight);
+        _ikF.y = THREE.MathUtils.lerp(startWristY, _ikF.y, leftHandLockWeight);
+        _ikF.z = THREE.MathUtils.lerp(startWristZ, _ikF.z, leftHandLockWeight);
+      }
+
+      // Strictly downward elbow pole keeps DEF-forearmL_235 off bottom screen edge
+      _ikG.set(_ikF.x - 0.08, _ikF.y - 0.55, _ikF.z + 0.06);
+      armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
+    }
+    return;
+  }
+
+  if (cfg.leftArmPoseMode === 'pistol' && !isReloading && !isInspecting && handRSocket && handLSocket) {
+    // 1. Extend right hand forward into authentic CS2 two-handed pistol stance while preserving
+    // artist-authored CS2_Idle right-hand grip orientation so fingers stay 100% locked to the grip.
+    handRSocket.getWorldPosition(_ikA);
+    handRSocket.getWorldQuaternion(_ikQ1);
+    _ikB.set(0.088 + narrowOffsetX, -0.096, -0.225);
+    meshRoot.localToWorld(_ikB);
+    _ikC.set(0.26 + narrowOffsetX, -0.48, 0.02);
+    meshRoot.localToWorld(_ikC);
+    armIKSolver.solveCS2RightHandToTarget(_ikB, _ikC);
+    if (handRSocket.parent) {
+      handRSocket.parent.updateWorldMatrix(true, false);
+      handRSocket.parent.getWorldQuaternion(_ikQ2);
+      handRSocket.quaternion.copy(_ikQ2).invert().multiply(_ikQ1);
+    }
+    handRSocket.updateMatrixWorld(true);
+    handRSocket.getWorldPosition(_ikD);
+
+    // Shift sibling weapon_hand_r_5 by exact right-hand world delta so pistol stays rigidly locked in palm
+    if (weaponSocket && weaponSocket.parent) {
+      _ikE.subVectors(_ikD, _ikA);
+      weaponSocket.getWorldPosition(_ikF);
+      _ikF.add(_ikE);
+      weaponSocket.parent.updateWorldMatrix(true, false);
+      weaponSocket.parent.worldToLocal(_ikF);
+      weaponSocket.position.copy(_ikF);
+      weaponSocket.updateMatrixWorld(true);
+      weaponSocket.getWorldPosition(_ikE);
+    } else {
+      _ikE.copy(_ikD);
+    }
+
+    // 2. Cup left hand tightly beneath the right pistol grip (centered on weaponSocket) with downward elbow pole
+    _ikF.set(_ikE.x - 0.016, _ikE.y - 0.026, _ikE.z + 0.010);
+    _ikG.set(_ikE.x - 0.22, _ikE.y - 0.48, _ikE.z + 0.08);
+    armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
+    return;
+  }
+
+  if (cfg.leftArmPoseMode === 'karambit' && handRSocket && handLSocket) {
+    // 1. Right fist forward into lower-right reverse-grip position preserving closed fist orientation
+    handRSocket.getWorldPosition(_ikA);
+    handRSocket.getWorldQuaternion(_ikQ1);
+    _ikB.set(0.095 + narrowOffsetX, -0.088, -0.215);
+    meshRoot.localToWorld(_ikB);
+    _ikC.set(0.26 + narrowOffsetX, -0.48, -0.02);
+    meshRoot.localToWorld(_ikC);
+    armIKSolver.solveCS2RightHandToTarget(_ikB, _ikC);
+    if (handRSocket.parent) {
+      handRSocket.parent.updateWorldMatrix(true, false);
+      handRSocket.parent.getWorldQuaternion(_ikQ2);
+      handRSocket.quaternion.copy(_ikQ2).invert().multiply(_ikQ1);
+    }
+    handRSocket.updateMatrixWorld(true);
+    handRSocket.getWorldPosition(_ikD);
+
+    if (weaponSocket && weaponSocket.parent) {
+      _ikE.subVectors(_ikD, _ikA);
+      weaponSocket.getWorldPosition(_ikF);
+      _ikF.add(_ikE);
+      weaponSocket.parent.updateWorldMatrix(true, false);
+      weaponSocket.parent.worldToLocal(_ikF);
+      weaponSocket.position.copy(_ikF);
+      weaponSocket.updateMatrixWorld(true);
+    }
+
+    // 2. Left hand enters from bottom-left into relaxed open CQC guard
+    _ikF.set(-0.088 + narrowOffsetX * 0.5, -0.102, -0.265);
+    meshRoot.localToWorld(_ikF);
+    _ikG.set(-0.24 + narrowOffsetX * 0.5, -0.48, -0.12);
+    meshRoot.localToWorld(_ikG);
+    armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
+  }
 }
 
 export class WeaponViewmodel {
@@ -579,11 +753,6 @@ export class WeaponViewmodel {
           }
         });
 
-        // Attach anatomically-fitted rolled tactical sleeves over upper-arm bicep cutoffs
-        if (this.isCS2ArmsRig) {
-          this.attachTacticalSleeves(armsModel);
-        }
-
         this.armsContainer.add(armsModel);
         this.armsLoaded = true;
       }
@@ -728,10 +897,11 @@ export class WeaponViewmodel {
                 for (const m of mats) {
                   if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
                     const std = m as THREE.MeshStandardMaterial;
-                    std.color.setHex(0xb81828);
-                    std.metalness = 0.95;
-                    std.roughness = 0.16;
-                    std.envMapIntensity = 2.5;
+                    std.color.setHex(0xd61e32);
+                    std.metalness = 0.68;
+                    std.roughness = 0.24;
+                    std.envMapIntensity = 2.2;
+                    std.emissive.setHex(0x28040a);
                   }
                 }
               }
@@ -787,56 +957,6 @@ export class WeaponViewmodel {
     }
   }
 
-  private attachTacticalSleeves(armsModel: THREE.Object3D): void {
-    const sleeveMat = new THREE.MeshStandardMaterial({
-      color: 0x1f2630,
-      roughness: 0.86,
-      metalness: 0.06,
-      envMapIntensity: 0.85,
-      side: THREE.FrontSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-    });
-    const cuffMat = new THREE.MeshStandardMaterial({
-      color: 0x2b3442,
-      roughness: 0.78,
-      metalness: 0.1,
-      envMapIntensity: 0.95,
-      side: THREE.FrontSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2,
-    });
-    // Measured clearance: +12mm outside cs2_fps_arms.glb bicep vertices (0.073..0.113m) so skin never clips through
-    const sleeveGeo = new THREE.CylinderGeometry(0.088, 0.128, 0.44, 20, 1, false);
-    const cuffGeo = new THREE.TorusGeometry(0.084, 0.012, 10, 24);
-    cuffGeo.rotateX(Math.PI * 0.5);
-
-    const configs: Array<{ boneName: string; cx: number; cz: number }> = [
-      { boneName: 'DEF-upper_armL_237', cx: 0.003, cz: -0.018 },
-      { boneName: 'DEF-upper_armR_361', cx: -0.014, cz: 0.003 },
-    ];
-
-    for (const { boneName, cx, cz } of configs) {
-      const bone = armsModel.getObjectByName(boneName);
-      if (!bone) continue;
-      const sleeveGroup = new THREE.Group();
-      sleeveGroup.name = `${boneName}_tactical_sleeve`;
-      sleeveGroup.userData.isWeaponAttachment = true;
-
-      const tube = new THREE.Mesh(sleeveGeo, sleeveMat);
-      tube.position.set(cx, -0.055, cz);
-      sleeveGroup.add(tube);
-
-      const rolledCuff = new THREE.Mesh(cuffGeo, cuffMat);
-      rolledCuff.position.set(cx, 0.162, cz);
-      sleeveGroup.add(rolledCuff);
-
-      bone.add(sleeveGroup);
-    }
-  }
-
   public setViewportAspect(aspect: number): void {
     if (!Number.isFinite(aspect) || aspect <= 0) return;
     this.viewportAspect = aspect;
@@ -845,14 +965,11 @@ export class WeaponViewmodel {
 
   private applyArmsContainerTransform(cfg: ReturnType<typeof getWeaponSocketConfig>): void {
     this.armsContainer.scale.setScalar(cfg.armsScale);
-    const narrowT =
-      this.viewportAspect < 1.35
-        ? THREE.MathUtils.clamp((1.35 - this.viewportAspect) / (1.35 - 0.46), 0, 1)
-        : 0;
+    const narrowOffsetX = computeNarrowAspectOffsetX(this.viewportAspect);
     this.armsContainer.position.set(
-      cfg.armsOffset[0] - 0.048 * narrowT,
-      cfg.armsOffset[1] - 0.014 * narrowT,
-      cfg.armsOffset[2] - 0.055 * narrowT
+      cfg.armsOffset[0] + narrowOffsetX,
+      cfg.armsOffset[1],
+      cfg.armsOffset[2]
     );
   }
 
@@ -1310,30 +1427,39 @@ export class WeaponViewmodel {
         this.leftHandLockWeight = Math.max(0.0, this.leftHandLockWeight - safeDt * 8.0);
       }
 
+      // Restore cs2WeaponSocket bind position before mixer evaluation so post-IK socket shifts never accumulate across frames
+      if (this.cs2WeaponSocket) {
+        const savedSocket = this.bindPoseSnapshot.get(this.cs2WeaponSocket);
+        if (savedSocket) {
+          this.cs2WeaponSocket.position.copy(savedSocket.position);
+        }
+      }
       this.armsMixer.update(safeDt);
 
-      if (this.isCS2ArmsRig) {
-        // CS2 Rigify continuous arm skeleton:
-        // - Rifles use baked CS2 handguard cradle directly (zero seam, zero fighting)
-        // - Desert Eagle pulls left hand to cup directly beneath right hand / trigger guard
-        // - Karambit lowers left arm into clean low-left CQC guard out of crosshair
+      if (this.isCS2ArmsRig && this.armsRoot && this.armIKSolver) {
         this.armsContainer.updateMatrixWorld(true);
         const cfg = getWeaponSocketConfig(this.currentWeaponId);
-
-        if (cfg.leftArmPoseMode === 'pistol' && !this.isReloading && !this.isInspecting && this.cs2HandRSocket && this.cs2HandLSocket && this.armIKSolver) {
-          this.cs2HandRSocket.getWorldPosition(_vA);
-          // Instant full-weight two-handed CS2 weaver pistol cup beneath right hand / trigger guard
-          _vC.set(_vA.x - 0.022, _vA.y - 0.024, _vA.z - 0.044);
-          _vD.set(_vA.x - 0.24, _vA.y - 0.26, _vA.z + 0.08);
-          this.armIKSolver.solveCS2LeftHandToTarget(_vC, _vD);
-        } else if (cfg.leftArmPoseMode === 'karambit' && this.cs2HandLSocket && this.armIKSolver) {
-          // Drop left arm cleanly into low-left tactical guard outside the viewport center
-          _vC.set(-0.20, -0.34, -0.22);
-          this.mesh.localToWorld(_vC);
-          _vD.set(-0.34, -0.45, -0.05);
-          this.mesh.localToWorld(_vD);
-          this.armIKSolver.solveCS2LeftHandToTarget(_vC, _vD);
+        const gripAnchor = this.leftHandGripAnchors.get(this.currentWeaponId);
+        let gripAnchorWorld: THREE.Vector3 | null = null;
+        if (gripAnchor) {
+          gripAnchor.updateMatrixWorld(true);
+          gripAnchor.getWorldPosition(_vA);
+          gripAnchorWorld = _vA;
         }
+        applyCS2WeaponHandPosture({
+          armsRoot: this.armsRoot,
+          meshRoot: this.mesh,
+          armIKSolver: this.armIKSolver,
+          cfg,
+          weaponSocket: this.cs2WeaponSocket,
+          handRSocket: this.cs2HandRSocket,
+          handLSocket: this.cs2HandLSocket,
+          gripAnchorWorld,
+          leftHandLockWeight: this.leftHandLockWeight,
+          isReloading: this.isReloading,
+          isInspecting: this.isInspecting,
+          narrowOffsetX: computeNarrowAspectOffsetX(this.viewportAspect),
+        });
       } else {
         if (this.currentWeaponId === 'garam-karambit') {
           const armL = this.armsRoot?.getObjectByName('Arm_L');

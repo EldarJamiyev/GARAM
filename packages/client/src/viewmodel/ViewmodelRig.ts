@@ -1,6 +1,31 @@
 import * as THREE from 'three';
 
 export const CS2_ARMS_MODEL_PATH = '/models/cs2_fps_arms.glb';
+export const VIEWMODEL_NEAR_PLANE = 0.05;
+
+/**
+ * Authentic Counter-Strike 2 default viewmodel FOV:
+ * 60 deg on desktop (aspect >= 1.2), gently clamped up to 66 deg max on narrow/portrait screens.
+ */
+export function computeViewmodelFov(aspect: number): number {
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+  if (safeAspect < 1.2) {
+    return THREE.MathUtils.clamp(60 + (1.2 - safeAspect) * 8.1, 60, 66);
+  }
+  return 60;
+}
+
+/**
+ * Subtle inward horizontal slide on narrow/portrait viewports (aspect < 1.2) so the weapon
+ * receiver and support hand stay cleanly framed without zooming out or exposing bicep cutoffs.
+ */
+export function computeNarrowAspectOffsetX(aspect: number): number {
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+  if (safeAspect < 1.2) {
+    return -THREE.MathUtils.clamp((1.2 - safeAspect) * 0.09, 0, 0.065);
+  }
+  return 0;
+}
 
 export type LeftArmPoseMode = 'rifle' | 'pistol' | 'karambit';
 
@@ -52,7 +77,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.058, -0.882, -0.135],
+    armsOffset: [0.082, -0.904, 0.026],
     muzzleLocalPos: [0.008, 0.058, -0.565],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
@@ -79,11 +104,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.056, -0.882, -0.135],
+    armsOffset: [0.080, -0.922, 0.042],
     muzzleLocalPos: [0.007, 0.081, -0.6525],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
-    leftHandAnchorLocal: [0.002, 0.028, -0.24],
+    leftHandAnchorLocal: [0.002, 0.024, -0.228],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     leftFingerCurl: 0.9,
     clips: {
@@ -106,11 +131,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.056, -0.882, -0.135],
+    armsOffset: [0.080, -0.922, 0.042],
     muzzleLocalPos: [0.006, 0.075, -0.58],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
-    leftHandAnchorLocal: [0.002, 0.026, -0.24],
+    leftHandAnchorLocal: [0.002, 0.022, -0.226],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     leftFingerCurl: 0.9,
     clips: {
@@ -133,7 +158,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.054, -0.880, -0.135],
+    armsOffset: [0.076, -0.904, 0.022],
     muzzleLocalPos: [0.004, 0.055, -0.34],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
@@ -160,11 +185,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.80,
     armsScale: 1.0,
-    armsOffset: [0.058, -0.892, -0.138],
+    armsOffset: [0.084, -0.926, 0.044],
     muzzleLocalPos: [0.0114, 0.114, -0.8357],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
-    leftHandAnchorLocal: [0.0, 0.02, -0.25],
+    leftHandAnchorLocal: [0.0, 0.018, -0.236],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     leftFingerCurl: 0.9,
     clips: {
@@ -187,7 +212,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.048, -0.880, -0.135],
+    armsOffset: [0.052, -0.908, 0.020],
     muzzleLocalPos: [0.0001, 0.064, -0.2348],
     requiresPBodyRest: false,
     leftArmPoseMode: 'pistol',
@@ -214,7 +239,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.048, -0.880, -0.135],
+    armsOffset: [0.052, -0.908, 0.020],
     muzzleLocalPos: [0.0, 0.062, -0.32],
     requiresPBodyRest: false,
     leftArmPoseMode: 'pistol',
@@ -241,7 +266,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.048, -0.880, -0.135],
+    armsOffset: [0.052, -0.908, 0.020],
     muzzleLocalPos: [0.0, 0.060, -0.195],
     requiresPBodyRest: false,
     leftArmPoseMode: 'pistol',
@@ -263,15 +288,15 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     modelPath: '/models/karambit.glb',
     targetLength: 0.22,
     rotationEuler: [0, 0, 0],
-    localPos: [-0.015, -0.055, 0.035],
-    localRotEuler: [-Math.PI / 2 + 0.28, 0.32, Math.PI - 0.42],
-    localScale: 1.85,
+    localPos: [-0.068, -0.026, 0.024],
+    localRotEuler: [1.34, 1.20, -2.98],
+    localScale: 1.42,
     armsScale: 1.0,
-    armsOffset: [0.052, -0.880, -0.135],
-    muzzleLocalPos: [0, -0.0427, -0.115],
+    armsOffset: [0.042, -0.908, 0.012],
+    muzzleLocalPos: [0, -0.050, -0.105],
     requiresPBodyRest: false,
     leftArmPoseMode: 'karambit',
-    ringPivotLocal: [0, 0.02, 0.085],
+    ringPivotLocal: [0, 0.018, 0.088],
     clips: {
       idle: 'CS2_Idle',
       walk: 'CS2_Walk',

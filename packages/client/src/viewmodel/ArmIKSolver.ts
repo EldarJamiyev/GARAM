@@ -288,6 +288,7 @@ export class ArmIKSolver {
   public readonly leftChain: TwoBoneIKChain | null = null;
   public readonly rightChain: TwoBoneIKChain | null = null;
   public readonly cs2LeftChain: TwoBoneIKChain | null = null;
+  public readonly cs2RightChain: TwoBoneIKChain | null = null;
   public readonly isCS2Rig: boolean = false;
   public lastLeftGap = 0;
   public lastRightGap = 0;
@@ -305,6 +306,7 @@ export class ArmIKSolver {
     this.leftChain = this.buildFPSArmChain(byName, 'L');
     this.rightChain = this.buildFPSArmChain(byName, 'R');
     this.cs2LeftChain = this.buildCS2ArmChain(byName, 'L');
+    this.cs2RightChain = this.buildCS2ArmChain(byName, 'R');
     this.isCS2Rig = this.cs2LeftChain !== null;
   }
 
@@ -446,6 +448,31 @@ export class ArmIKSolver {
       chain.fallbackPoleDir
     );
     this.lastLeftGap = gap;
+    return gap;
+  }
+
+  /**
+   * Moves the CS2 Rigify right wrist (`DEF-handR`) to an explicit world target using
+   * exact 2-bone analytical IK while keeping the right shoulder anchored behind camera.
+   */
+  public solveCS2RightHandToTarget(
+    targetWorld: THREE.Vector3,
+    poleWorld: THREE.Vector3 | null = null
+  ): number {
+    const chain = this.cs2RightChain;
+    if (!chain) return 0;
+
+    const gap = solveTwoBoneIK(
+      chain.upper,
+      chain.lower,
+      chain.effector,
+      targetWorld,
+      poleWorld,
+      false,
+      undefined,
+      chain.fallbackPoleDir
+    );
+    this.lastRightGap = gap;
     return gap;
   }
 

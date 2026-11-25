@@ -322,8 +322,8 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         expect(['weapon_hand_r_5', 'DEF-handR_357', 'Rif', 'Hand_R']).toContain(cfg.socketBone);
         expect(cfg.armsScale).toBeGreaterThanOrEqual(0.35);
         expect(cfg.armsScale).toBeLessThanOrEqual(1.1);
-        expect(cfg.armsOffset[2]).toBeLessThan(-0.05);
-        expect(cfg.armsOffset[2]).toBeGreaterThan(-0.55);
+        expect(cfg.armsOffset[2]).toBeLessThanOrEqual(0.12);
+        expect(cfg.armsOffset[2]).toBeGreaterThanOrEqual(-0.15);
         expect(resolveWeaponClipName(id, 'idle').length).toBeGreaterThan(3);
         expect(resolveWeaponClipName(id, 'walk').length).toBeGreaterThan(3);
         expect(resolveWeaponClipName(id, 'fire').length).toBeGreaterThan(3);
