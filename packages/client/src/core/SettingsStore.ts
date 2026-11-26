@@ -57,7 +57,15 @@ const DEFAULT_SETTINGS: UserSettings = {
   },
 };
 
-const STORAGE_KEY = 'garam_tactical_settings_v1';
+const STORAGE_KEY = 'garam_tactical_settings_v2';
+const LEGACY_STORAGE_KEY = 'garam_tactical_settings_v1';
+const VALID_GRAPHICS_QUALITIES: ReadonlySet<GraphicsQuality> = new Set([
+  'AUTO',
+  'POTATO',
+  'LOW',
+  'MEDIUM',
+  'HIGH',
+]);
 
 export class SettingsStore {
   private static instance: SettingsStore;
@@ -78,12 +86,19 @@ export class SettingsStore {
   private load(): UserSettings {
     try {
       if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
         const data = localStorage.getItem(STORAGE_KEY);
         if (data) {
           const parsed = JSON.parse(data) as Partial<UserSettings>;
+          const rawQuality = parsed.graphicsQuality;
+          const graphicsQuality: GraphicsQuality =
+            rawQuality && VALID_GRAPHICS_QUALITIES.has(rawQuality) && rawQuality !== 'POTATO'
+              ? rawQuality
+              : 'AUTO';
           return {
             ...DEFAULT_SETTINGS,
             ...parsed,
+            graphicsQuality,
             crosshair: { ...DEFAULT_SETTINGS.crosshair, ...(parsed.crosshair ?? {}) },
           };
         }
