@@ -1,9 +1,10 @@
 import { randomBytes } from 'crypto';
 import { WebSocket } from 'ws';
 import {
-  DE_CITADEL_BLOCKS,
-  SPAWN_POINTS,
-  BOMBSITES,
+  DEFAULT_MAP_ID,
+  getMapDescriptor,
+  MapDescriptor,
+  MapId,
   WEAPONS,
   ECONOMY,
   KINEMATICS,
@@ -135,19 +136,20 @@ interface ServerBot {
   burnDamageAccum: number;
 }
 
-// Pre-allocated, frozen static map AABBs (zero per-input / per-tick allocations)
-const STATIC_COLLIDERS: readonly AABBCollider[] = Object.freeze(
-  DE_CITADEL_BLOCKS.map((b) =>
-    Object.freeze({
-      minX: b.minX,
-      maxX: b.maxX,
-      minY: b.minY,
-      maxY: b.maxY,
-      minZ: b.minZ,
-      maxZ: b.maxZ,
-    })
-  )
-);
+function freezeColliders( descriptor: MapDescriptor ): readonly AABBCollider[] {
+  return Object.freeze(
+    descriptor.blocks.map((b) =>
+      Object.freeze({
+        minX: b.minX,
+        maxX: b.maxX,
+        minY: b.minY,
+        maxY: b.maxY,
+        minZ: b.minZ,
+        maxZ: b.maxZ,
+      })
+    )
+  );
+}
 
 const MELEE_MAX_RANGE = 2.4;
 const MAX_BACKPRESSURE_BYTES = 65536;
@@ -231,23 +233,56 @@ export class GameRoom {
     };
   }
 
-  private spatialGrid = new SpatialGrid(DE_CITADEL_BLOCKS, 10);
+  private mapId: MapId;
+  private mapDescriptor: MapDescriptor;
+  private staticColliders: readonly AABBCollider[];
+  private spatialGrid: SpatialGrid;
 
-  constructor() {
+  constructor(initialMapId: MapId = DEFAULT_MAP_ID) {
+    this.mapId = initialMapId;
+    this.mapDescriptor = getMapDescriptor(initialMapId);
+    this.staticColliders = freezeColliders(this.mapDescriptor);
+    this.spatialGrid = new SpatialGrid(this.mapDescriptor.blocks, 10);
     this.initDefaultBots();
     this.startLoop();
+  }
+
+  public getMapId(): MapId {
+    return this.mapId;
+  }
+
+  public getMapDescriptor(): MapDescriptor {
+    return this.mapDescriptor;
+  }
+
+  public setMap(nextMapId: MapId): void {
+    const nextDesc = getMapDescriptor(nextMapId);
+    if (this.mapId === nextDesc.id && this.bots.length > 0) return;
+    this.mapId = nextDesc.id;
+    this.mapDescriptor = nextDesc;
+    this.staticColliders = freezeColliders(nextDesc);
+    this.spatialGrid = new SpatialGrid(nextDesc.blocks, 10);
+    this.bots = [];
+    this.initDefaultBots();
+    this.rebalanceTeamBots();
   }
 
   private initDefaultBots(): void {
     const vanguardNames = ['Steel', 'Hawk', 'Aegis', 'Sentinel', 'Atlas'];
     const syndicateNames = ['Razor', 'Ghost', 'Viper', 'Titan', 'Nomad'];
+    const spawns = this.mapDescriptor.spawnPoints;
+    const vgConfigs = this.mapDescriptor.tacticalBots.filter((b) => b.team === 'Vanguard');
+    const synConfigs = this.mapDescriptor.tacticalBots.filter((b) => b.team === 'Syndicate');
 
     for (let i = 0; i < 5; i++) {
       const vCtrl = new KinematicPlayerController(
-        SPAWN_POINTS.VANGUARD_CT.x + (i - 2) * 2,
-        SPAWN_POINTS.VANGUARD_CT.y,
-        SPAWN_POINTS.VANGUARD_CT.z
+        spawns.VANGUARD_CT.x + (i - 2) * 2,
+        spawns.VANGUARD_CT.y,
+        spawns.VANGUARD_CT.z
       );
+      const vgWp = vgConfigs[i % Math.max(1, vgConfigs.length)]?.waypoints ?? [
+        { x: spawns.VANGUARD_CT.x, y: spawns.VANGUARD_CT.y, z: spawns.VANGUARD_CT.z },
+      ];
       this.bots.push({
         id: `bot_ct_${i}`,
         entitySlot: i,
@@ -262,19 +297,18 @@ export class GameRoom {
         kills: 0,
         deaths: 0,
         waypointIndex: 0,
-        waypoints: [
-          { x: -25, y: 2.1, z: -20 },
-          { x: 0, y: 2.1, z: -4 },
-          { x: 29, y: 2.1, z: -20 },
-        ],
+        waypoints: vgWp.map((w) => ({ ...w })),
         burnDamageAccum: 0,
       });
 
       const sCtrl = new KinematicPlayerController(
-        SPAWN_POINTS.OBSIDIAN_T.x + (i - 2) * 2,
-        SPAWN_POINTS.OBSIDIAN_T.y,
-        SPAWN_POINTS.OBSIDIAN_T.z
+        spawns.OBSIDIAN_T.x + (i - 2) * 2,
+        spawns.OBSIDIAN_T.y,
+        spawns.OBSIDIAN_T.z
       );
+      const synWp = synConfigs[i % Math.max(1, synConfigs.length)]?.waypoints ?? [
+        { x: spawns.OBSIDIAN_T.x, y: spawns.OBSIDIAN_T.y, z: spawns.OBSIDIAN_T.z },
+      ];
       this.bots.push({
         id: `bot_t_${i}`,
         entitySlot: 5 + i,
@@ -289,11 +323,7 @@ export class GameRoom {
         kills: 0,
         deaths: 0,
         waypointIndex: 0,
-        waypoints: [
-          { x: 0, y: 2.1, z: 22 },
-          { x: -25, y: 2.1, z: -20 },
-          { x: 29, y: 2.1, z: -20 },
-        ],
+        waypoints: synWp.map((w) => ({ ...w })),
         burnDamageAccum: 0,
       });
     }
@@ -473,9 +503,19 @@ export class GameRoom {
       (this.matchSim.phase === 'ROUND_LIVE' &&
         this.matchSim.phaseTimer >= this.matchSim.roundLiveDuration - ECONOMY.buyWindowSec);
     if (!phaseOk) return false;
-    const spawn = session.team === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
-    const dx = session.controller.state.x - spawn.x;
-    const dz = session.controller.state.z - spawn.z;
+    const spawns = this.mapDescriptor.spawnPoints;
+    const spawn = session.team === 'Syndicate' ? spawns.OBSIDIAN_T : spawns.VANGUARD_CT;
+    const bz =
+      session.team === 'Syndicate'
+        ? this.mapDescriptor.spawnZones.SYNDICATE_BUY_ZONE
+        : this.mapDescriptor.spawnZones.VANGUARD_BUY_ZONE;
+    const x = session.controller.state.x;
+    const z = session.controller.state.z;
+    if (x >= bz.minX && x <= bz.maxX && z >= bz.minZ && z <= bz.maxZ) {
+      return true;
+    }
+    const dx = x - spawn.x;
+    const dz = z - spawn.z;
     return dx * dx + dz * dz <= 16 * 16;
   }
 
@@ -484,8 +524,12 @@ export class GameRoom {
 
     if (packet.type === 'join') {
       if (this.sessions.has(sessionId)) return;
+      if (packet.mapId && this.sessions.size === 0 && packet.mapId !== this.mapId) {
+        this.setMap(packet.mapId);
+      }
       const team = packet.faction || 'Vanguard';
-      const spawn = team === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
+      const spawns = this.mapDescriptor.spawnPoints;
+      const spawn = team === 'Syndicate' ? spawns.OBSIDIAN_T : spawns.VANGUARD_CT;
       let teamIndex = 0;
       this.sessions.forEach((existing) => {
         if (existing.team === team) teamIndex++;
@@ -555,6 +599,7 @@ export class GameRoom {
         team,
         tickRate: this.TICK_RATE,
         cash: session.cash,
+        mapId: this.mapId,
       });
 
       this.sendEconomySync(session);
@@ -820,10 +865,11 @@ export class GameRoom {
   }
 
   private getBombSiteAt(x: number, z: number): 'A' | 'B' | null {
-    const dA = Math.hypot(x - BOMBSITES.A.center.x, z - BOMBSITES.A.center.z);
-    if (dA <= BOMBSITES.A.radius) return 'A';
-    const dB = Math.hypot(x - BOMBSITES.B.center.x, z - BOMBSITES.B.center.z);
-    if (dB <= BOMBSITES.B.radius) return 'B';
+    const sites = this.mapDescriptor.bombsites;
+    const dA = Math.hypot(x - sites.A.center.x, z - sites.A.center.z);
+    if (dA <= sites.A.radius) return 'A';
+    const dB = Math.hypot(x - sites.B.center.x, z - sites.B.center.z);
+    if (dB <= sites.B.radius) return 'B';
     return null;
   }
 
@@ -931,7 +977,7 @@ export class GameRoom {
       weapon.armorPenetration,
       weapon.penetrationPower,
       maxDistance,
-      DE_CITADEL_BLOCKS,
+      this.mapDescriptor.blocks,
       rewoundTargets,
       weapon.damageDropoffPer10m,
       this.spatialGrid,
@@ -1142,18 +1188,19 @@ export class GameRoom {
   }
 
   private updateProjectilesAndZones(now: number): void {
-    // 1. Step flying grenade projectiles against static DE_CITADEL_BLOCKS
+    // 1. Step flying grenade projectiles against active map blocks
     for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
       const proj = this.activeProjectiles[i];
       const stepRes = stepGrenadePhysics(
         proj.pos,
         proj.vel,
         this.TICK_DT,
-        DE_CITADEL_BLOCKS,
+        this.mapDescriptor.blocks,
         0.08,
         0.45,
         15.5,
-        this.spatialGrid
+        this.spatialGrid,
+        this.mapDescriptor.bounds
       );
       proj.fuseRemaining -= this.TICK_DT;
 
@@ -1253,7 +1300,7 @@ export class GameRoom {
   private detonateHE(proj: ServerProjectile): void {
     this.sessions.forEach((s) => {
       if (s.isDead) return;
-      const dmg = computeHEDamage(proj.pos, s.controller.state, s.armor, DE_CITADEL_BLOCKS, this.spatialGrid);
+      const dmg = computeHEDamage(proj.pos, s.controller.state, s.armor, this.mapDescriptor.blocks, this.spatialGrid);
       if (dmg.healthDamage > 0) {
         this.applyDamageToHuman(
           s,
@@ -1271,7 +1318,7 @@ export class GameRoom {
 
     for (const b of this.bots) {
       if (!b.active || b.isDead) continue;
-      const dmg = computeHEDamage(proj.pos, b.controller.state, b.armor, DE_CITADEL_BLOCKS, this.spatialGrid);
+      const dmg = computeHEDamage(proj.pos, b.controller.state, b.armor, this.mapDescriptor.blocks, this.spatialGrid);
       if (dmg.healthDamage > 0) {
         this.applyDamageToBot(
           b,
@@ -1347,7 +1394,7 @@ export class GameRoom {
         botInput,
         this.TICK_DT,
         KINEMATICS.SPEED_RIFLE * 0.85 * sep.speedMultiplier,
-        STATIC_COLLIDERS as AABBCollider[],
+        this.staticColliders as AABBCollider[],
         undefined,
         this.spatialGrid
       );
@@ -1439,7 +1486,7 @@ export class GameRoom {
           effectiveInput,
           KINEMATICS.FIXED_DT,
           weapon.movementSpeed,
-          STATIC_COLLIDERS as AABBCollider[],
+          this.staticColliders as AABBCollider[],
           undefined,
           this.spatialGrid
         );
@@ -1724,7 +1771,7 @@ export class GameRoom {
       ];
 
       for (const pt of probePoints) {
-        if (hasLineOfSight(eyeA, pt, DE_CITADEL_BLOCKS, this.activeSmokes, this.spatialGrid)) {
+        if (hasLineOfSight(eyeA, pt, this.mapDescriptor.blocks, this.activeSmokes, this.spatialGrid)) {
           session.recentlyVisibleEnemies.set(p.id, now);
           return true;
         }
@@ -1745,6 +1792,7 @@ export class GameRoom {
 
     let vgHumanIdx = 0;
     let synHumanIdx = 0;
+    const spawns = this.mapDescriptor.spawnPoints;
 
     this.sessions.forEach((s) => {
       if (isHalftimeReset) {
@@ -1767,7 +1815,7 @@ export class GameRoom {
       s.burnDamageAccum = 0;
 
       const isSyn = s.team === 'Syndicate';
-      const spawn = isSyn ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
+      const spawn = isSyn ? spawns.OBSIDIAN_T : spawns.VANGUARD_CT;
       const laneIdx = isSyn ? synHumanIdx++ : vgHumanIdx++;
       s.controller.state.x = spawn.x + ((laneIdx % 5) - 2) * 2;
       s.controller.state.y = spawn.y;
@@ -1826,7 +1874,7 @@ export class GameRoom {
         b.armor = 100;
         b.hasHelmet = true;
       }
-      const spawn = b.team === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
+      const spawn = b.team === 'Syndicate' ? spawns.OBSIDIAN_T : spawns.VANGUARD_CT;
       b.controller.state.x = spawn.x + ((idx % 5) - 2) * 2;
       b.controller.state.y = spawn.y;
       b.controller.state.z = spawn.z;

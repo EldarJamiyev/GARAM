@@ -460,6 +460,11 @@ async function tryAttachOptionalCsOfficeGlb(scene: THREE.Scene, proceduralGroup:
         }
       }
     });
+    if (!proceduralGroup.parent) {
+      AssetManager.disposeObject3D(root, true);
+      return;
+    }
+    root.userData.isMapRoot = true;
     proceduralGroup.visible = false;
     scene.add(root);
   } catch {
@@ -468,10 +473,13 @@ async function tryAttachOptionalCsOfficeGlb(scene: THREE.Scene, proceduralGroup:
 }
 
 export function buildCsOfficeMap(scene: THREE.Scene): MapBuildResult {
-  const aniso = AssetManager.getInstance().getMaxAnisotropy();
+  const assetMgr = AssetManager.getInstance();
+  const aniso = assetMgr.getMaxAnisotropy();
   const proceduralRoot = new THREE.Group();
   proceduralRoot.name = 'cs_office_procedural_world';
+  proceduralRoot.userData.isMapRoot = true;
   scene.add(proceduralRoot);
+  assetMgr.reportProgress(100, 'CS_OFFICE (2-SITE) ARENA READY');
 
   // 1. Corona Real-Light Calibrated PBR Material Set (Self-illuminated gentle GI bounce so indoor rooms never turn pitch black)
   const makeMat = (
@@ -830,7 +838,7 @@ export function buildCsOfficeMap(scene: THREE.Scene): MapBuildResult {
   for (const [lx, ly, lz, color, intensity, dist] of interiorLights) {
     const pt = new THREE.PointLight(color, intensity, dist, 1.5);
     pt.position.set(lx, ly, lz);
-    scene.add(pt);
+    proceduralRoot.add(pt);
   }
 
   // Trigger optional Sketchfab GLB auto-upgrade if present in asset-manifest.json
@@ -864,7 +872,7 @@ export function buildCsOfficeMap(scene: THREE.Scene): MapBuildResult {
       lastShotTime: 0,
       vx: 0,
       vz: 0,
-      weaponId: cfg.team === 'Vanguard' ? 'm4a1-s' : 'garam-47',
+      weaponId: cfg.team === 'Vanguard' ? 'vanguard-m4' : 'garam-47',
     });
   }
 

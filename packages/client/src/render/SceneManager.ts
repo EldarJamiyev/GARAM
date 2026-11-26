@@ -410,6 +410,30 @@ export class SceneManager {
     this.sunLight.shadow.camera.updateProjectionMatrix();
   }
 
+  /**
+   * Configures crisp CS_OFFICE winter daylight atmosphere and enables distant city/foundry horizon.
+   */
+  public configureOfficeAtmosphere(): void {
+    this.horizonMesh.visible = true;
+    this.worldScene.fog = new THREE.FogExp2(0xd6e1ec, 0.0032);
+    this.hemiLight.color.setHex(0xc2d8f0);
+    this.hemiLight.groundColor.setHex(0x707882);
+    this.hemiLight.intensity = 0.92;
+
+    this.sunLight.color.setHex(0xfff6ea);
+    this.sunLight.intensity = 1.95;
+    this.sunLight.position.set(42, 58, -38);
+    this.sunLight.target.position.set(0, 1.4, 0);
+    this.sunLight.target.updateMatrixWorld();
+
+    const d = 56;
+    this.sunLight.shadow.camera.left = -d;
+    this.sunLight.shadow.camera.right = d;
+    this.sunLight.shadow.camera.top = d;
+    this.sunLight.shadow.camera.bottom = -d;
+    this.sunLight.shadow.camera.updateProjectionMatrix();
+  }
+
   public update(dt: number, cameraPos: THREE.Vector3, currentZone?: string): void {
     this.skyMesh.position.copy(cameraPos);
     if (this.horizonMesh.visible) {
@@ -499,18 +523,20 @@ export class SceneManager {
     if (typeof gl.fenceSync === 'function') {
       const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
       gl.flush();
+      let polls = 0;
       const poll = () => {
+        polls += 1;
         const state = sync ? gl.getSyncParameter(sync, gl.SYNC_STATUS) : gl.SIGNALED;
-        if (state === gl.UNSIGNALED) {
+        if (state === gl.UNSIGNALED && polls < 24) {
           window.setTimeout(poll, 8);
         } else {
           if (sync) gl.deleteSync(sync);
-          window.setTimeout(() => cb(performance.now()), 80);
+          window.setTimeout(() => cb(performance.now()), 50);
         }
       };
       window.setTimeout(poll, 8);
     } else {
-      window.setTimeout(() => cb(performance.now()), 80);
+      window.setTimeout(() => cb(performance.now()), 50);
     }
   }
 

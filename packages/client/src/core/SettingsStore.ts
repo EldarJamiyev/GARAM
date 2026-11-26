@@ -1,6 +1,7 @@
 export type BotDifficulty = 'Recruit' | 'Veteran' | 'Elite' | 'Sovereign';
 export type PlayerFaction = 'Vanguard' | 'Syndicate';
 export type GameMode = 'offline' | 'multiplayer';
+export type ActiveMapId = 'de_dust2' | 'cs_office';
 export type GraphicsQuality = 'AUTO' | 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH';
 export type QualityTier = 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -17,6 +18,7 @@ export interface CrosshairConfig {
 export interface UserSettings {
   callsign: string;
   faction: PlayerFaction;
+  mapId: ActiveMapId;
   botDifficulty: BotDifficulty;
   graphicsQuality: GraphicsQuality;
   mouseSensitivity: number;
@@ -33,6 +35,7 @@ export interface UserSettings {
 const DEFAULT_SETTINGS: UserSettings = {
   callsign: 'Eldar Garamov',
   faction: 'Vanguard',
+  mapId: 'de_dust2',
   botDifficulty: 'Veteran',
   graphicsQuality: 'AUTO',
   mouseSensitivity: 2.2,

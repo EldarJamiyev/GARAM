@@ -66,6 +66,12 @@ export class RoundManager {
     this.siteBPos = new THREE.Vector3(bombsites.B.center.x, 0, bombsites.B.center.z);
   }
 
+  public setBombsites(bombsites: RoundBombsitesConfig): void {
+    this.bombsites = bombsites;
+    this.siteAPos.set(bombsites.A.center.x, 0, bombsites.A.center.z);
+    this.siteBPos.set(bombsites.B.center.x, 0, bombsites.B.center.z);
+  }
+
   public startMatch(): void {
     this.matchSim.resetMatch();
     this.roundNumber = this.matchSim.round;

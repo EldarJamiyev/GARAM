@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { ArmIKSolver, extractYTwistAngle } from '../viewmodel/ArmIKSolver.js';
 import { AssetManager } from '../render/AssetManager.js';
-import { computeRecoilStepPerMeter, applyCS2WeaponHandPosture } from '../viewmodel/WeaponViewmodel.js';
+import {
+  computeRecoilStepPerMeter,
+  applyCS2WeaponHandPosture,
+  applyFactionGloveTint,
+} from '../viewmodel/WeaponViewmodel.js';
 import {
   WEAPON_SOCKET_CONFIGS,
   VIEWMODEL_NEAR_PLANE,
@@ -342,9 +346,11 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     });
   }
 
-  it('enforces hard CS2 skinned-vertex gate across 1440x900 and 430x932: 0 visible bicep cutoffs, elbows off bottom edge, rifle buttstocks tucked off-screen, 0 crosshair occlusion, and authentic Karambit framing', async () => {
+  it('enforces hard CS2 skinned-vertex gate across 1440x900 and 430x932 for Idle, Fire, Reload, Draw, and Inspect: 0 visible bicep cutoffs, elbows off bottom edge, rifle buttstocks tucked off-screen, 0 crosshair occlusion, and authentic Karambit framing', async () => {
     const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
-    const { buildCS2AnimationClips } = await import('../viewmodel/ViewmodelRig.js');
+    const { buildCS2AnimationClips, captureBindPose, restoreBindPose } = await import(
+      '../viewmodel/ViewmodelRig.js'
+    );
 
     expect(VIEWMODEL_NEAR_PLANE).toBe(0.05);
     expect(computeViewmodelFov(1440 / 900)).toBe(60);
@@ -362,6 +368,14 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
       { name: '430x932', w: 430, h: 932 },
     ] as const;
 
+    const clipPhaseSamples = [
+      { phase: 'idle' as const, sampleTime: 0.05, isReloading: false, isInspecting: false, lockWeight: 1.0 },
+      { phase: 'fire' as const, sampleTime: 0.12, isReloading: false, isInspecting: false, lockWeight: 1.0 },
+      { phase: 'reload' as const, sampleTime: 1.65, isReloading: true, isInspecting: false, lockWeight: 0.0 },
+      { phase: 'draw' as const, sampleTime: 0.18, isReloading: false, isInspecting: false, lockWeight: 0.5 },
+      { phase: 'inspect' as const, sampleTime: 2.40, isReloading: false, isInspecting: true, lockWeight: 0.0 },
+    ];
+
     const rifleButtplateZ: Record<string, number> = {
       'garam-47': 0.211,
       'vanguard-m4': 0.227,
@@ -369,7 +383,6 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
       'sovereign-awp': 0.207,
     };
 
-    // Pre-identify open bicep/shoulder boundary vertices on each skinned mesh
     const collectOpenBicepVertices = (sm: THREE.SkinnedMesh): Set<number> => {
       const boundary = new Set<number>();
       const geom = sm.geometry;
@@ -449,11 +462,13 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
 
       for (const [weaponId, cfg] of Object.entries(WEAPON_SOCKET_CONFIGS)) {
         const root = clone(gltf.scene);
+        const bindSnapshot = captureBindPose(root);
         const skinnedMeshes: THREE.SkinnedMesh[] = [];
         root.traverse((c: any) => {
           if (c.isSkinnedMesh) skinnedMeshes.push(c);
         });
         expect(skinnedMeshes.length).toBeGreaterThanOrEqual(2);
+        const bicepVertSets = skinnedMeshes.map((sm) => collectOpenBicepVertices(sm));
 
         const meshRoot = new THREE.Group();
         const container = new THREE.Group();
@@ -467,203 +482,238 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
         container.add(root);
         meshRoot.add(container);
 
-        const mixer = new THREE.AnimationMixer(root);
-        const clip = slicedClips.find((a) => a.name === cfg.clips.idle) || slicedClips[0];
-        mixer.clipAction(clip).play();
-        mixer.update(0.05);
-        meshRoot.updateMatrixWorld(true);
-
-        // Mount weapon holder & left-hand grip anchor on socket bone
         const socket = root.getObjectByName(cfg.socketBone) || null;
         expect(socket, `${weaponId} socket ${cfg.socketBone}`).not.toBeNull();
         const holder = new THREE.Group();
+        holder.userData.isWeaponAttachment = true;
         holder.position.set(...cfg.localPos);
         holder.rotation.set(...cfg.localRotEuler);
         holder.scale.setScalar(cfg.localScale);
         socket!.add(holder);
 
-        let gripAnchorWorld: THREE.Vector3 | null = null;
+        let anchorObj: THREE.Object3D | null = null;
         if (cfg.leftHandAnchorLocal) {
-          const anchor = new THREE.Object3D();
-          anchor.position.set(...cfg.leftHandAnchorLocal);
-          holder.add(anchor);
-          meshRoot.updateMatrixWorld(true);
-          gripAnchorWorld = anchor.getWorldPosition(new THREE.Vector3());
-        } else {
-          meshRoot.updateMatrixWorld(true);
+          anchorObj = new THREE.Object3D();
+          anchorObj.position.set(...cfg.leftHandAnchorLocal);
+          holder.add(anchorObj);
         }
 
+        const mixer = new THREE.AnimationMixer(root);
         const solver = new ArmIKSolver(root);
         const handR = root.getObjectByName('DEF-handR_357') || null;
         const handL = root.getObjectByName('DEF-handL_233') || null;
 
-        applyCS2WeaponHandPosture({
-          armsRoot: root,
-          meshRoot,
-          armIKSolver: solver,
-          cfg,
-          weaponSocket: socket,
-          handRSocket: handR,
-          handLSocket: handL,
-          gripAnchorWorld,
-          leftHandLockWeight: 1.0,
-          isReloading: false,
-          isInspecting: false,
-          narrowOffsetX,
-        });
-        meshRoot.updateMatrixWorld(true);
+        for (const phaseSample of clipPhaseSamples) {
+          mixer.stopAllAction();
+          restoreBindPose(root, bindSnapshot);
 
-        let visibleBicepCutoffs = 0;
-        let crosshairOverlapVerts = 0;
+          const clipName = resolveWeaponClipName(weaponId, phaseSample.phase);
+          const clip = slicedClips.find((a) => a.name === clipName) || slicedClips[0];
+          const action = mixer.clipAction(clip);
+          action.reset();
+          action.play();
+          mixer.update(phaseSample.sampleTime);
+          meshRoot.updateMatrixWorld(true);
 
-        for (const sm of skinnedMeshes) {
-          const bicepVerts = collectOpenBicepVertices(sm);
-          sm.skeleton.update();
-          const bm = sm.skeleton.boneMatrices;
-          const bindMatrix = sm.bindMatrix;
-          const bindMatrixInverse = sm.bindMatrixInverse;
-          const matrixWorld = sm.matrixWorld;
+          const gripAnchorWorld = anchorObj
+            ? anchorObj.getWorldPosition(new THREE.Vector3())
+            : null;
 
-          const pos = sm.geometry.attributes.position;
-          const si = sm.geometry.attributes.skinIndex;
-          const sw = sm.geometry.attributes.skinWeight;
+          applyCS2WeaponHandPosture({
+            armsRoot: root,
+            meshRoot,
+            armIKSolver: solver,
+            cfg,
+            weaponSocket: socket,
+            handRSocket: handR,
+            handLSocket: handL,
+            gripAnchorWorld,
+            leftHandLockWeight: phaseSample.lockWeight,
+            isReloading: phaseSample.isReloading,
+            isInspecting: phaseSample.isInspecting,
+            narrowOffsetX,
+          });
+          meshRoot.updateMatrixWorld(true);
 
-          for (let i = 0; i < pos.count; i++) {
-            v.set(pos.getX(i), pos.getY(i), pos.getZ(i), 1.0);
-            skinVertex.copy(v).applyMatrix4(bindMatrix);
-            skinned.set(0, 0, 0, 0);
+          let visibleBicepCutoffs = 0;
+          let crosshairOverlapVerts = 0;
 
-            for (let k = 0; k < 4; k++) {
-              const idx = k === 0 ? si.getX(i) : k === 1 ? si.getY(i) : k === 2 ? si.getZ(i) : si.getW(i);
-              const w = k === 0 ? sw.getX(i) : k === 1 ? sw.getY(i) : k === 2 ? sw.getZ(i) : sw.getW(i);
-              if (w <= 0) continue;
-              const off = idx * 16;
-              t.x = bm[off + 0] * skinVertex.x + bm[off + 4] * skinVertex.y + bm[off + 8] * skinVertex.z + bm[off + 12] * skinVertex.w;
-              t.y = bm[off + 1] * skinVertex.x + bm[off + 5] * skinVertex.y + bm[off + 9] * skinVertex.z + bm[off + 13] * skinVertex.w;
-              t.z = bm[off + 2] * skinVertex.x + bm[off + 6] * skinVertex.y + bm[off + 10] * skinVertex.z + bm[off + 14] * skinVertex.w;
-              t.w = bm[off + 3] * skinVertex.x + bm[off + 7] * skinVertex.y + bm[off + 11] * skinVertex.z + bm[off + 15] * skinVertex.w;
-              skinned.addScaledVector(t, w);
-            }
-            skinned.applyMatrix4(bindMatrixInverse);
-            skinned.applyMatrix4(matrixWorld);
+          for (let smIdx = 0; smIdx < skinnedMeshes.length; smIdx++) {
+            const sm = skinnedMeshes[smIdx];
+            const bicepVerts = bicepVertSets[smIdx];
+            sm.skeleton.update();
+            const bm = sm.skeleton.boneMatrices;
+            const bindMatrix = sm.bindMatrix;
+            const bindMatrixInverse = sm.bindMatrixInverse;
+            const matrixWorld = sm.matrixWorld;
 
-            const camZ = skinned.z;
-            if (camZ < -0.02) {
-              ndc.set(skinned.x, skinned.y, skinned.z).project(camera);
-              if (bicepVerts.has(i) && Math.abs(ndc.x) <= 1.02 && Math.abs(ndc.y) <= 1.02) {
-                visibleBicepCutoffs++;
+            const pos = sm.geometry.attributes.position;
+            const si = sm.geometry.attributes.skinIndex;
+            const sw = sm.geometry.attributes.skinWeight;
+
+            for (let i = 0; i < pos.count; i++) {
+              v.set(pos.getX(i), pos.getY(i), pos.getZ(i), 1.0);
+              skinVertex.copy(v).applyMatrix4(bindMatrix);
+              skinned.set(0, 0, 0, 0);
+
+              for (let k = 0; k < 4; k++) {
+                const idx = k === 0 ? si.getX(i) : k === 1 ? si.getY(i) : k === 2 ? si.getZ(i) : si.getW(i);
+                const w = k === 0 ? sw.getX(i) : k === 1 ? sw.getY(i) : k === 2 ? sw.getZ(i) : sw.getW(i);
+                if (w <= 0) continue;
+                const off = idx * 16;
+                t.x = bm[off + 0] * skinVertex.x + bm[off + 4] * skinVertex.y + bm[off + 8] * skinVertex.z + bm[off + 12] * skinVertex.w;
+                t.y = bm[off + 1] * skinVertex.x + bm[off + 5] * skinVertex.y + bm[off + 9] * skinVertex.z + bm[off + 13] * skinVertex.w;
+                t.z = bm[off + 2] * skinVertex.x + bm[off + 6] * skinVertex.y + bm[off + 10] * skinVertex.z + bm[off + 14] * skinVertex.w;
+                t.w = bm[off + 3] * skinVertex.x + bm[off + 7] * skinVertex.y + bm[off + 11] * skinVertex.z + bm[off + 15] * skinVertex.w;
+                skinned.addScaledVector(t, w);
               }
-              if (camZ < -VIEWMODEL_NEAR_PLANE && Math.abs(ndc.x) < 0.12 && Math.abs(ndc.y) < 0.12) {
-                crosshairOverlapVerts++;
+              skinned.applyMatrix4(bindMatrixInverse);
+              skinned.applyMatrix4(matrixWorld);
+
+              const camZ = skinned.z;
+              if (camZ < -0.02) {
+                ndc.set(skinned.x, skinned.y, skinned.z).project(camera);
+                if (bicepVerts.has(i) && Math.abs(ndc.x) <= 1.02 && Math.abs(ndc.y) <= 1.02) {
+                  visibleBicepCutoffs++;
+                }
+                if (camZ < -VIEWMODEL_NEAR_PLANE && Math.abs(ndc.x) < 0.12 && Math.abs(ndc.y) < 0.12) {
+                  crosshairOverlapVerts++;
+                }
               }
             }
           }
-        }
 
-        expect(
-          visibleBicepCutoffs,
-          `[${vp.name}] ${weaponId} open bicep/shoulder cutoff vertices visible in viewport`
-        ).toBe(0);
-        expect(
-          crosshairOverlapVerts,
-          `[${vp.name}] ${weaponId} hand/arm vertices overlapping crosshair box (|ndc|<0.12)`
-        ).toBe(0);
-
-        // Both elbow joints MUST sit off the bottom border (ndcY < -1.0) or behind camera (camZ >= 0)
-        for (const elbowName of ['DEF-forearmL_235', 'DEF-forearmR_359']) {
-          const elbow = root.getObjectByName(elbowName);
-          expect(elbow, `${elbowName} bone must exist`).toBeDefined();
-          const eWorld = elbow!.getWorldPosition(new THREE.Vector3());
-          const eNdc = eWorld.clone().project(camera);
-          const offBottomOrBehind = eWorld.z >= 0 || eNdc.y < -1.0;
           expect(
-            offBottomOrBehind,
-            `[${vp.name}] ${weaponId} ${elbowName} visible inside bottom border (worldZ=${eWorld.z.toFixed(3)}, ndcY=${eNdc.y.toFixed(3)})`
-          ).toBe(true);
-        }
-
-        // Rifles: rear buttplate MUST stay tucked into shoulder off bottom-right or behind near plane
-        if (weaponId in rifleButtplateZ) {
-          const buttWorld = new THREE.Vector3(0, 0.02, rifleButtplateZ[weaponId]).applyMatrix4(
-            holder.matrixWorld
-          );
-          const buttNdc = buttWorld.clone().project(camera);
-          const buttTucked = buttWorld.z > -VIEWMODEL_NEAR_PLANE || buttNdc.x > 0.90 || buttNdc.y < -0.95;
+            visibleBicepCutoffs,
+            `[${vp.name}][${phaseSample.phase}] ${weaponId} open bicep/shoulder cutoff vertices visible in viewport`
+          ).toBe(0);
           expect(
-            buttTucked,
-            `[${vp.name}] ${weaponId} rear buttplate floating in viewport (worldZ=${buttWorld.z.toFixed(3)}, ndc=${buttNdc.x.toFixed(2)},${buttNdc.y.toFixed(2)})`
-          ).toBe(true);
-        }
+            crosshairOverlapVerts,
+            `[${vp.name}][${phaseSample.phase}] ${weaponId} hand/arm vertices overlapping crosshair box (|ndc|<0.12)`
+          ).toBe(0);
 
-        // Weapon landmarks MUST NOT collide with crosshair deadzone (|ndc| < 0.12)
-        const landmarks =
-          weaponId === 'garam-karambit'
-            ? [new THREE.Vector3(0, 0, 0), new THREE.Vector3(...cfg.muzzleLocalPos)]
-            : [
-                new THREE.Vector3(0, 0, 0),
-                new THREE.Vector3(
-                  cfg.muzzleLocalPos[0] * 0.5,
-                  cfg.muzzleLocalPos[1] * 0.5,
-                  cfg.muzzleLocalPos[2] * 0.5
-                ),
-                new THREE.Vector3(...cfg.muzzleLocalPos),
-              ];
-
-        for (const pt of landmarks) {
-          const ptWorld = pt.clone().applyMatrix4(holder.matrixWorld);
-          if (ptWorld.z < -VIEWMODEL_NEAR_PLANE) {
-            const ptNdc = ptWorld.clone().project(camera);
-            const inDeadzone = Math.abs(ptNdc.x) < 0.12 && Math.abs(ptNdc.y) < 0.12;
+          for (const elbowName of ['DEF-forearmL_235', 'DEF-forearmR_359']) {
+            const elbow = root.getObjectByName(elbowName);
+            expect(elbow, `${elbowName} bone must exist`).toBeDefined();
+            const eWorld = elbow!.getWorldPosition(new THREE.Vector3());
+            const eNdc = eWorld.clone().project(camera);
+            const offBottomOrBehind = eWorld.z >= 0 || eNdc.y < -1.0;
             expect(
-              inDeadzone,
-              `[${vp.name}] ${weaponId} landmark ${pt.toArray()} in crosshair deadzone (${ptNdc.x.toFixed(2)}, ${ptNdc.y.toFixed(2)})`
-            ).toBe(false);
+              offBottomOrBehind,
+              `[${vp.name}][${phaseSample.phase}] ${weaponId} ${elbowName} visible inside bottom border (worldZ=${eWorld.z.toFixed(3)}, ndcY=${eNdc.y.toFixed(3)})`
+            ).toBe(true);
           }
-        }
 
-        // Rifle/SMG left palm centroid locked flush onto handguard anchor (<= 0.012m)
-        if (cfg.leftArmPoseMode === 'rifle' && gripAnchorWorld) {
-          const fIdx = root.getObjectByName('DEF-f_index01L_147');
-          const fMid = root.getObjectByName('DEF-f_middle01L_180');
-          const fRing = root.getObjectByName('DEF-f_ring01L_199');
-          if (fIdx && fMid && fRing) {
-            const palmCenter = new THREE.Vector3()
-              .add(fIdx.getWorldPosition(new THREE.Vector3()))
-              .add(fMid.getWorldPosition(new THREE.Vector3()))
-              .add(fRing.getWorldPosition(new THREE.Vector3()))
-              .multiplyScalar(1 / 3);
+          if (weaponId in rifleButtplateZ) {
+            const buttWorld = new THREE.Vector3(0, 0.02, rifleButtplateZ[weaponId]).applyMatrix4(
+              holder.matrixWorld
+            );
+            const buttNdc = buttWorld.clone().project(camera);
+            const buttTucked = buttWorld.z > -VIEWMODEL_NEAR_PLANE || buttNdc.x > 0.90 || buttNdc.y < -0.95;
             expect(
-              palmCenter.distanceTo(gripAnchorWorld),
-              `[${vp.name}] ${weaponId} left palm centroid distance to handguard`
-            ).toBeLessThanOrEqual(0.012);
+              buttTucked,
+              `[${vp.name}][${phaseSample.phase}] ${weaponId} rear buttplate floating in viewport (worldZ=${buttWorld.z.toFixed(3)}, ndc=${buttNdc.x.toFixed(2)},${buttNdc.y.toFixed(2)})`
+            ).toBe(true);
           }
-        }
 
-        // Authentic CS2 Karambit dual-hand framing on desktop 1440x900
-        if (weaponId === 'garam-karambit' && vp.name === '1440x900') {
-          const hLNdc = handL!.getWorldPosition(new THREE.Vector3()).project(camera);
-          const hRNdc = handR!.getWorldPosition(new THREE.Vector3()).project(camera);
-          const tipNdc = new THREE.Vector3(...cfg.muzzleLocalPos)
-            .applyMatrix4(holder.matrixWorld)
-            .project(camera);
+          const landmarks =
+            weaponId === 'garam-karambit'
+              ? [new THREE.Vector3(0, 0, 0), new THREE.Vector3(...cfg.muzzleLocalPos)]
+              : [
+                  new THREE.Vector3(0, 0, 0),
+                  new THREE.Vector3(
+                    cfg.muzzleLocalPos[0] * 0.5,
+                    cfg.muzzleLocalPos[1] * 0.5,
+                    cfg.muzzleLocalPos[2] * 0.5
+                  ),
+                  new THREE.Vector3(...cfg.muzzleLocalPos),
+                ];
 
-          expect(hLNdc.x, 'Karambit left hand NDC X min').toBeGreaterThanOrEqual(-0.65);
-          expect(hLNdc.x, 'Karambit left hand NDC X max').toBeLessThanOrEqual(-0.18);
-          expect(hLNdc.y, 'Karambit left hand NDC Y min').toBeGreaterThanOrEqual(-0.85);
-          expect(hLNdc.y, 'Karambit left hand NDC Y max').toBeLessThanOrEqual(-0.42);
+          if (!phaseSample.isInspecting) {
+            for (const pt of landmarks) {
+              const ptWorld = pt.clone().applyMatrix4(holder.matrixWorld);
+              if (ptWorld.z < -VIEWMODEL_NEAR_PLANE) {
+                const ptNdc = ptWorld.clone().project(camera);
+                const inDeadzone = Math.abs(ptNdc.x) < 0.12 && Math.abs(ptNdc.y) < 0.12;
+                expect(
+                  inDeadzone,
+                  `[${vp.name}][${phaseSample.phase}] ${weaponId} landmark ${pt.toArray()} in strict 0.12 combat crosshair deadzone (${ptNdc.x.toFixed(2)}, ${ptNdc.y.toFixed(2)})`
+                ).toBe(false);
+              }
+            }
+          }
 
-          expect(hRNdc.x, 'Karambit right fist NDC X min').toBeGreaterThanOrEqual(0.18);
-          expect(hRNdc.x, 'Karambit right fist NDC X max').toBeLessThanOrEqual(0.62);
-          expect(hRNdc.y, 'Karambit right fist NDC Y min').toBeGreaterThanOrEqual(-0.82);
-          expect(hRNdc.y, 'Karambit right fist NDC Y max').toBeLessThanOrEqual(-0.45);
+          if (cfg.leftArmPoseMode === 'rifle' && gripAnchorWorld && !phaseSample.isReloading) {
+            const fIdx = root.getObjectByName('DEF-f_index01L_147');
+            const fMid = root.getObjectByName('DEF-f_middle01L_180');
+            const fRing = root.getObjectByName('DEF-f_ring01L_199');
+            if (fIdx && fMid && fRing) {
+              const palmCenter = new THREE.Vector3()
+                .add(fIdx.getWorldPosition(new THREE.Vector3()))
+                .add(fMid.getWorldPosition(new THREE.Vector3()))
+                .add(fRing.getWorldPosition(new THREE.Vector3()))
+                .multiplyScalar(1 / 3);
+              expect(
+                palmCenter.distanceTo(gripAnchorWorld),
+                `[${vp.name}][${phaseSample.phase}] ${weaponId} left palm centroid distance to handguard`
+              ).toBeLessThanOrEqual(0.012);
+            }
+          }
 
-          expect(tipNdc.x, 'Karambit bladeTip NDC X min').toBeGreaterThanOrEqual(0.55);
-          expect(tipNdc.x, 'Karambit bladeTip NDC X max').toBeLessThanOrEqual(0.88);
-          expect(tipNdc.y, 'Karambit bladeTip NDC Y min').toBeGreaterThanOrEqual(-0.55);
-          expect(tipNdc.y, 'Karambit bladeTip NDC Y max').toBeLessThanOrEqual(-0.22);
+          if (weaponId === 'garam-karambit' && vp.name === '1440x900' && phaseSample.phase === 'idle') {
+            const hLNdc = handL!.getWorldPosition(new THREE.Vector3()).project(camera);
+            const hRNdc = handR!.getWorldPosition(new THREE.Vector3()).project(camera);
+            const tipNdc = new THREE.Vector3(...cfg.muzzleLocalPos)
+              .applyMatrix4(holder.matrixWorld)
+              .project(camera);
+
+            expect(hLNdc.x, 'Karambit left hand NDC X min').toBeGreaterThanOrEqual(-0.65);
+            expect(hLNdc.x, 'Karambit left hand NDC X max').toBeLessThanOrEqual(-0.18);
+            expect(hLNdc.y, 'Karambit left hand NDC Y min').toBeGreaterThanOrEqual(-0.85);
+            expect(hLNdc.y, 'Karambit left hand NDC Y max').toBeLessThanOrEqual(-0.42);
+
+            expect(hRNdc.x, 'Karambit right fist NDC X min').toBeGreaterThanOrEqual(0.18);
+            expect(hRNdc.x, 'Karambit right fist NDC X max').toBeLessThanOrEqual(0.62);
+            expect(hRNdc.y, 'Karambit right fist NDC Y min').toBeGreaterThanOrEqual(-0.82);
+            expect(hRNdc.y, 'Karambit right fist NDC Y max').toBeLessThanOrEqual(-0.45);
+
+            // Authentic CS2 reverse-grip Karambit: curved blade sweeps forward-left from the right fist
+            // while remaining cleanly outside the 0.12 crosshair deadzone.
+            expect(tipNdc.x, 'Karambit bladeTip sweeps forward-left of right fist').toBeLessThan(hRNdc.x);
+            expect(tipNdc.x, 'Karambit bladeTip NDC X min').toBeGreaterThanOrEqual(0.08);
+            expect(tipNdc.x, 'Karambit bladeTip NDC X max').toBeLessThanOrEqual(0.55);
+            expect(tipNdc.y, 'Karambit bladeTip NDC Y min').toBeGreaterThanOrEqual(-0.60);
+            expect(tipNdc.y, 'Karambit bladeTip NDC Y max').toBeLessThanOrEqual(-0.12);
+          }
         }
       }
     }
+  });
+
+  it('tints first-person tactical gloves by faction (Vanguard CT navy-slate vs Syndicate T crimson-obsidian) while keeping bare forearm skin natural', () => {
+    const root = new THREE.Group();
+    const gloveMat = new THREE.MeshStandardMaterial({ name: 'modelsweaponsv_modelsarmsv', color: 0xffffff });
+    const skinMat = new THREE.MeshStandardMaterial({ name: 'modelsweaponsv_modelsarmst', color: 0xffffff });
+    const procFabricMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    procFabricMat.userData.gloveRole = 'fabric';
+
+    root.add(
+      new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), gloveMat),
+      new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), skinMat),
+      new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), procFabricMat)
+    );
+
+    const ctCount = applyFactionGloveTint(root, 'Vanguard');
+    expect(ctCount).toBe(2);
+    expect(gloveMat.color.getHex()).toBe(0x5c84b4);
+    expect(procFabricMat.color.getHex()).toBe(0x243447);
+    expect(skinMat.color.getHex()).toBe(0xffffff);
+
+    const tCount = applyFactionGloveTint(root, 'Syndicate');
+    expect(tCount).toBe(2);
+    expect(gloveMat.color.getHex()).toBe(0xb85a64);
+    expect(procFabricMat.color.getHex()).toBe(0x3b1d22);
+    expect(skinMat.color.getHex()).toBe(0xffffff);
   });
 
   it('guarantees restoreBindPose never overwrites mounted weapon transforms with duplicate Sketchfab node names', async () => {

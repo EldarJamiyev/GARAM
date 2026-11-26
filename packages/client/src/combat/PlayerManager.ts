@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WEAPONS, SPAWN_POINTS, KinematicPlayerController, MapBlockCollider } from '@garam/shared';
+import { WEAPONS, KinematicPlayerController, MapBlockCollider } from '@garam/shared';
 import { settingsStore } from '../core/SettingsStore.js';
 import { InventoryManager } from './InventoryManager.js';
 import { DroppedWeaponManager } from './DroppedWeaponManager.js';
@@ -203,6 +203,7 @@ export class PlayerManager {
   }
 
   public respawnAllBots(bots: BotEntity[]): void {
+    const isDust2 = settingsStore.settings.mapId === 'de_dust2';
     for (const bot of bots) {
       bot.isDead = false;
       bot.health = bot.maxHealth;
@@ -212,7 +213,29 @@ export class PlayerManager {
         bot.waypointIndex = 0;
         bot.patrolTarget = bot.patrolWaypoints[0];
         bot.mesh.position.set(bot.patrolTarget.x, bot.patrolTarget.y, bot.patrolTarget.z);
-        bot.mesh.rotation.y = bot.team === 'Vanguard' ? 0 : Math.PI;
+        if (bot.patrolWaypoints.length > 1) {
+          const wp1 = bot.patrolWaypoints[1];
+          const dx = wp1.x - bot.patrolTarget.x;
+          const dz = wp1.z - bot.patrolTarget.z;
+          bot.mesh.rotation.y =
+            dx * dx + dz * dz > 0.01
+              ? Math.atan2(dx, dz)
+              : isDust2
+                ? bot.team === 'Vanguard'
+                  ? Math.PI
+                  : Math.PI * 0.5
+                : bot.team === 'Vanguard'
+                  ? 0
+                  : Math.PI;
+        } else {
+          bot.mesh.rotation.y = isDust2
+            ? bot.team === 'Vanguard'
+              ? Math.PI
+              : Math.PI * 0.5
+            : bot.team === 'Vanguard'
+              ? 0
+              : Math.PI;
+        }
       }
     }
   }
@@ -228,7 +251,20 @@ export class PlayerManager {
     this.kills++;
     this.economy.addCash(reward);
     victimBot.isDead = true;
-    this.droppedWeapons.dropWeapon('garam-47', 30, 90, victimBot.mesh.position, this._dropDir);
+    const dropWeaponId =
+      victimBot.weaponId && WEAPONS[victimBot.weaponId]
+        ? victimBot.weaponId
+        : victimBot.team === 'Vanguard'
+          ? 'vanguard-m4'
+          : 'garam-47';
+    const dropDef = WEAPONS[dropWeaponId] || WEAPONS['garam-47'];
+    this.droppedWeapons.dropWeapon(
+      dropDef.id,
+      dropDef.magCapacity,
+      dropDef.reserveAmmo,
+      victimBot.mesh.position,
+      this._dropDir
+    );
     const text = CombatReportManager.formatKillfeedEntry(killerName, victimBot.name, weaponName, headshot);
     this.hud.addKillfeed(text);
     this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, bots);
@@ -245,7 +281,14 @@ export class PlayerManager {
     bots: BotEntity[],
     armorDamage = 0
   ): void {
-    this.audio.playGunshot('garam-47', shooter.mesh.position, cameraPos, blocks);
+    const shooterWeaponId =
+      shooter.weaponId && WEAPONS[shooter.weaponId]
+        ? shooter.weaponId
+        : shooter.team === 'Vanguard'
+          ? 'vanguard-m4'
+          : 'garam-47';
+    const shooterWeaponDef = WEAPONS[shooterWeaponId] || WEAPONS['garam-47'];
+    this.audio.playGunshot(shooterWeaponDef.id, shooter.mesh.position, cameraPos, blocks);
     // dmg from BotAISystem is already post-armor awardedDamage from executeTacticalRaycast
     victim.armor = Math.max(0, victim.armor - Math.round(armorDamage));
     victim.health = Math.max(0, victim.health - Math.round(dmg));
@@ -254,11 +297,24 @@ export class PlayerManager {
       victim.isDead = true;
       shooter.kills++;
       victim.deaths++;
-      this.droppedWeapons.dropWeapon('garam-47', 30, 90, victim.mesh.position, this._dropDir);
+      const dropWeaponId =
+        victim.weaponId && WEAPONS[victim.weaponId]
+          ? victim.weaponId
+          : victim.team === 'Vanguard'
+            ? 'vanguard-m4'
+            : 'garam-47';
+      const dropDef = WEAPONS[dropWeaponId] || WEAPONS['garam-47'];
+      this.droppedWeapons.dropWeapon(
+        dropDef.id,
+        dropDef.magCapacity,
+        dropDef.reserveAmmo,
+        victim.mesh.position,
+        this._dropDir
+      );
       const killfeedText = CombatReportManager.formatKillfeedEntry(
         shooter.name,
         victim.name,
-        'Garam-47',
+        shooterWeaponDef.name,
         isHeadshot,
         penetrated > 0
       );

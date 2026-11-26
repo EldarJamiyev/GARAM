@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import {
   WEAPONS,
-  DE_DUST2_SPAWN_POINTS,
   HitZone,
   SurfaceMaterial,
   WeaponDef,
@@ -9,10 +8,28 @@ import {
   AABBCollider,
   SpatialGrid,
   KinematicPlayerController,
+  getMapDescriptor,
+  MapId,
 } from '@garam/shared';
-import { settingsStore, BotDifficulty, CrosshairConfig, PlayerFaction, GraphicsQuality } from './SettingsStore.js';
+import {
+  settingsStore,
+  BotDifficulty,
+  CrosshairConfig,
+  PlayerFaction,
+  GraphicsQuality,
+  ActiveMapId,
+} from './SettingsStore.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
-import { BotAISystem, BotAISystemCallbacks } from '../match/BotAISystem.js';
+import {
+  BotAISystem,
+  BotAISystemCallbacks,
+  DE_DUST2_BOT_MAP_CONFIG,
+  CS_OFFICE_BOT_MAP_CONFIG,
+} from '../match/BotAISystem.js';
+import { buildDeDust2Map } from '../maps/DeDust2Map.js';
+import { buildCsOfficeMap } from '../maps/CsOfficeMap.js';
+import { SceneManager } from '../render/SceneManager.js';
+import { AssetManager } from '../render/AssetManager.js';
 import { WeaponController, WeaponCombatCallbacks } from '../combat/WeaponController.js';
 import { RoundManager, RoundCallbacks, RoundPhase } from '../match/RoundManager.js';
 import type { CustomizerUI, CustomizerCallbacks } from '../ui/CustomizerUI.js';
@@ -35,6 +52,8 @@ import { RadarRenderer } from '../ui/RadarRenderer.js';
 
 export interface GameContext {
   canvas: HTMLCanvasElement;
+  renderer?: THREE.WebGLRenderer;
+  sceneManager?: SceneManager;
   worldCamera: THREE.PerspectiveCamera;
   viewmodelCamera: THREE.PerspectiveCamera;
   worldScene: THREE.Scene;
@@ -80,6 +99,85 @@ const _playerFeetScratch = new THREE.Vector3();
 
 const customizerPromises = new WeakMap<GameContext, Promise<CustomizerUI>>();
 
+export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
+  const desc = getMapDescriptor(mapId);
+
+  ctx.spectator.stop();
+  ctx.droppedWeapons.clearAll();
+  ctx.utilityManager.resetRound();
+  ctx.radar.clearSpotted();
+  ctx.effects.clearAll();
+
+  for (const bot of ctx.bots) {
+    bot.rig?.dispose();
+    ctx.worldScene.remove(bot.mesh);
+  }
+  const toRemove: THREE.Object3D[] = [];
+  for (const child of ctx.worldScene.children) {
+    if (child.userData?.isMapRoot) {
+      toRemove.push(child);
+    }
+  }
+  for (const root of toRemove) {
+    ctx.worldScene.remove(root);
+    AssetManager.disposeObject3D(root, true);
+  }
+
+  if (mapId === 'cs_office') {
+    ctx.sceneManager?.configureOfficeAtmosphere();
+  } else {
+    ctx.sceneManager?.configureDust2Atmosphere();
+  }
+
+  const mapData =
+    mapId === 'cs_office'
+      ? buildCsOfficeMap(ctx.worldScene)
+      : buildDeDust2Map(ctx.worldScene, () => {
+          if (ctx.renderer) {
+            ctx.radar.bakeFromScene(ctx.renderer, ctx.worldScene);
+          }
+        });
+
+  ctx.blocks = mapData.blocks;
+  ctx.colliders = mapData.colliders;
+  ctx.bots = mapData.bots;
+  ctx.spatialGrid = new SpatialGrid(mapData.blocks, 6);
+
+  ctx.economy.setSpawnZones(desc.spawnZones);
+  ctx.utilityManager.setMapBounds(desc.bounds);
+  ctx.roundManager?.setBombsites(desc.bombsites);
+  ctx.botAI?.setMapConfig(
+    mapId === 'cs_office' ? CS_OFFICE_BOT_MAP_CONFIG : DE_DUST2_BOT_MAP_CONFIG
+  );
+  ctx.networkClient?.setMapColliders(mapData.colliders, ctx.spatialGrid);
+
+  ctx.radar.configureMap(desc.bounds, desc.bombsites, desc.isGlbArena);
+  if (ctx.renderer) {
+    ctx.radar.bakeFromScene(ctx.renderer, ctx.worldScene);
+  }
+
+  const scoreboardTitle = document.querySelector('#scoreboard-modal h2');
+  if (scoreboardTitle) {
+    scoreboardTitle.textContent = `TACTICAL OPERATIONS // ${desc.id.toUpperCase()}`;
+  }
+
+  const faction = settingsStore.settings.faction;
+  const factionSpawn =
+    faction === 'Syndicate' ? desc.spawnPoints.OBSIDIAN_T : desc.spawnPoints.VANGUARD_CT;
+  ctx.spawnPos.x = factionSpawn.x;
+  ctx.spawnPos.y = factionSpawn.y;
+  ctx.spawnPos.z = factionSpawn.z;
+
+  const initialYaw = desc.initialYaw[faction];
+  ctx.playerManager.reset(ctx.spawnPos);
+  if (ctx.inputManager) {
+    ctx.inputManager.input.yaw = initialYaw;
+    ctx.inputManager.input.pitch = 0;
+  }
+  ctx.worldCamera.position.set(ctx.spawnPos.x, ctx.spawnPos.y + 1.68, ctx.spawnPos.z);
+  ctx.worldCamera.rotation.set(0, initialYaw, 0, 'YXZ');
+}
+
 export function ensureCustomizer(ctx: GameContext): Promise<CustomizerUI> {
   if (ctx.customizer) return Promise.resolve(ctx.customizer);
   const inflight = customizerPromises.get(ctx);
@@ -98,6 +196,14 @@ export function buildNetworkCallbacks(ctx: GameContext): NetworkClientCallbacks 
   return {
     onKillfeed: (text: string) => ctx.hud.addKillfeed(text),
     onScoresUpdated: (ct: number, t: number) => ctx.hud.updateScores(ct, t),
+    onMapSync: (serverMapId: MapId) => {
+      if (serverMapId !== settingsStore.settings.mapId) {
+        settingsStore.update('mapId', serverMapId);
+        const sel = document.getElementById('map-selector') as HTMLSelectElement | null;
+        if (sel) sel.value = serverMapId;
+        switchActiveMap(ctx, serverMapId);
+      }
+    },
     onEconomySync: (payload) => {
       ctx.economy.cash = payload.cash;
       ctx.economy.armor = payload.armor;
@@ -319,10 +425,10 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.hud.addKillfeed(`Round End Payout: +$${payout}`);
     },
     onResetRound: () => {
+      const desc = getMapDescriptor(settingsStore.settings.mapId);
+      const faction = settingsStore.settings.faction;
       const factionSpawn =
-        settingsStore.settings.faction === 'Syndicate'
-          ? DE_DUST2_SPAWN_POINTS.OBSIDIAN_T
-          : DE_DUST2_SPAWN_POINTS.VANGUARD_CT;
+        faction === 'Syndicate' ? desc.spawnPoints.OBSIDIAN_T : desc.spawnPoints.VANGUARD_CT;
       ctx.spawnPos.x = factionSpawn.x;
       ctx.spawnPos.y = factionSpawn.y;
       ctx.spawnPos.z = factionSpawn.z;
@@ -330,10 +436,11 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.spectator.stop();
       ctx.droppedWeapons.clearAll();
       ctx.utilityManager.resetRound();
+      ctx.effects.clearAll();
       ctx.radar.clearSpotted();
       ctx.playerManager.reset(ctx.spawnPos);
       if (ctx.inputManager) {
-        ctx.inputManager.input.yaw = settingsStore.settings.faction === 'Syndicate' ? -Math.PI * 0.5 : -0.35;
+        ctx.inputManager.input.yaw = desc.initialYaw[faction];
         ctx.inputManager.input.pitch = 0;
       }
       ctx.playerManager.respawnAllBots(ctx.bots);
@@ -563,7 +670,8 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     if (!ctx.hasMatchStarted.value) {
       ctx.hasMatchStarted.value = true;
       ctx.roundManager?.startMatch();
-      const initialYaw = settingsStore.settings.faction === 'Syndicate' ? -Math.PI * 0.5 : -0.35;
+      const desc = getMapDescriptor(settingsStore.settings.mapId);
+      const initialYaw = desc.initialYaw[settingsStore.settings.faction];
       if (ctx.inputManager) {
         ctx.inputManager.input.yaw = initialYaw;
         ctx.inputManager.input.pitch = 0;
@@ -585,7 +693,12 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
           wsUrl = defaultWs;
         }
         const callsign = nameInput?.value?.trim() || settingsStore.settings.callsign || 'Eldar Garamov';
-        ctx.networkClient.connect(wsUrl, callsign, settingsStore.settings.faction);
+        ctx.networkClient.connect(
+          wsUrl,
+          callsign,
+          settingsStore.settings.faction,
+          settingsStore.settings.mapId
+        );
       }
     } else {
       ctx.networkClient?.disconnect();
@@ -609,8 +722,10 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
       ctx.hud.addKillfeed(`Bot Difficulty: ${diff.toUpperCase()}`);
     },
     onFactionChanged: (faction: PlayerFaction) => {
+      ctx.viewmodel.setFaction(faction);
+      const desc = getMapDescriptor(settingsStore.settings.mapId);
       const nextSpawn =
-        faction === 'Syndicate' ? DE_DUST2_SPAWN_POINTS.OBSIDIAN_T : DE_DUST2_SPAWN_POINTS.VANGUARD_CT;
+        faction === 'Syndicate' ? desc.spawnPoints.OBSIDIAN_T : desc.spawnPoints.VANGUARD_CT;
       ctx.spawnPos.x = nextSpawn.x;
       ctx.spawnPos.y = nextSpawn.y;
       ctx.spawnPos.z = nextSpawn.z;
@@ -621,7 +736,7 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
         ctx.player.state.vx = 0;
         ctx.player.state.vy = 0;
         ctx.player.state.vz = 0;
-        const nextYaw = faction === 'Syndicate' ? -Math.PI * 0.5 : -0.35;
+        const nextYaw = desc.initialYaw[faction];
         if (ctx.inputManager) {
           ctx.inputManager.input.yaw = nextYaw;
           ctx.inputManager.input.pitch = 0;
@@ -629,6 +744,10 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
         ctx.worldCamera.position.set(nextSpawn.x, nextSpawn.y + 1.68, nextSpawn.z);
         ctx.worldCamera.rotation.set(0, nextYaw, 0, 'YXZ');
       }
+    },
+    onMapChanged: (mapId: ActiveMapId) => {
+      switchActiveMap(ctx, mapId);
+      ctx.hud.addKillfeed(`Arena Loaded: ${mapId.toUpperCase()}`);
     },
     onQualityChanged: (quality: GraphicsQuality) => {
       ctx.applyGraphicsQuality?.(quality);

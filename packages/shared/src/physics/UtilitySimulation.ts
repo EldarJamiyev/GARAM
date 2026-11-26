@@ -1,6 +1,7 @@
 import { MapBlockCollider, Vec3 } from '../maps/DeCitadelData.js';
 import { hasLineOfSight } from './RaycastEngine.js';
 import { SpatialGrid } from './SpatialGrid.js';
+import type { MapBounds } from './KinematicPlayerController.js';
 
 export interface GrenadeStepResult {
   bounced: boolean;
@@ -13,9 +14,17 @@ export interface GrenadeTrajectoryResult {
   bounces: number;
 }
 
+const DEFAULT_GRENADE_BOUNDS: MapBounds = {
+  minX: -96,
+  maxX: 96,
+  minZ: -96,
+  maxZ: 96,
+};
+
 /**
  * Advances a grenade projectile by `dt` seconds against static map AABBs with
- * exact closest-point normal reflection so grenades never clip or teleport through walls.
+ * exact closest-point normal reflection and CS2 sloped-ramp lip smoothing so
+ * grenades never clip walls or bounce backwards off stepped voxel ramps.
  */
 export function stepGrenadePhysics(
   pos: Vec3,
@@ -25,7 +34,8 @@ export function stepGrenadePhysics(
   radius = 0.08,
   restitution = 0.45,
   gravity = 15.5,
-  spatialGrid?: SpatialGrid
+  spatialGrid?: SpatialGrid,
+  bounds?: MapBounds
 ): GrenadeStepResult {
   let bounced = false;
   let hitGround = false;
@@ -94,12 +104,32 @@ export function stepGrenadePhysics(
     pos.y += ny * (pen + 0.001);
     pos.z += nz * (pen + 0.001);
 
-    const vn = vel.x * nx + vel.y * ny + vel.z * nz;
+    // Smooth low voxel ramp/stair lip hits so grenades rolling across Dust 2 A Ramp,
+    // Pit, or Short Stairs deflect smoothly up the slope instead of rebounding backward.
+    const lipBelowTop = b.maxY - pos.y;
+    const isLowRampLip =
+      Math.abs(ny) < 0.35 &&
+      lipBelowTop > -radius &&
+      lipBelowTop <= 0.34 &&
+      b.maxY - b.minY <= 1.25;
+
+    let rnx = nx;
+    let rny = ny;
+    let rnz = nz;
+    if (isLowRampLip) {
+      const slopeLen = Math.hypot(nx * 0.42, 0.90, nz * 0.42);
+      rnx = (nx * 0.42) / slopeLen;
+      rny = 0.90 / slopeLen;
+      rnz = (nz * 0.42) / slopeLen;
+      pos.y = Math.max(pos.y, b.maxY + radius * 0.5);
+    }
+
+    const vn = vel.x * rnx + vel.y * rny + vel.z * rnz;
     if (vn < 0) {
-      vel.x -= (1 + restitution) * vn * nx;
-      vel.y -= (1 + restitution) * vn * ny;
-      vel.z -= (1 + restitution) * vn * nz;
-      if (ny > 0.7) {
+      vel.x -= (1 + restitution) * vn * rnx;
+      vel.y -= (1 + restitution) * vn * rny;
+      vel.z -= (1 + restitution) * vn * rnz;
+      if (rny > 0.7) {
         vel.x *= 0.80;
         vel.z *= 0.80;
         hitGround = true;
@@ -124,9 +154,11 @@ export function stepGrenadePhysics(
     }
   }
 
-  // Clamp inside DE_MERIDIAN arena bounds (94m x 90m)
-  pos.x = Math.max(-46.8, Math.min(46.8, pos.x));
-  pos.z = Math.max(-44.8, Math.min(44.8, pos.z));
+  // Clamp inside active map bounds (e.g. DE_DUST2 extends to minX=-68 for Pit & A Long)
+  const activeBounds = bounds ?? DEFAULT_GRENADE_BOUNDS;
+  const pad = radius + 0.12;
+  pos.x = Math.max(activeBounds.minX + pad, Math.min(activeBounds.maxX - pad, pos.x));
+  pos.z = Math.max(activeBounds.minZ + pad, Math.min(activeBounds.maxZ - pad, pos.z));
 
   return { bounced, hitGround };
 }
@@ -141,7 +173,8 @@ export function simulateGrenadeTrajectory(
   colliders: MapBlockCollider[],
   detonateOnGround = false,
   dt = 1 / 64,
-  spatialGrid?: SpatialGrid
+  spatialGrid?: SpatialGrid,
+  bounds?: MapBounds
 ): GrenadeTrajectoryResult {
   const pos: Vec3 = { x: origin.x, y: origin.y, z: origin.z };
   const vel: Vec3 = { x: velocity.x, y: velocity.y, z: velocity.z };
@@ -149,7 +182,7 @@ export function simulateGrenadeTrajectory(
   let bounces = 0;
 
   for (let i = 0; i < steps; i++) {
-    const res = stepGrenadePhysics(pos, vel, dt, colliders, 0.08, 0.45, 15.5, spatialGrid);
+    const res = stepGrenadePhysics(pos, vel, dt, colliders, 0.08, 0.45, 15.5, spatialGrid, bounds);
     if (res.bounced) bounces++;
     if (detonateOnGround && res.hitGround) break;
   }

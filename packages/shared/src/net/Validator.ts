@@ -1,4 +1,5 @@
 import { ClientPacket } from './Protocol.js';
+import { isValidMapId } from '../maps/MapRegistry.js';
 
 const CALLSIGN_REGEX = /^[A-Za-z0-9 _\-[\]\.]{2,20}$/;
 const WEAPON_ID_REGEX = /^[a-z0-9\-]{2,32}$/;
@@ -72,10 +73,15 @@ export function validateClientPacket(raw: unknown): ClientPacket | null {
       const faction = packet.faction;
       if (faction !== 'Vanguard' && faction !== 'Syndicate') return null;
 
+      if (packet.mapId !== undefined && !isValidMapId(packet.mapId)) {
+        return null;
+      }
+
       return {
         type: 'join',
         callsign: trimmed,
         faction,
+        ...(packet.mapId ? { mapId: packet.mapId } : {}),
       };
     }
 

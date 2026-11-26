@@ -1,4 +1,5 @@
 import { PlayerInput } from '../physics/KinematicPlayerController.js';
+import type { MapId } from '../maps/MapRegistry.js';
 
 export interface NetOperatorState {
   id: string;
@@ -49,7 +50,7 @@ export interface NetBombState {
 
 // Client -> Server Packets
 export type ClientPacket =
-  | { type: 'join'; callsign: string; faction: 'Vanguard' | 'Syndicate' }
+  | { type: 'join'; callsign: string; faction: 'Vanguard' | 'Syndicate'; mapId?: MapId }
   | { type: 'input'; seq: number; timestamp: number; input: PlayerInput; weaponId: string }
   | { type: 'fire'; seq: number; targetServerTime: number; weaponId: string; direction: { x: number; y: number; z: number }; yaw: number; pitch: number; isSecondaryMelee?: boolean; isScoped?: boolean }
   | { type: 'reload' }
@@ -61,7 +62,7 @@ export type ClientPacket =
 
 // Server -> Client Packets
 export type ServerPacket =
-  | { type: 'welcome'; playerId: string; entitySlot: number; team: 'Vanguard' | 'Syndicate'; tickRate: number; cash?: number }
+  | { type: 'welcome'; playerId: string; entitySlot: number; team: 'Vanguard' | 'Syndicate'; tickRate: number; cash?: number; mapId?: MapId }
   | { type: 'roster_sync'; entries: NetRosterEntry[] }
   | { type: 'snapshot'; tick: number; serverTimestamp: number; lastAckSeq: number; players: NetOperatorState[]; bomb: NetBombState; roundPhase: string; roundTime: number; ctScore: number; tScore: number }
   | { type: 'hit_confirm'; targetId: string; damage: number; isHeadshot: boolean; victimHealth: number }

@@ -836,30 +836,34 @@ export class OperatorRig {
     const ctx = this.uiCtx;
     ctx.clearRect(0, 0, 256, 80);
 
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.92)';
-    ctx.shadowBlur = 4;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 1.5;
+    const accent = team === 'Vanguard' ? '#38bdf8' : '#f59e0b';
+    ctx.font = '800 18px "Segoe UI", Arial, sans-serif';
+    const textW = Math.min(224, Math.max(96, Math.ceil(ctx.measureText(name).width) + 22));
+    const pillX = Math.round((256 - textW) * 0.5);
 
-    ctx.fillStyle = team === 'Vanguard' ? '#38bdf8' : '#34d399';
+    ctx.fillStyle = 'rgba(8, 12, 18, 0.72)';
     ctx.beginPath();
-    ctx.moveTo(128, 66);
-    ctx.lineTo(120, 54);
-    ctx.lineTo(136, 54);
+    ctx.roundRect(pillX, 20, textW, 28, 6);
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.moveTo(128, 64);
+    ctx.lineTo(120, 52);
+    ctx.lineTo(136, 52);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '800 18px "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle = '#f8fafc';
     ctx.textAlign = 'center';
-    ctx.fillText(name, 128, 44);
-
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
+    ctx.fillText(name, 128, 40);
 
     const spriteMat = this.uiBillboard.material as THREE.SpriteMaterial;
-    spriteMat.depthTest = false;
-    spriteMat.opacity = 0.9;
+    spriteMat.depthTest = true;
+    spriteMat.opacity = 0.94;
     this.uiTexture.needsUpdate = true;
   }
 }

@@ -70,12 +70,24 @@ function tuneDust2Material(mat: THREE.Material, maxAniso: number): void {
  * aligned 1:1 with the exact SAT watertight colliders in DE_DUST2_BLOCKS (shifted +3.5m on Y).
  */
 export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): MapBuildResult {
-  const maxAniso = AssetManager.getInstance().getMaxAnisotropy();
+  const assetMgr = AssetManager.getInstance();
+  const maxAniso = assetMgr.getMaxAnisotropy();
   const loader = new GLTFLoader();
+
+  const mapRoot = new THREE.Group();
+  mapRoot.name = 'de_dust2_map_root';
+  mapRoot.userData.isMapRoot = true;
+  scene.add(mapRoot);
+
+  assetMgr.reportProgress(15, 'STREAMING DE_DUST2 (A-SITE) 3D ARENA...');
 
   loader.load(
     '/models/de_dust2.glb',
     (gltf) => {
+      if (!mapRoot.parent) {
+        AssetManager.disposeObject3D(gltf.scene, true);
+        return;
+      }
       const root = gltf.scene;
       root.name = 'de_dust2_world';
       root.position.set(0, DE_DUST2_Y_OFFSET, 0);
@@ -96,12 +108,19 @@ export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): Ma
         }
       });
 
-      scene.add(root);
+      mapRoot.add(root);
+      assetMgr.reportProgress(100, 'DE_DUST2 (A-SITE) ARENA READY');
       onGlbReady?.();
     },
-    undefined,
+    (xhr) => {
+      if (xhr && xhr.total > 0) {
+        const pct = Math.min(96, Math.round(15 + (xhr.loaded / xhr.total) * 81));
+        assetMgr.reportProgress(pct, 'STREAMING DE_DUST2 (A-SITE) 3D ARENA...');
+      }
+    },
     (err) => {
       console.error('[DeDust2Map] Failed to load /models/de_dust2.glb:', err);
+      assetMgr.reportProgress(100, 'DE_DUST2 (A-SITE) COLLIDERS READY');
     }
   );
 
@@ -123,16 +142,20 @@ export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): Ma
     DE_DUST2_BOMBSITES.A.center.y + 0.03,
     DE_DUST2_BOMBSITES.A.center.z
   );
-  scene.add(siteAMesh);
+  mapRoot.add(siteAMesh);
 
   // Spawn 9 grounded 5v5 tactical operators on verified Dust2 spawn & split positions
   const bots: BotEntity[] = [];
   for (const cfg of DE_DUST2_BOTS) {
     const rig = new OperatorRig(cfg.team, cfg.name);
     const wp0 = cfg.waypoints[0];
+    const wp1 = cfg.waypoints[1];
     rig.root.position.set(wp0.x, wp0.y, wp0.z);
-    // Vanguard CT spawns South (+Z) facing North (-Z); Syndicate T spawns West (-X) facing East (+X)
-    rig.root.rotation.y = cfg.team === 'Vanguard' ? Math.PI : Math.PI * 0.5;
+    if (wp1 && (Math.abs(wp1.x - wp0.x) > 0.05 || Math.abs(wp1.z - wp0.z) > 0.05)) {
+      rig.root.rotation.y = Math.atan2(wp1.x - wp0.x, wp1.z - wp0.z);
+    } else {
+      rig.root.rotation.y = cfg.team === 'Vanguard' ? Math.PI : Math.PI * 0.5;
+    }
     scene.add(rig.root);
 
     bots.push({

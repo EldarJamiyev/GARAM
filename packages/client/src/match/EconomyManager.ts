@@ -31,6 +31,10 @@ export class EconomyManager {
     this.spawnZones = spawnZones;
   }
 
+  public setSpawnZones(spawnZones: BuyZonesConfig): void {
+    this.spawnZones = spawnZones;
+  }
+
   public isInsideBuyZone(playerPos: PosXZ, faction: 'Vanguard' | 'Syndicate' = settingsStore.settings.faction): boolean {
     const bz = faction === 'Syndicate' ? this.spawnZones.SYNDICATE_BUY_ZONE : this.spawnZones.VANGUARD_BUY_ZONE;
     return (

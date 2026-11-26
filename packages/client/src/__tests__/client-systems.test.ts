@@ -533,6 +533,128 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       expect(flashedShots).toBe(0);
     });
   });
+
+  describe('Map-Aware Bot Respawn & Full GPU Texture Disposal', () => {
+    it('disposes geometries, materials, and deduplicated textures on map roots via AssetManager.disposeObject3D(root, true)', async () => {
+      const THREE = await import('three');
+      const { AssetManager } = await import('../render/AssetManager.js');
+
+      const root = new THREE.Group();
+      const sharedTex = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+      const normalTex = new THREE.DataTexture(new Uint8Array([128, 128, 255, 255]), 1, 1);
+
+      let texDisposals = 0;
+      const origSharedDispose = sharedTex.dispose.bind(sharedTex);
+      sharedTex.dispose = () => {
+        texDisposals++;
+        origSharedDispose();
+      };
+      const origNormDispose = normalTex.dispose.bind(normalTex);
+      normalTex.dispose = () => {
+        texDisposals++;
+        origNormDispose();
+      };
+
+      const matA = new THREE.MeshStandardMaterial({ map: sharedTex, normalMap: normalTex });
+      const matB = new THREE.MeshStandardMaterial({ map: sharedTex });
+      let matDisposals = 0;
+      const origMatA = matA.dispose.bind(matA);
+      matA.dispose = () => {
+        matDisposals++;
+        origMatA();
+      };
+      const origMatB = matB.dispose.bind(matB);
+      matB.dispose = () => {
+        matDisposals++;
+        origMatB();
+      };
+
+      root.add(
+        new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), matA),
+        new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), matB)
+      );
+
+      AssetManager.disposeObject3D(root, true);
+      expect(matDisposals).toBe(2);
+      expect(texDisposals).toBe(2); // Deduplicated: sharedTex + normalTex disposed once each
+    });
+
+    it('faces respawned bots along their DE_DUST2 waypoint direction rather than hardcoded office angles', async () => {
+      const THREE = await import('three');
+      const { PlayerManager } = await import('../combat/PlayerManager.js');
+      const { settingsStore } = await import('../core/SettingsStore.js');
+
+      settingsStore.settings.mapId = 'de_dust2';
+      const player = new KinematicPlayerController(0, 0, 0);
+      const pm = new PlayerManager(
+        player,
+        {} as never,
+        { armor: 100 } as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        { onSyncActiveWeapon: () => {} }
+      );
+
+      const ctMesh = new THREE.Group();
+      const tMesh = new THREE.Group();
+      const bots = [
+        {
+          id: 'ct_1',
+          name: 'Vanguard Steel',
+          team: 'Vanguard' as const,
+          mesh: ctMesh,
+          health: 0,
+          maxHealth: 100,
+          armor: 0,
+          hasHelmet: true,
+          isDead: true,
+          kills: 0,
+          deaths: 1,
+          patrolWaypoints: [
+            { x: 6, y: 0, z: 36 },
+            { x: 6, y: 0, z: 24 }, // North (-Z -> Math.PI)
+          ],
+          waypointIndex: 1,
+          patrolTarget: { x: 6, y: 0, z: 24 },
+          lastShotTime: 0,
+          vx: 0,
+          vz: 0,
+        },
+        {
+          id: 't_1',
+          name: 'Syndicate Razor',
+          team: 'Syndicate' as const,
+          mesh: tMesh,
+          health: 0,
+          maxHealth: 100,
+          armor: 0,
+          hasHelmet: true,
+          isDead: true,
+          kills: 0,
+          deaths: 1,
+          patrolWaypoints: [
+            { x: -60, y: 3.5, z: -10 },
+            { x: -46, y: 3.5, z: -10 }, // East (+X -> Math.PI / 2)
+          ],
+          waypointIndex: 1,
+          patrolTarget: { x: -46, y: 3.5, z: -10 },
+          lastShotTime: 0,
+          vx: 0,
+          vz: 0,
+        },
+      ];
+
+      pm.respawnAllBots(bots as never);
+      expect(Math.abs(ctMesh.rotation.y)).toBeCloseTo(Math.PI, 3);
+      expect(tMesh.rotation.y).toBeCloseTo(Math.PI * 0.5, 3);
+      expect(bots[0].isDead).toBe(false);
+      expect(bots[1].health).toBe(100);
+    });
+  });
 });
 
 

@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import {
-  KinematicPlayerController, DE_DUST2_SPAWN_POINTS, DE_DUST2_SPAWN_ZONES,
-  DE_DUST2_BOMBSITES, DE_DUST2_BOUNDS, SpatialGrid, getDust2CalloutName,
+  KinematicPlayerController, SpatialGrid, getMapDescriptor,
 } from '@garam/shared';
 import { SceneManager } from './render/SceneManager.js';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
 import { ProceduralAudio } from './audio/ProceduralAudio.js';
 import { buildDeDust2Map } from './maps/DeDust2Map.js';
+import { buildCsOfficeMap } from './maps/CsOfficeMap.js';
 import { InventoryManager } from './combat/InventoryManager.js';
 import { WeaponController } from './combat/WeaponController.js';
 import { EffectsManager } from './combat/EffectsManager.js';
@@ -22,7 +22,7 @@ import { CombatReportManager } from './ui/CombatReportManager.js';
 import { SpectatorManager } from './match/SpectatorManager.js';
 import { UtilityManager } from './utility/UtilityManager.js';
 import { RadarRenderer } from './ui/RadarRenderer.js';
-import { BotAISystem, DE_DUST2_BOT_MAP_CONFIG } from './match/BotAISystem.js';
+import { BotAISystem, DE_DUST2_BOT_MAP_CONFIG, CS_OFFICE_BOT_MAP_CONFIG } from './match/BotAISystem.js';
 import { settingsStore, GraphicsQuality, QualityTier } from './core/SettingsStore.js';
 import { NetworkClient } from './net/NetworkClient.js';
 import { PerfMonitor } from './core/PerfMonitor.js';
@@ -56,13 +56,16 @@ export class GaramGame {
     this.renderer.toneMappingExposure = 0.96;
     this.renderer.autoClear = false;
 
+    const mapDesc = getMapDescriptor(settingsStore.settings.mapId);
     this.sceneManager = new SceneManager(this.renderer);
-    this.sceneManager.configureDust2Atmosphere();
+    if (mapDesc.id === 'cs_office') this.sceneManager.configureOfficeAtmosphere();
+    else this.sceneManager.configureDust2Atmosphere();
     this.renderer.setPixelRatio(this.sceneManager.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = !this.sceneManager.isSoftwareGl;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const viewmodel = new WeaponViewmodel();
+    viewmodel.setFaction(settingsStore.settings.faction);
     viewmodel.setViewportAspect(window.innerWidth / Math.max(1, window.innerHeight));
     viewmodel.mesh.visible = false;
     this.sceneManager.viewmodelScene.add(viewmodel.mesh);
@@ -73,7 +76,7 @@ export class GaramGame {
     const effects = new EffectsManager(this.sceneManager.worldScene, this.sceneManager.worldCamera);
     const droppedWeapons = new DroppedWeaponManager(this.sceneManager.worldScene);
     const radar = new RadarRenderer();
-    radar.configureMap(DE_DUST2_BOUNDS, { A: DE_DUST2_BOMBSITES.A }, true);
+    radar.configureMap(mapDesc.bounds, mapDesc.bombsites, mapDesc.isGlbArena);
     this.perfMonitor = new PerfMonitor(this.renderer, this.sceneManager.isSoftwareGl);
 
     const applyQuality = (q: GraphicsQuality) => {
@@ -90,16 +93,19 @@ export class GaramGame {
     const combatReport = new CombatReportManager();
     const spectator = new SpectatorManager();
     const inventory = new InventoryManager();
-    const economy = new EconomyManager(DE_DUST2_SPAWN_ZONES);
+    const economy = new EconomyManager(mapDesc.spawnZones);
 
     const isSyndicate = settingsStore.settings.faction === 'Syndicate';
-    const baseSpawn = isSyndicate ? DE_DUST2_SPAWN_POINTS.OBSIDIAN_T : DE_DUST2_SPAWN_POINTS.VANGUARD_CT;
+    const baseSpawn = isSyndicate ? mapDesc.spawnPoints.OBSIDIAN_T : mapDesc.spawnPoints.VANGUARD_CT;
     const spawnPos = { x: baseSpawn.x, y: baseSpawn.y, z: baseSpawn.z };
     const player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
-    const mapData = buildDeDust2Map(this.sceneManager.worldScene, () => {
-      radar.bakeFromScene(this.renderer, this.sceneManager.worldScene);
-    });
+    const mapData = mapDesc.id === 'cs_office'
+      ? buildCsOfficeMap(this.sceneManager.worldScene)
+      : buildDeDust2Map(this.sceneManager.worldScene, () => {
+          radar.bakeFromScene(this.renderer, this.sceneManager.worldScene);
+        });
+    if (mapDesc.id === 'cs_office') radar.bakeFromScene(this.renderer, this.sceneManager.worldScene);
     const spatialGrid = new SpatialGrid(mapData.blocks, 6);
 
     let ctxRef!: GameContext;
@@ -108,6 +114,7 @@ export class GaramGame {
       audio,
       buildUtilityCallbacks(new Proxy({} as GameContext, { get: (_, prop) => Reflect.get(ctxRef, prop) }))
     );
+    utilityManager.setMapBounds(mapDesc.bounds);
 
     const playerManager = new PlayerManager(
       player, inventory, economy, droppedWeapons, utilityManager, audio, hud, combatReport, spectator,
@@ -120,6 +127,8 @@ export class GaramGame {
 
     ctxRef = {
       canvas,
+      renderer: this.renderer,
+      sceneManager: this.sceneManager,
       worldCamera: this.sceneManager.worldCamera,
       viewmodelCamera: this.sceneManager.viewmodelCamera,
       worldScene: this.sceneManager.worldScene,
@@ -134,9 +143,10 @@ export class GaramGame {
     };
     this.ctx = ctxRef;
 
-    ctxRef.botAI = new BotAISystem(buildBotAICallbacks(ctxRef), settingsStore.settings.botDifficulty, DE_DUST2_BOT_MAP_CONFIG);
+    const botMapCfg = mapDesc.id === 'cs_office' ? CS_OFFICE_BOT_MAP_CONFIG : DE_DUST2_BOT_MAP_CONFIG;
+    ctxRef.botAI = new BotAISystem(buildBotAICallbacks(ctxRef), settingsStore.settings.botDifficulty, botMapCfg);
     ctxRef.weaponController = new WeaponController(inventory, viewmodel, effects, audio, buildWeaponControllerCallbacks(ctxRef));
-    ctxRef.roundManager = new RoundManager(this.sceneManager.worldScene, audio, buildRoundCallbacks(ctxRef), DE_DUST2_BOMBSITES);
+    ctxRef.roundManager = new RoundManager(this.sceneManager.worldScene, audio, buildRoundCallbacks(ctxRef), mapDesc.bombsites);
 
     const blocker = document.getElementById('blocker') as HTMLElement;
     ctxRef.inputManager = new InputManager(canvas, blocker, buildInputManagerCallbacks(ctxRef));
@@ -150,7 +160,7 @@ export class GaramGame {
     ctxRef.networkClient = networkClient;
 
     ctxRef.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
-    const initialYaw = isSyndicate ? -Math.PI * 0.5 : -0.35;
+    const initialYaw = mapDesc.initialYaw[settingsStore.settings.faction];
     ctxRef.inputManager.input.yaw = initialYaw;
     const cam = this.sceneManager.worldCamera;
     cam.position.set(spawnPos.x, spawnPos.y + 1.68, spawnPos.z);
@@ -216,13 +226,14 @@ export class GaramGame {
     this.accumulator += frameDelta;
     const activeWp = ctx.inventory.getActiveWeapon();
     const isFreezeTime = rm.phase === 'FREEZE_TIME';
+    const activeDesc = getMapDescriptor(settingsStore.settings.mapId);
 
     // 128Hz Fixed Kinematics Accumulator
     while (this.accumulator >= this.FIXED_DT) {
       if (!ctx.spectator.isSpectating) {
         inputMgr.update(this.FIXED_DT, ctx.player.state.isGrounded);
         if (!isFreezeTime) {
-          ctx.player.update(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.colliders, DE_DUST2_BOUNDS, ctx.spatialGrid);
+          ctx.player.update(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.colliders, activeDesc.bounds, ctx.spatialGrid);
         }
         if (net.isConnected) {
           net.sendInput(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.player, activeWp.id);
@@ -250,7 +261,7 @@ export class GaramGame {
       }
     }
 
-    const currentZone = getDust2CalloutName(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
+    const currentZone = activeDesc.getCalloutName(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
     this.sceneManager.update(frameDelta, worldCamera.position, currentZone);
     stepMatchFrame(ctx, {
       frameDelta, hozSpeed, distanceTraveled: this.distanceTraveled, isFreezeTime,

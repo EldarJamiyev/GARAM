@@ -66,6 +66,7 @@ export interface NetworkClientCallbacks {
   onEconomySync?: (payload: EconomySyncPayload) => void;
   onUtilityEvent?: (payload: UtilityEventPayload) => void;
   onLocalStateSync?: (payload: LocalStateSyncPayload) => void;
+  onMapSync?: (mapId: 'de_dust2' | 'cs_office') => void;
 }
 
 /**
@@ -203,6 +204,11 @@ export class NetworkClient {
     this.callbacks = callbacks ?? {};
   }
 
+  public setMapColliders(colliders: AABBCollider[], spatialGrid?: SpatialGrid): void {
+    this.colliders = colliders;
+    this.spatialGrid = spatialGrid;
+  }
+
   public bindLocalPlayer(controller: KinematicPlayerController): void {
     this.localPlayerRef = controller;
   }
@@ -210,7 +216,8 @@ export class NetworkClient {
   public connect(
     url = 'ws://localhost:2567',
     callsign = 'Operator',
-    faction: 'Vanguard' | 'Syndicate' = 'Vanguard'
+    faction: 'Vanguard' | 'Syndicate' = 'Vanguard',
+    mapId: 'de_dust2' | 'cs_office' = 'de_dust2'
   ): void {
     if (this.ws) {
       this.ws.close();
@@ -238,6 +245,7 @@ export class NetworkClient {
           type: 'join',
           callsign,
           faction,
+          mapId,
         });
 
         this.startPingLoop();
@@ -458,6 +466,9 @@ export class NetworkClient {
     if (packet.type === 'welcome') {
       this.localPlayerId = packet.playerId;
       this.localEntitySlot = packet.entitySlot;
+      if (packet.mapId) {
+        this.callbacks.onMapSync?.(packet.mapId);
+      }
       return;
     }
 

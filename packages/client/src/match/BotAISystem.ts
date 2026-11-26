@@ -373,6 +373,11 @@ export class BotAISystem {
     }
   }
 
+  public setMapConfig(mapConfig: BotMapConfig): void {
+    this.mapConfig = mapConfig;
+    this.botStates.clear();
+  }
+
   private createBotState(
     bot: BotEntity,
     path: Vec3[],

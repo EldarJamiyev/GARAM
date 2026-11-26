@@ -346,16 +346,20 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     });
     expect(attacker.ping).toBe(initialPing);
 
-    // 4. Buy action enforces buy-zone bounds: rejected outside spawn (0,0,0), accepted inside CT spawn
+    // 4. Buy action enforces buy-zone bounds: rejected outside spawn (-20, 0, -20), accepted inside CT spawn
     room.phase = 'FREEZE_TIME';
     attacker.cash = 5000;
+    attacker.controller.state.x = -20;
+    attacker.controller.state.y = 3.5;
+    attacker.controller.state.z = -20;
     attackerWs.simulateClientMessage({ type: 'buy', item: 'sovereign-awp' });
     expect(attacker.ownedWeapons.has('sovereign-awp')).toBe(false);
     expect(attacker.cash).toBe(5000);
 
-    attacker.controller.state.x = 0;
-    attacker.controller.state.y = 2.1;
-    attacker.controller.state.z = -34;
+    const ctSpawn = room.getMapDescriptor().spawnPoints.VANGUARD_CT;
+    attacker.controller.state.x = ctSpawn.x;
+    attacker.controller.state.y = ctSpawn.y;
+    attacker.controller.state.z = ctSpawn.z;
     attackerWs.simulateClientMessage({ type: 'buy', item: 'sovereign-awp' });
     expect(attacker.ownedWeapons.has('sovereign-awp')).toBe(true);
     expect(attacker.cash).toBe(250);
@@ -399,9 +403,10 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
 
     // Duplicate weapon buy does not charge twice; buying a new primary replaces previous primary
     room.phase = 'FREEZE_TIME';
-    session.controller.state.x = 0;
-    session.controller.state.y = 2.1;
-    session.controller.state.z = -34;
+    const ctSpawn = room.getMapDescriptor().spawnPoints.VANGUARD_CT;
+    session.controller.state.x = ctSpawn.x;
+    session.controller.state.y = ctSpawn.y;
+    session.controller.state.z = ctSpawn.z;
     session.cash = 10000;
     ws.simulateClientMessage({ type: 'buy', item: 'garam-47' }); // Already owned -> no charge
     expect(session.cash).toBe(10000);
@@ -430,9 +435,10 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
       activePlanterId: string | null;
     };
     const [, tSession] = Array.from(internal.sessions.values());
-    // Place T inside Site A
-    tSession.controller.state.x = -30;
-    tSession.controller.state.z = -30;
+    // Place T inside active map Site A
+    const siteA = room.getMapDescriptor().bombsites.A.center;
+    tSession.controller.state.x = siteA.x;
+    tSession.controller.state.z = siteA.z;
 
     tWs.simulateClientMessage({ type: 'plant_defuse', action: 'plant' });
     expect(tSession.plantDefuseAction).toBe('plant');
@@ -442,6 +448,29 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     ctWs.simulateClientMessage({ type: 'plant_defuse', action: 'cancel' });
     expect(tSession.plantDefuseAction).toBe('plant');
     expect(internal.activePlanterId).toBe(tSession.id);
+  });
+
+  it('synchronizes active MapDescriptor (de_dust2 vs cs_office) via join handshake without client-server desync', () => {
+    room = new GameRoom();
+    expect(room.getMapId()).toBe('de_dust2');
+    expect(room.getMapDescriptor().blocks.length).toBeGreaterThan(500);
+
+    const ws = new MockWebSocket();
+    room.handleConnection(ws as unknown as WebSocket);
+    ws.simulateClientMessage({
+      type: 'join',
+      callsign: 'OfficeHost',
+      faction: 'Vanguard',
+      mapId: 'cs_office',
+    });
+
+    expect(room.getMapId()).toBe('cs_office');
+    expect(room.getMapDescriptor().id).toBe('cs_office');
+    const welcome = ws.sentMessages.find(m => m.type === 'welcome');
+    expect(welcome).toBeDefined();
+    if (welcome && welcome.type === 'welcome') {
+      expect(welcome.mapId).toBe('cs_office');
+    }
   });
 });
 

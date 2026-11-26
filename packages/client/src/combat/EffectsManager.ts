@@ -683,6 +683,57 @@ export class EffectsManager {
     }
   }
 
+  public clearAll(): void {
+    _dummy.position.set(0, -500, 0);
+    _dummy.scale.set(0, 0, 0);
+    _dummy.updateMatrix();
+
+    for (let i = 0; i < this.MAX_CONCRETE_DECALS; i++) {
+      this.concreteDecals.setMatrixAt(i, _dummy.matrix);
+    }
+    this.concreteDecals.instanceMatrix.needsUpdate = true;
+    this.concreteIndex = 0;
+
+    for (let i = 0; i < this.MAX_WOOD_DECALS; i++) {
+      this.woodDecals.setMatrixAt(i, _dummy.matrix);
+    }
+    this.woodDecals.instanceMatrix.needsUpdate = true;
+    this.woodIndex = 0;
+
+    for (let i = 0; i < this.MAX_METAL_DECALS; i++) {
+      this.metalDecals.setMatrixAt(i, _dummy.matrix);
+    }
+    this.metalDecals.instanceMatrix.needsUpdate = true;
+    this.metalIndex = 0;
+
+    for (let i = 0; i < this.MAX_SHELLS; i++) {
+      this.shellActive[i] = false;
+      this.shellInstancedMesh.setMatrixAt(i, _dummy.matrix);
+    }
+    this.shellInstancedMesh.instanceMatrix.needsUpdate = true;
+    this.shellIndex = 0;
+
+    for (let i = 0; i < this.MAX_TRACERS; i++) {
+      if (this.tracerPool[i]) this.tracerPool[i].active = false;
+      this.tracerInstancedMesh.setMatrixAt(i, _dummy.matrix);
+    }
+    this.tracerInstancedMesh.instanceMatrix.needsUpdate = true;
+    this.tracerIndex = 0;
+
+    for (let i = 0; i < this.MAX_PARTICLES; i++) {
+      this.particleActive[i] = 0;
+      this.particleMesh.setMatrixAt(i, _dummy.matrix);
+    }
+    this.particleMesh.instanceMatrix.needsUpdate = true;
+    this.particleIndex = 0;
+
+    for (let i = 0; i < this.popupPool.length; i++) {
+      this.popupPool[i].active = false;
+      this.popupPool[i].remaining = 0;
+      this.popupPool[i].el.style.display = 'none';
+    }
+  }
+
   public dispose(): void {
     const decalGeo = this.concreteDecals.geometry;
     this.scene.remove(this.concreteDecals, this.woodDecals, this.metalDecals, this.shellInstancedMesh, this.particleMesh);

@@ -20,6 +20,7 @@ Desktop.ini
 *.log
 *.tmp
 playtest-*.png
+tmp_verify_*.png
 *.zip
 GARAM/
 

@@ -172,12 +172,12 @@
       color: #fff;
     }
 
-    /* Killfeed (Anchored Top-Right, Compact CS2 Esports Positioning) */
+    /* Killfeed (Anchored Top-Right Below Header — Zero Overlap At Any Viewport Width) */
     #killfeed {
       position: absolute;
-      top: 14px;
+      top: 64px;
       right: 16px;
-      max-width: 310px;
+      max-width: min(300px, 44vw);
       display: flex;
       flex-direction: column;
       gap: 5px;
@@ -284,29 +284,29 @@
       white-space: nowrap;
     }
 
-    /* Weapon Slot Selector Bar (CS2 Vertical Right Margin) */
+    /* Weapon Slot Selector Bar (Middle-Right Margin — Clear of Viewmodel & Killfeed) */
     #slot-bar {
       position: absolute;
-      right: 16px;
-      bottom: 86px;
+      right: 14px;
+      bottom: 224px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 3px;
       align-items: flex-end;
       pointer-events: none;
       z-index: 45;
     }
     .slot-item {
-      padding: 4px 10px;
-      background: rgba(14, 18, 24, 0.65);
+      padding: 3px 9px;
+      background: rgba(14, 18, 24, 0.58);
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-right: 3px solid rgba(255, 255, 255, 0.2);
       border-radius: 3px;
-      font-size: 11px;
-      letter-spacing: 1px;
-      color: #7b8590;
+      font-size: 10px;
+      letter-spacing: 0.9px;
+      color: #8b95a2;
       transition: all 0.15s ease;
       text-align: right;
     }
@@ -474,7 +474,8 @@
       letter-spacing: 3px;
       color: #a0aab5;
       text-transform: uppercase;
-      margin-bottom: 32px;
+      text-align: center;
+      margin-bottom: 24px;
     }
     .start-prompt {
       padding: 14px 32px;
@@ -503,7 +504,8 @@
     }
     .lobby-row {
       display: flex;
-      gap: 10px;
+      flex-wrap: wrap;
+      gap: 8px;
       margin: 10px 0 16px;
       width: 100%;
       justify-content: center;
@@ -544,9 +546,10 @@
       box-shadow: 0 0 14px rgba(245, 158, 11, 0.6) !important;
     }
     .lobby-slider-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(140px, 245px) minmax(110px, 1fr) 48px;
       align-items: center;
-      justify-content: space-between;
+      gap: 12px;
       width: 100%;
       margin: 6px 0;
       font-size: 12px;
@@ -554,7 +557,7 @@
       letter-spacing: 1px;
     }
     .lobby-slider {
-      width: 200px;
+      width: 100%;
       accent-color: #ff2a44;
       cursor: pointer;
     }
@@ -585,6 +588,32 @@
       background: rgba(6, 10, 16, 0.92);
       z-index: 40;
       pointer-events: none;
+    }
+
+    /* Mid-Width Split-Pane / Embedded Preview Accommodations (Prevents Bottom HUD Right Clipping) */
+    @media (max-width: 1240px) {
+      #hud-bottom {
+        left: 14px;
+        right: 14px;
+        gap: 8px;
+      }
+      #hud-velocity-block {
+        display: none;
+      }
+      body.perf-open #hud-velocity-block {
+        display: flex;
+      }
+      .hud-block {
+        padding: 0 12px;
+        gap: 8px;
+      }
+      .hud-val {
+        font-size: 20px;
+        white-space: nowrap;
+      }
+      #hud-weapon-name {
+        max-width: 148px;
+      }
     }
 
     /* Responsive Mobile / Narrow Split-Pane Viewport Accommodations */
@@ -670,8 +699,13 @@
       #hud-weapon-name {
         max-width: 84px;
       }
+      #killfeed {
+        top: 56px;
+        right: 8px;
+        max-width: 56vw;
+      }
       #slot-bar {
-        bottom: 64px;
+        bottom: 156px;
         right: 8px;
         gap: 2px;
         opacity: 0.72;
@@ -680,6 +714,36 @@
         padding: 2px 6px;
         font-size: 9px;
         letter-spacing: 0.4px;
+      }
+    }
+    @media (max-width: 540px) {
+      .lobby-panel {
+        padding: 18px 14px;
+        width: 95%;
+        max-height: 94vh;
+        overflow-y: auto;
+      }
+      .title-banner {
+        font-size: 46px;
+        letter-spacing: 6px;
+      }
+      .subtitle {
+        font-size: 11px;
+        letter-spacing: 2px;
+        margin-bottom: 14px;
+      }
+      .lobby-row {
+        gap: 6px;
+      }
+      .lobby-btn {
+        padding: 6px 10px;
+        font-size: 10px;
+        letter-spacing: 1px;
+      }
+      .lobby-slider-row {
+        grid-template-columns: minmax(105px, 138px) 1fr 42px;
+        gap: 8px;
+        font-size: 10px;
       }
     }
   </style>
@@ -900,20 +964,27 @@
 
   <!-- Sleek Tactical Pre-Match Lobby & Pause Menu -->
   <div id="blocker">
-    <div class="lobby-panel">
-      <div class="title-banner">GARAM</div>
-      <div class="subtitle">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
+    <div class="lobby-panel" style="padding: 20px 34px;">
+      <div class="title-banner" style="font-size: 54px; margin-bottom: 2px;">GARAM</div>
+      <div class="subtitle" style="margin-bottom: 16px;">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
+
+      <!-- Map Selection -->
+      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">TACTICAL ARENA (MAP)</div>
+      <div class="lobby-row" id="map-selector" style="margin: 6px 0 12px;">
+        <button class="lobby-btn active" data-map="de_dust2">DE_DUST2 (A-SITE)</button>
+        <button class="lobby-btn" data-map="cs_office">CS_OFFICE (2-SITE)</button>
+      </div>
 
       <!-- Faction Selection -->
       <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">STARTING FACTION</div>
-      <div class="lobby-row" id="faction-selector">
+      <div class="lobby-row" id="faction-selector" style="margin: 6px 0 12px;">
         <button class="lobby-btn vanguard-btn active" data-faction="Vanguard">VANGUARD (DEFENDERS)</button>
         <button class="lobby-btn syndicate-btn" data-faction="Syndicate">SYNDICATE (ATTACKERS)</button>
       </div>
 
       <!-- AI Difficulty -->
       <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">AI DIFFICULTY TIER</div>
-      <div class="lobby-row" id="diff-selector">
+      <div class="lobby-row" id="diff-selector" style="margin: 6px 0 12px;">
         <button class="lobby-btn" data-diff="Recruit">RECRUIT</button>
         <button class="lobby-btn active" data-diff="Veteran">VETERAN</button>
         <button class="lobby-btn" data-diff="Elite">ELITE</button>
@@ -922,14 +993,14 @@
 
       <!-- Game Mode -->
       <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">GAME MODE</div>
-      <div class="lobby-row" id="mode-selector">
+      <div class="lobby-row" id="mode-selector" style="margin: 6px 0 12px;">
         <button class="lobby-btn active" data-mode="offline">OFFLINE 5V5 PRACTICE</button>
         <button class="lobby-btn" data-mode="multiplayer">ONLINE MULTIPLAYER (64-TICK)</button>
       </div>
 
       <!-- Graphics Quality Preset -->
       <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">GRAPHICS QUALITY</div>
-      <div class="lobby-row" id="quality-selector">
+      <div class="lobby-row" id="quality-selector" style="margin: 6px 0 12px;">
         <button class="lobby-btn active" data-quality="AUTO">AUTO</button>
         <button class="lobby-btn" data-quality="POTATO">POTATO</button>
         <button class="lobby-btn" data-quality="LOW">LOW</button>
@@ -950,7 +1021,7 @@
       </div>
 
       <!-- Tactical Settings -->
-      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin: 4px 0 2px; text-transform: uppercase;">TACTICAL SETTINGS</div>
+      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin: 2px 0 2px; text-transform: uppercase;">TACTICAL SETTINGS</div>
       <div class="lobby-slider-row">
         <span>MASTER VOLUME</span>
         <input type="range" class="lobby-slider" id="vol-slider" min="0" max="100" step="1" value="85">
@@ -972,16 +1043,54 @@
         <span id="fov-val" style="color: #fff; width: 44px; text-align: right;">90°</span>
       </div>
 
-      <div style="display: flex; gap: 12px; width: 100%; margin-top: 14px;">
+      <!-- First-Load Asset Progress Bar -->
+      <div id="asset-progress-container" style="width: 100%; margin-top: 8px;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #8892a0; margin-bottom: 4px;">
+          <span id="asset-progress-label">STREAMING DE_DUST2 (A-SITE) 3D ARENA...</span>
+          <span id="asset-progress-pct" style="color: #00ff88;">100%</span>
+        </div>
+        <div style="width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden;">
+          <div id="asset-progress-fill" style="width: 100%; height: 100%; background: linear-gradient(90deg, #3b9eff, #00ff88); transition: width 0.15s ease;"></div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px; width: 100%; margin-top: 10px;">
         <button class="start-prompt" id="spawn-btn" data-start="true" style="flex: 2;">DEPLOY OPERATOR</button>
         <button class="lobby-btn" id="open-customizer-btn" style="flex: 1; background: rgba(59, 158, 255, 0.2); border-color: #3b9eff; color: #fff; font-size: 12px;">[F2] SANDBOX</button>
       </div>
 
-      <div class="controls-help">
-        [WASD] Move &nbsp;|&nbsp; [A / D Tap] Counter-Strafe &nbsp;|&nbsp; [SPACE] Jump &nbsp;|&nbsp; [CTRL] Crouch &nbsp;|&nbsp; [SHIFT] Silent Walk<br>
-        [MOUSE 1] Fire / Light Slash &nbsp;|&nbsp; [MOUSE 2] Scope (1x/2x) / Heavy Stab &nbsp;|&nbsp; [HOLD E] Plant / Defuse<br>
-        [Q] Quick-Switch &nbsp;|&nbsp; [1-5] Weapons &nbsp;|&nbsp; [F] Inspect Weapon &nbsp;|&nbsp; [G] Drop Weapon &nbsp;|&nbsp; [R] Reload &nbsp;|&nbsp; [Z/X/C/V] Quick Utility<br>
-        [B] Buy Menu &nbsp;|&nbsp; [TAB] Scoreboard &nbsp;|&nbsp; [F2] Customizer Lab &nbsp;|&nbsp; [F3] Perf Graph &nbsp;|&nbsp; [P] Practice $16K &nbsp;|&nbsp; [ESC] Settings / Pause
+      <!-- Top 5 Core Controls Inline + [?] CONTROLS Modal Trigger -->
+      <div class="controls-help" style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; line-height: 1.4;">
+        <span>[WASD] Move &nbsp;•&nbsp; [MOUSE 1/2] Fire / Scope &nbsp;•&nbsp; [B] Buy Menu &nbsp;•&nbsp; [HOLD E] Plant / Defuse &nbsp;•&nbsp; [TAB] Scoreboard</span>
+        <button type="button" class="lobby-btn" id="open-controls-btn" style="padding: 4px 10px; font-size: 10px; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.25); color: #fff;">[?] CONTROLS</button>
+      </div>
+    </div>
+
+    <!-- Full Keybindings Matrix Modal -->
+    <div id="controls-modal" style="display: none; position: fixed; inset: 0; background: rgba(6, 9, 14, 0.85); z-index: 300; align-items: center; justify-content: center; cursor: default;">
+      <div style="background: rgba(12, 16, 24, 0.98); border: 1px solid rgba(59, 158, 255, 0.4); border-radius: 8px; padding: 24px 32px; max-width: 580px; width: 92%; box-shadow: 0 0 40px rgba(0, 0, 0, 0.9);">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 12px; margin-bottom: 16px;">
+          <span style="font-size: 15px; font-weight: 800; letter-spacing: 2px; color: #fff;">TACTICAL KEYBINDINGS MATRIX</span>
+          <button type="button" class="lobby-btn" id="close-controls-btn" style="padding: 5px 12px; font-size: 11px;">[ESC] CLOSE</button>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; font-size: 12px; color: #c4cdd5; line-height: 1.7;">
+          <div><strong style="color: #fff;">[W / A / S / D]</strong> — Move / Counter-Strafe</div>
+          <div><strong style="color: #fff;">[MOUSE 1]</strong> — Primary Fire / Light Slash</div>
+          <div><strong style="color: #fff;">[SPACE]</strong> — Jump</div>
+          <div><strong style="color: #fff;">[MOUSE 2]</strong> — Scope (1x/2x) / Heavy Stab</div>
+          <div><strong style="color: #fff;">[CTRL]</strong> — Crouch (High Accuracy)</div>
+          <div><strong style="color: #fff;">[R]</strong> — Reload Magazine</div>
+          <div><strong style="color: #fff;">[SHIFT]</strong> — Silent Walk</div>
+          <div><strong style="color: #fff;">[Q]</strong> — Quick-Switch Last Weapon</div>
+          <div><strong style="color: #fff;">[1 – 5]</strong> — Equip Weapon / Core Slot</div>
+          <div><strong style="color: #fff;">[F / G]</strong> — Inspect / Drop Weapon</div>
+          <div><strong style="color: #fff;">[Z / X / C / V]</strong> — Smoke / Flash / HE / Molotov</div>
+          <div><strong style="color: #fff;">[HOLD E]</strong> — Plant / Defuse / Loot</div>
+          <div><strong style="color: #fff;">[B]</strong> — Tactical Requisition Buy Menu</div>
+          <div><strong style="color: #fff;">[TAB]</strong> — Live Match Scoreboard</div>
+          <div><strong style="color: #fff;">[F2 / F3]</strong> — Sandbox Lab / Perf Telemetry</div>
+          <div><strong style="color: #fff;">[P / ESC]</strong> — Practice $16K / Pause Menu</div>
+        </div>
       </div>
     </div>
   </div>

@@ -13,6 +13,8 @@ import {
   SpatialGrid,
   KINEMATICS,
   hasHeadClearance,
+  stepGrenadePhysics,
+  simulateGrenadeTrajectory,
   PlayerInput,
 } from '../index.js';
 
@@ -164,5 +166,71 @@ describe('DE_DUST2 Real GLB Watertight Colliders & Tactical Navigation', () => {
     expect(getDust2CalloutName(1, 3.5, -1)).toBe('A SITE');
     expect(getDust2CalloutName(-40, 3.5, -9)).toBe('A LONG');
     expect(getDust2CalloutName(-24, 6.0, 8.5)).toBe('A SHORT');
+  });
+
+  it('maintains continuous grounded contact while descending voxel ramps on DE_DUST2 with bidirectional stepOffsetY damping', () => {
+    const grid = new SpatialGrid(DE_DUST2_BLOCKS, 6);
+    const dt = 1 / 128;
+
+    // Descend A Ramp from top (13, 3.5, 13) South toward CT Spawn (13, 0, 27)
+    const descender = new KinematicPlayerController(13, 3.5, 13);
+    let airborneTicks = 0;
+    let sawPositiveStepDownOffset = false;
+
+    for (let i = 0; i < 360; i++) {
+      descender.update(
+        createIdleInput({ forward: true, yaw: Math.PI }),
+        dt,
+        5.45,
+        DE_DUST2_COLLIDERS,
+        DE_DUST2_BOUNDS,
+        grid
+      );
+      if (i > 4 && !descender.state.isGrounded) {
+        airborneTicks++;
+      }
+      if (descender.stepOffsetY > 0.02) {
+        sawPositiveStepDownOffset = true;
+      }
+    }
+
+    expect(descender.state.z).toBeGreaterThan(22);
+    expect(descender.state.y).toBeLessThan(1.0);
+    expect(airborneTicks).toBe(0);
+    expect(sawPositiveStepDownOffset).toBe(true);
+  });
+
+  it('supports grenade throws into Dust 2 Pit/A Long beyond x=-46.8 and deflects smoothly up low voxel ramp steps', () => {
+    const grid = new SpatialGrid(DE_DUST2_BLOCKS, 6);
+
+    // Throw West from A Long (-45, 5.2, -10) toward Pit / T Spawn (-58, ...)
+    const traj = simulateGrenadeTrajectory(
+      { x: -45, y: 5.2, z: -10 },
+      { x: -12, y: 2.0, z: 0 },
+      1.2,
+      DE_DUST2_BLOCKS,
+      false,
+      1 / 64,
+      grid,
+      DE_DUST2_BOUNDS
+    );
+    expect(traj.finalPos.x).toBeLessThan(-50);
+
+    // Low 0.25m voxel ramp step should deflect grenade upward/forward rather than rebounding backwards
+    const rampStep = {
+      minX: 1.0,
+      maxX: 2.0,
+      minY: 0.0,
+      maxY: 0.25,
+      minZ: -2.0,
+      maxZ: 2.0,
+      material: 'CONCRETE' as const,
+    };
+    const pos = { x: 0.94, y: 0.14, z: 0 };
+    const vel = { x: 8.0, y: -0.5, z: 0 };
+    const res = stepGrenadePhysics(pos, vel, 1 / 64, [rampStep], 0.08, 0.45, 15.5, undefined, DE_DUST2_BOUNDS);
+    expect(res.bounced).toBe(true);
+    expect(vel.x).toBeGreaterThan(0); // Continues up the ramp instead of bouncing backward
+    expect(vel.y).toBeGreaterThan(0); // Deflected cleanly upward along the ramp slope
   });
 });
