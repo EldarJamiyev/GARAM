@@ -629,13 +629,13 @@ export function applyCS2WeaponHandPosture(params: {
     handRSocket.getWorldPosition(_ikA);
     handRSocket.getWorldQuaternion(_ikQ1);
 
-    // Level out rifle CS2_Idle upward pitch (+14 deg) so pistols aim straight forward-left toward crosshair
-    _euler.set(-0.20, 0.09, 0.03, 'YXZ');
+    // Keep pistols dead-level aiming straight forward toward crosshair (zero droop or crooked tilt)
+    _euler.set(0.02, 0.04, 0.0, 'YXZ');
     _qDelta.setFromEuler(_euler);
     _ikQ1.premultiply(_qDelta);
 
     const pistolReloadDipY = isReloading ? -0.016 : 0;
-    _ikB.set(0.098 + narrowOffsetX, -0.098 + pistolReloadDipY, -0.236);
+    _ikB.set(0.102 + narrowOffsetX, -0.108 + pistolReloadDipY, -0.236);
     meshRoot.localToWorld(_ikB);
     _ikC.set(0.28 + narrowOffsetX, -0.48, 0.02);
     meshRoot.localToWorld(_ikC);
@@ -666,20 +666,20 @@ export function applyCS2WeaponHandPosture(params: {
       _ikE.copy(_ikD);
     }
 
-    // CS2 two-handed thumbs-forward Weaver support grip: cup tightly around outside of right hand
+    // CS2 two-handed thumbs-forward Weaver support grip: lock DEF-handL_233 flush (<= 0.025m) cupping outside/front of DEF-handR_357
     const reloadDropY = isReloading ? -0.036 : 0;
-    _ikF.set(_ikD.x - 0.022, _ikD.y - 0.010 + reloadDropY, _ikD.z - 0.008);
+    _ikF.set(_ikD.x - 0.017, _ikD.y - 0.005 + reloadDropY, _ikD.z - 0.006);
     _ikG.set(_ikD.x - 0.22, _ikD.y - 0.48, _ikD.z + 0.08);
     armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
 
-    // Explicitly rotate DEF-handL_233 from rifle palm-up handguard pose into vertical Weaver wrap (palm inward +X, thumbs forward -Z)
+    // Exact anatomical CS2 Weaver basis for DEF-handL_233 (+Y fingers forward-right, +Z thumb up-forward, +X left palm pressing inward +X)
     if (handLSocket.parent) {
-      handLSocket.updateWorldMatrix(true, false);
-      handLSocket.getWorldQuaternion(_ikQ1);
-      // Roll left wrist inward ~+72 deg around forward (-Z) and pitch slightly forward so left palm hugs right knuckles vertically
-      _euler.set(-0.18, -0.32, 1.24, 'YXZ');
-      _qDelta.setFromEuler(_euler);
-      _ikQ1.premultiply(_qDelta);
+      _vA.set(0.22, -0.08, -0.97).normalize(); // +Y fingers wrapping front of right knuckles
+      _vB.set(-0.08, 0.99, -0.06).normalize(); // +Z thumb hint up-forward beside left side of slide
+      _vC.crossVectors(_vA, _vB).normalize();  // +X left palm inward (+X)
+      _vD.crossVectors(_vC, _vA).normalize();  // +Z orthonormal thumb axis
+      const basisM = new THREE.Matrix4().makeBasis(_vC, _vA, _vD);
+      _ikQ1.setFromRotationMatrix(basisM);
       handLSocket.parent.updateWorldMatrix(true, false);
       handLSocket.parent.getWorldQuaternion(_ikQ2);
       handLSocket.quaternion.copy(_ikQ2).invert().multiply(_ikQ1);
@@ -697,18 +697,18 @@ export function applyCS2WeaponHandPosture(params: {
     handRSocket.getWorldPosition(_ikA);
     handRSocket.getWorldQuaternion(_ikQ1);
     if (inspectEnv > 0.0001) {
-      // Subtle <= 18 deg right-wrist showcase tilt keeping crimson blade clearly framed during ring twirl
-      _euler.set(-0.12 * inspectEnv, 0.20 * inspectEnv, 0.15 * inspectEnv, 'XYZ');
+      // Subtle showcase tilt keeping Karambit strictly framed on right side during in-place ring twirl
+      _euler.set(-0.06 * inspectEnv, 0.10 * inspectEnv, 0.06 * inspectEnv, 'XYZ');
       _qDelta.setFromEuler(_euler);
       _ikQ1.premultiply(_qDelta);
     }
     _ikB.set(
-      0.104 + narrowOffsetX - 0.028 * inspectEnv,
-      -0.097 + 0.045 * inspectEnv,
-      -0.232 - 0.060 * inspectEnv
+      0.118 + narrowOffsetX - 0.030 * inspectEnv,
+      -0.098 + 0.034 * inspectEnv,
+      -0.278 - 0.036 * inspectEnv
     );
     meshRoot.localToWorld(_ikB);
-    _ikC.set(0.28 + narrowOffsetX, -0.48, -0.02);
+    _ikC.set(0.28 + narrowOffsetX, -0.52, -0.02);
     meshRoot.localToWorld(_ikC);
     armIKSolver.solveCS2RightHandToTarget(_ikB, _ikC);
     if (handRSocket.parent) {
@@ -729,20 +729,21 @@ export function applyCS2WeaponHandPosture(params: {
       weaponSocket.updateMatrixWorld(true);
     }
 
-    // Relaxed CS2 Karambit off-hand: lower-left guard, palm-down & angled inward (never upright stop-sign palm)
-    _ikF.set(-0.102 + narrowOffsetX * 0.5, -0.122, -0.258);
+    // Relaxed CS2 Karambit off-hand: lower-left guard (ndcX in [-0.62..-0.24], ndcY in [-0.88..-0.58]), palm angled down-inward
+    _ikF.set(-0.106 + narrowOffsetX * 0.5, -0.122, -0.258);
     meshRoot.localToWorld(_ikF);
     _ikG.set(-0.26 + narrowOffsetX * 0.5, -0.50, -0.10);
     meshRoot.localToWorld(_ikG);
     armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
 
     if (handLSocket.parent) {
-      handLSocket.updateWorldMatrix(true, false);
-      handLSocket.getWorldQuaternion(_ikQ1);
-      // Pronate left wrist palm-down/inward and pitch fingers slightly downward so back of glove faces camera-up-left
-      _euler.set(-0.38, -0.44, -0.82, 'YXZ');
-      _qDelta.setFromEuler(_euler);
-      _ikQ1.premultiply(_qDelta);
+      // Exact anatomical basis for relaxed palm-down/inward off-hand (+X palm down-inward, +Y fingers forward-inward-down)
+      _vA.set(0.45, -0.28, -0.85).normalize(); // +Y fingers forward-inward-down
+      _vB.set(0.55, -0.78, 0.28).normalize();  // +X palm hint down & inward (back of glove faces camera-up-left)
+      _vD.crossVectors(_vB, _vA).normalize();  // +Z thumb axis
+      _vC.crossVectors(_vA, _vD).normalize();  // +X orthonormal palm axis
+      const basisM = new THREE.Matrix4().makeBasis(_vC, _vA, _vD);
+      _ikQ1.setFromRotationMatrix(basisM);
       handLSocket.parent.updateWorldMatrix(true, false);
       handLSocket.parent.getWorldQuaternion(_ikQ2);
       handLSocket.quaternion.copy(_ikQ2).invert().multiply(_ikQ1);
@@ -2046,11 +2047,14 @@ export class WeaponViewmodel {
         }
       }
 
-      // Smoothly blend leftHandLockWeight: 1.0 for idle/walk/fire, 0.0 for reload/draw/inspect
+      // Smoothly blend leftHandLockWeight: keep locked during procedural draw for pistols & karambit
+      const activeCfg = getWeaponSocketConfig(this.currentWeaponId);
+      const isProceduralDrawWeapon =
+        activeCfg.leftArmPoseMode === 'pistol' || activeCfg.leftArmPoseMode === 'karambit';
       const shouldLockLeftHand =
         !this.isReloading &&
-        !this.isInspecting &&
-        this.drawProgress >= 1.0;
+        (!this.isInspecting || activeCfg.leftArmPoseMode === 'karambit') &&
+        (this.drawProgress >= 1.0 || isProceduralDrawWeapon);
       if (shouldLockLeftHand) {
         this.leftHandLockWeight = Math.min(1.0, this.leftHandLockWeight + safeDt * 8.0);
       } else {
@@ -2195,14 +2199,24 @@ export class WeaponViewmodel {
     }
     this.mesh.visible = true;
 
-    // Equip draw raise animation (0 to 1 over 0.42s)
+    // Equip draw raise animation: crisp 220ms upward raise for pistols & Karambit (using CS2_Idle, zero rifle twist), 420ms for rifles
     let drawY = 0;
     let drawPitch = 0;
     if (this.drawProgress < 1.0) {
-      this.drawProgress = Math.min(1.0, this.drawProgress + safeDt * 2.38);
+      const drawCfg = getWeaponSocketConfig(this.currentWeaponId);
+      const usesProceduralDraw =
+        drawCfg.leftArmPoseMode === 'pistol' || drawCfg.leftArmPoseMode === 'karambit';
+      const drawRate = usesProceduralDraw ? 1 / 0.22 : 2.38;
+      this.drawProgress = Math.min(1.0, this.drawProgress + safeDt * drawRate);
       const easeOut = 1.0 - this.drawProgress;
-      drawY = usesUnifiedArms ? easeOut * -0.072 : easeOut * -0.22;
-      drawPitch = usesUnifiedArms ? easeOut * -0.15 : 0;
+      if (usesProceduralDraw) {
+        const smoothEase = easeOut * easeOut;
+        drawY = smoothEase * -0.22;
+        drawPitch = smoothEase * -0.35;
+      } else {
+        drawY = usesUnifiedArms ? easeOut * -0.072 : easeOut * -0.22;
+        drawPitch = usesUnifiedArms ? easeOut * -0.15 : 0;
+      }
     }
 
     // CS2 Karambit Ring-Spin on Draw & Inspect (around index finger retention ring)

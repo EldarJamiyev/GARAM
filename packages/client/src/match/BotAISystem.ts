@@ -243,24 +243,51 @@ export const CS_OFFICE_BOT_MAP_CONFIG: BotMapConfig = {
   postPlantFallbackNode: 'a_site_east',
 };
 
+/**
+ * Minimum horizontal separation (meters) strictly enforced between friendly bots'
+ * assigned hold anchors at round start and during mid-round rotations.
+ */
+export const MIN_FRIENDLY_HOLD_SEPARATION_M = 3.0;
+
+/**
+ * Dust 2 nav graph with A-Ramp exit centered cleanly through the open 2.5m gap
+ * (X in [13.0..15.5], clearing the X[11..13] Z[11.5..12] wooden crate) so CT bots
+ * never jam single-file against the left A-Site wall.
+ */
+const DE_DUST2_BOT_NAV_GRAPH: Record<string, NavNode> = {
+  ...DE_DUST2_NAV_GRAPH,
+  ramp_mid: {
+    ...DE_DUST2_NAV_GRAPH.ramp_mid,
+    pos: { x: 13.8, y: 1.75, z: 20 },
+  },
+  ramp_top: {
+    ...DE_DUST2_NAV_GRAPH.ramp_top,
+    pos: { x: 14.3, y: 3.5, z: 10.2 },
+  },
+};
+
 export const DE_DUST2_BOT_MAP_CONFIG: BotMapConfig = {
-  navGraph: DE_DUST2_NAV_GRAPH,
+  navGraph: DE_DUST2_BOT_NAV_GRAPH,
   blocks: DE_DUST2_BLOCKS,
   bounds: DE_DUST2_BOUNDS,
   bombsites: DE_DUST2_BOMBSITES,
   spawnPoints: DE_DUST2_SPAWN_POINTS,
+  // 5 primary distinct CT defensive zones (A Long, A Site Default, A Short/Catwalk, Goose, A Ramp)
+  // followed by well-spaced secondary rotations (all >= 3.0m apart).
   vanguardHolds: [
+    'long_corner',
+    'default',
+    'short_plat',
+    'goose',
+    'ramp_top',
     'car',
     'site_center',
-    'short_plat',
-    'ramp_top',
-    'goose',
     'stairs_bot',
     'site_sw',
     'site_e',
-    'triple',
-    'ninja',
     'elbow',
+    'pit',
+    'ramp_mid',
   ],
   syndicateExecutes: [
     'site_center',
@@ -315,6 +342,7 @@ interface BotInternalState {
   // Navigation & tactical angle-holding
   path: Vec3[];
   pathIndex: number;
+  assignedHoldPos: Vec3 | null;
   role: 'entry' | 'support' | 'lurker' | 'anchor' | 'rotator';
   isLurking: boolean;
   holdAngleTimer: number;
@@ -420,6 +448,7 @@ export class BotAISystem {
       antiFlashYaw: bot.mesh.rotation.y,
       path,
       pathIndex: 0,
+      assignedHoldPos: path.length > 0 ? { ...path[path.length - 1] } : null,
       role,
       isLurking: role === 'lurker',
       holdAngleTimer: 0,
@@ -470,24 +499,48 @@ export class BotAISystem {
     const { navGraph, blocks: mapBlocks, bombsites, vanguardHolds, syndicateExecutes } = this.mapConfig;
     const nodePos = (id: string, fallback: Vec3): Vec3 => navGraph[id]?.pos ?? fallback;
 
-    const pickUniqueNode = (
+    const pickSeparatedHoldNode = (
       candidates: readonly string[],
       startIdx: number,
-      used: Set<string>,
+      usedIds: Set<string>,
+      usedPositions: Vec3[],
       fallback: Vec3
     ): Vec3 => {
+      const isFarEnough = (pos: Vec3, minDist: number): boolean =>
+        usedPositions.every((other) => Math.hypot(pos.x - other.x, pos.z - other.z) >= minDist);
+
+      // Pass 1: unique candidate strictly >= MIN_FRIENDLY_HOLD_SEPARATION_M from all teammates' holds
       for (let offset = 0; offset < candidates.length; offset++) {
         const id = candidates[(startIdx + offset) % candidates.length];
-        if (!used.has(id) && navGraph[id]) {
-          used.add(id);
-          return navGraph[id].pos;
+        const node = navGraph[id];
+        if (!node || usedIds.has(id)) continue;
+        if (isFarEnough(node.pos, MIN_FRIENDLY_HOLD_SEPARATION_M)) {
+          usedIds.add(id);
+          usedPositions.push(node.pos);
+          return node.pos;
         }
       }
+
+      // Pass 2: scan full navGraph for any well-separated hold node if the pool is small
+      for (const id of Object.keys(navGraph)) {
+        if (usedIds.has(id)) continue;
+        const pos = navGraph[id].pos;
+        if (isFarEnough(pos, MIN_FRIENDLY_HOLD_SEPARATION_M)) {
+          usedIds.add(id);
+          usedPositions.push(pos);
+          return pos;
+        }
+      }
+
       const id = candidates[startIdx % Math.max(1, candidates.length)];
-      return nodePos(id, fallback);
+      const chosen = nodePos(id, fallback);
+      usedIds.add(id);
+      usedPositions.push(chosen);
+      return chosen;
     };
 
     const usedSynNodes = new Set<string>();
+    const usedSynPositions: Vec3[] = [];
     synBots.forEach((bot, index) => {
       const decision = synBuys[index];
       bot.armor = decision.buyArmor ? 100 : 0;
@@ -500,19 +553,19 @@ export class BotAISystem {
 
       if (this.currentStrategies.syndicate === 'RUSH_A_LONG') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = pickUniqueNode(syndicateExecutes, index, usedSynNodes, bombsites.A.center);
+        dest = pickSeparatedHoldNode(syndicateExecutes, index, usedSynNodes, usedSynPositions, bombsites.A.center);
       } else if (this.currentStrategies.syndicate === 'SPLIT_A_MID') {
         role = index < 2 ? 'entry' : 'rotator';
-        dest = pickUniqueNode(syndicateExecutes, index + 2, usedSynNodes, bombsites.A.center);
+        dest = pickSeparatedHoldNode(syndicateExecutes, index + 2, usedSynNodes, usedSynPositions, bombsites.A.center);
       } else if (this.currentStrategies.syndicate === 'RUSH_B_TUNNELS') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = pickUniqueNode(syndicateExecutes, index + 4, usedSynNodes, bombsites.B.center);
+        dest = pickSeparatedHoldNode(syndicateExecutes, index + 4, usedSynNodes, usedSynPositions, bombsites.B.center);
       } else if (this.currentStrategies.syndicate === 'MID_TO_B_SPLIT') {
         role = index < 3 ? 'entry' : 'support';
-        dest = pickUniqueNode(syndicateExecutes, index + 1, usedSynNodes, bombsites.B.center);
+        dest = pickSeparatedHoldNode(syndicateExecutes, index + 1, usedSynNodes, usedSynPositions, bombsites.B.center);
       } else {
         role = index === 0 ? 'entry' : index === 1 ? 'lurker' : 'rotator';
-        dest = pickUniqueNode(syndicateExecutes, index, usedSynNodes, bombsites.A.center);
+        dest = pickSeparatedHoldNode(syndicateExecutes, index, usedSynNodes, usedSynPositions, bombsites.A.center);
       }
 
       const path = findPathAStar(
@@ -523,10 +576,13 @@ export class BotAISystem {
         navGraph
       );
 
-      this.botStates.set(bot.id, this.createBotState(bot, path, role, index, weaponId));
+      const st = this.createBotState(bot, path, role, index, weaponId);
+      st.assignedHoldPos = { ...dest };
+      this.botStates.set(bot.id, st);
     });
 
     const usedVgNodes = new Set<string>();
+    const usedVgPositions: Vec3[] = [];
     vgBots.forEach((bot, index) => {
       const decision = vgBuys[index];
       bot.armor = decision.buyArmor ? 100 : 0;
@@ -538,16 +594,16 @@ export class BotAISystem {
       let dest: Vec3 = bombsites.A.center;
 
       if (this.currentStrategies.vanguard === 'STANDARD_2_1_2') {
-        dest = pickUniqueNode(vanguardHolds, index, usedVgNodes, bombsites.A.center);
+        dest = pickSeparatedHoldNode(vanguardHolds, index, usedVgNodes, usedVgPositions, bombsites.A.center);
         role = index === 1 || index === 3 ? 'anchor' : 'rotator';
       } else if (this.currentStrategies.vanguard === 'AGGRESSIVE_MID_CONTROL') {
-        dest = pickUniqueNode(vanguardHolds, index + 3, usedVgNodes, bombsites.A.center);
+        dest = pickSeparatedHoldNode(vanguardHolds, index, usedVgNodes, usedVgPositions, bombsites.A.center);
         role = index < 2 ? 'rotator' : 'anchor';
       } else if (this.currentStrategies.vanguard === 'HEAVY_A_STACK') {
-        dest = pickUniqueNode(vanguardHolds, index + 1, usedVgNodes, bombsites.A.center);
+        dest = pickSeparatedHoldNode(vanguardHolds, index, usedVgNodes, usedVgPositions, bombsites.A.center);
         role = 'anchor';
       } else {
-        dest = pickUniqueNode(vanguardHolds, index + 5, usedVgNodes, bombsites.A.center);
+        dest = pickSeparatedHoldNode(vanguardHolds, index, usedVgNodes, usedVgPositions, bombsites.A.center);
         role = index % 2 === 0 ? 'rotator' : 'anchor';
       }
 
@@ -559,7 +615,9 @@ export class BotAISystem {
         navGraph
       );
 
-      this.botStates.set(bot.id, this.createBotState(bot, path, role, index + 5, weaponId));
+      const st = this.createBotState(bot, path, role, index + 5, weaponId);
+      st.assignedHoldPos = { ...dest };
+      this.botStates.set(bot.id, st);
     });
   }
 
@@ -1823,12 +1881,39 @@ export class BotAISystem {
             const roleMul = state.role === 'anchor' ? 1.15 : state.role === 'lurker' ? 1.0 : 0.55;
             state.holdAngleTimer = Math.max(1.4, holdBase * roleMul);
 
-            // Pre-plan next meaningful tactical rotation node (never jog back into own spawn)
+            // Pre-plan next meaningful tactical rotation node strictly >= 3.0m away from all friendly bots' holds & positions
             const pool =
               bot.team === 'Vanguard' ? this.mapConfig.vanguardHolds : this.mapConfig.syndicateExecutes;
-            const nextKey = pool[(bIdx + Math.floor(roundElapsed / 6) + bot.waypointIndex) % pool.length];
+            const friendlyAnchors: Vec3[] = [];
+            for (let j = 0; j < bots.length; j++) {
+              const mate = bots[j];
+              if (j === bIdx || mate.isDead || mate.team !== bot.team) continue;
+              friendlyAnchors.push({ x: mate.mesh.position.x, y: mate.mesh.position.y, z: mate.mesh.position.z });
+              const mateState = this.botStates.get(mate.id);
+              if (mateState?.assignedHoldPos) {
+                friendlyAnchors.push(mateState.assignedHoldPos);
+              }
+            }
+            const baseIdx = (bIdx + Math.floor(roundElapsed / 6) + bot.waypointIndex) % pool.length;
+            let chosenDest: Vec3 | null = null;
+            for (let offset = 0; offset < pool.length; offset++) {
+              const candKey = pool[(baseIdx + offset) % pool.length];
+              const candPos = this.mapConfig.navGraph[candKey]?.pos;
+              if (!candPos) continue;
+              const separated = friendlyAnchors.every(
+                (other) => Math.hypot(candPos.x - other.x, candPos.z - other.z) >= MIN_FRIENDLY_HOLD_SEPARATION_M
+              );
+              if (separated) {
+                chosenDest = candPos;
+                break;
+              }
+            }
+            const nextDest =
+              chosenDest ??
+              this.mapConfig.navGraph[pool[baseIdx]]?.pos ??
+              bot.patrolTarget;
             bot.waypointIndex = (bot.waypointIndex + 1) % pool.length;
-            const nextDest = this.mapConfig.navGraph[nextKey]?.pos ?? bot.patrolTarget;
+            state.assignedHoldPos = { ...nextDest };
             state.path = findPathAStar(
               { x: botPos.x, y: botPos.y, z: botPos.z },
               nextDest,

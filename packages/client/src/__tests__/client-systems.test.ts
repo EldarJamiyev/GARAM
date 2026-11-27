@@ -1259,30 +1259,89 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         };
       };
 
+      const { DE_DUST2_BLOCKS, SpatialGrid } = await import('@garam/shared');
+
+      // 2. All 5 Vanguard bots on de_dust2 receive unique hold anchors strictly >= 3.0m apart
       const bots = [
-        makeBot('ct1', 'Vanguard', -18, 12),
-        makeBot('ct2', 'Vanguard', -17, 12),
-        makeBot('ct3', 'Vanguard', -16, 12),
-        makeBot('ct4', 'Vanguard', -15, 12),
-        makeBot('ct5', 'Vanguard', -14, 12),
-        makeBot('t1', 'Syndicate', 18, -12),
-        makeBot('t2', 'Syndicate', 17, -12),
-        makeBot('t3', 'Syndicate', 16, -12),
-        makeBot('t4', 'Syndicate', 15, -12),
-        makeBot('t5', 'Syndicate', 14, -12),
+        makeBot('ct1', 'Vanguard', 6.0, 35.0),
+        makeBot('ct2', 'Vanguard', 8.0, 34.0),
+        makeBot('ct3', 'Vanguard', 4.0, 34.0),
+        makeBot('ct4', 'Vanguard', 10.0, 33.0),
+        makeBot('ct5', 'Vanguard', 12.0, 31.0),
+        makeBot('t1', 'Syndicate', -60, -10),
+        makeBot('t2', 'Syndicate', -58, -10),
+        makeBot('t3', 'Syndicate', -56, -10),
+        makeBot('t4', 'Syndicate', -54, -10),
+        makeBot('t5', 'Syndicate', -52, -10),
       ];
 
-      botAI.startNewRound(1, bots as never, 0, 0);
-      const statesMap = (botAI as unknown as { botStates: Map<string, { path: Array<{ x: number; z: number }> }> }).botStates;
-      const ctGoalKeys = new Set<string>();
-      for (let i = 1; i <= 5; i++) {
-        const st = statesMap.get(`ct${i}`);
-        expect(st).toBeDefined();
-        const goal = st!.path[st!.path.length - 1];
-        expect(goal).toBeDefined();
-        ctGoalKeys.add(`${goal.x.toFixed(1)},${goal.z.toFixed(1)}`);
+      for (let trial = 0; trial < 8; trial++) {
+        botAI.startNewRound(trial + 1, bots as never, 0, 0);
+        const statesMap = (
+          botAI as unknown as { botStates: Map<string, { path: Array<{ x: number; z: number }>; assignedHoldPos: { x: number; z: number } | null }> }
+        ).botStates;
+        const ctGoals: Array<{ id: string; x: number; z: number }> = [];
+        for (let i = 1; i <= 5; i++) {
+          const st = statesMap.get(`ct${i}`);
+          expect(st).toBeDefined();
+          const goal = st!.assignedHoldPos ?? st!.path[st!.path.length - 1];
+          expect(goal).toBeDefined();
+          ctGoals.push({ id: `ct${i}`, x: goal.x, z: goal.z });
+        }
+        for (let a = 0; a < ctGoals.length; a++) {
+          for (let b = a + 1; b < ctGoals.length; b++) {
+            const dist = Math.hypot(ctGoals[a].x - ctGoals[b].x, ctGoals[a].z - ctGoals[b].z);
+            expect(
+              dist,
+              `trial ${trial} ${ctGoals[a].id} vs ${ctGoals[b].id} hold separation (${dist.toFixed(2)}m)`
+            ).toBeGreaterThanOrEqual(3.0);
+          }
+        }
       }
-      expect(ctGoalKeys.size).toBe(5);
+
+      // 3. Simulate 16 seconds of real Dust 2 movement from CT Spawn: all 5 CT bots climb A Ramp
+      // cleanly past the wooden crate and fan out across A Site / Long / Short / Goose (zero conga-line stacking).
+      const grid = new SpatialGrid(DE_DUST2_BLOCKS);
+      const playerFeet = new THREE.Vector3(-62, 3.5, -10);
+      const playerEye = new THREE.Vector3(-62, 5.18, -10);
+      const ctOnly = bots.slice(0, 5);
+      botAI.startNewRound(2, ctOnly as never, 0, 0);
+      for (let tick = 0; tick < 320; tick++) {
+        botAI.update(
+          ctOnly as never,
+          0.05,
+          DE_DUST2_BLOCKS,
+          DE_DUST2_BLOCKS,
+          playerFeet,
+          playerEye,
+          [],
+          false,
+          null,
+          100,
+          100,
+          'Syndicate',
+          false,
+          grid
+        );
+      }
+
+      let reachedUpperSite = 0;
+      let totalPairwiseDist = 0;
+      let pairCount = 0;
+      for (let a = 0; a < ctOnly.length; a++) {
+        if (ctOnly[a].mesh.position.y >= 3.0) reachedUpperSite++;
+        for (let b = a + 1; b < ctOnly.length; b++) {
+          totalPairwiseDist += Math.hypot(
+            ctOnly[a].mesh.position.x - ctOnly[b].mesh.position.x,
+            ctOnly[a].mesh.position.z - ctOnly[b].mesh.position.z
+          );
+          pairCount++;
+        }
+      }
+      expect(reachedUpperSite, 'All 5 CT bots climb A Ramp onto upper A-Site').toBe(5);
+      expect(totalPairwiseDist / pairCount, 'Average pairwise spread across Dust 2 zones >= 6.0m').toBeGreaterThanOrEqual(
+        6.0
+      );
     });
   });
 });

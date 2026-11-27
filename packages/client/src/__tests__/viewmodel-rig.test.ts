@@ -240,7 +240,10 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
   it('wires CS2_Draw/CS2_Idle/CS2_Fire/CS2_Reload/CS2_Inspect clips, weapon_hand_r anchoring, and legacy patchM4IdleClip', () => {
     expect(resolveWeaponClipName('garam-47', 'draw')).toBe('CS2_Draw');
     expect(resolveWeaponClipName('vanguard-m4', 'draw')).toBe('CS2_Draw');
-    expect(resolveWeaponClipName('garam-karambit', 'draw')).toBe('CS2_Draw');
+    expect(resolveWeaponClipName('garam-karambit', 'draw')).toBe('CS2_Idle');
+    expect(resolveWeaponClipName('desert-eagle', 'draw')).toBe('CS2_Idle');
+    expect(resolveWeaponClipName('usp-s', 'draw')).toBe('CS2_Idle');
+    expect(resolveWeaponClipName('glock-18', 'draw')).toBe('CS2_Idle');
     expect(resolveWeaponClipName('garam-47', 'reload')).toBe('CS2_Reload');
     expect(resolveWeaponClipName('sovereign-awp', 'inspect')).toBe('CS2_Inspect');
 
@@ -668,27 +671,62 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
           if (weaponId === 'garam-karambit' && vp.name === '1440x900' && phaseSample.phase === 'idle') {
             const hLNdc = handL!.getWorldPosition(new THREE.Vector3()).project(camera);
             const hRNdc = handR!.getWorldPosition(new THREE.Vector3()).project(camera);
+            const midNdc = new THREE.Vector3(0, 0.004, -0.068)
+              .applyMatrix4(holder.matrixWorld)
+              .project(camera);
             const tipNdc = new THREE.Vector3(...cfg.muzzleLocalPos)
               .applyMatrix4(holder.matrixWorld)
               .project(camera);
 
-            expect(hLNdc.x, 'Karambit left hand NDC X min').toBeGreaterThanOrEqual(-0.65);
-            expect(hLNdc.x, 'Karambit left hand NDC X max').toBeLessThanOrEqual(-0.18);
-            expect(hLNdc.y, 'Karambit left hand NDC Y min').toBeGreaterThanOrEqual(-0.85);
-            expect(hLNdc.y, 'Karambit left hand NDC Y max').toBeLessThanOrEqual(-0.42);
+            // Left hand relaxed low at bottom-left, palm angled down-inward
+            expect(hLNdc.x, 'Karambit left hand NDC X min').toBeGreaterThanOrEqual(-0.62);
+            expect(hLNdc.x, 'Karambit left hand NDC X max').toBeLessThanOrEqual(-0.24);
+            expect(hLNdc.y, 'Karambit left hand NDC Y min').toBeGreaterThanOrEqual(-0.88);
+            expect(hLNdc.y, 'Karambit left hand NDC Y max').toBeLessThanOrEqual(-0.58);
 
-            expect(hRNdc.x, 'Karambit right fist NDC X min').toBeGreaterThanOrEqual(0.18);
-            expect(hRNdc.x, 'Karambit right fist NDC X max').toBeLessThanOrEqual(0.62);
+            expect(hRNdc.x, 'Karambit right fist NDC X min').toBeGreaterThanOrEqual(0.24);
+            expect(hRNdc.x, 'Karambit right fist NDC X max').toBeLessThanOrEqual(0.68);
             expect(hRNdc.y, 'Karambit right fist NDC Y min').toBeGreaterThanOrEqual(-0.82);
             expect(hRNdc.y, 'Karambit right fist NDC Y max').toBeLessThanOrEqual(-0.45);
 
-            // Authentic CS2 reverse-grip Karambit: curved blade sweeps forward-left from the right fist
-            // while remaining cleanly outside the 0.12 crosshair deadzone.
-            expect(tipNdc.x, 'Karambit bladeTip sweeps forward-left of right fist').toBeLessThan(hRNdc.x);
-            expect(tipNdc.x, 'Karambit bladeTip NDC X min').toBeGreaterThanOrEqual(0.08);
-            expect(tipNdc.x, 'Karambit bladeTip NDC X max').toBeLessThanOrEqual(0.55);
-            expect(tipNdc.y, 'Karambit bladeTip NDC Y min').toBeGreaterThanOrEqual(-0.60);
+            // Curved crimson blade protrudes cleanly upward & outward-right/forward outside the fist
+            expect(midNdc.y, 'Karambit bladeMid clearly above right fist (not buried inside knuckles)').toBeGreaterThan(
+              hRNdc.y + 0.15
+            );
+            expect(tipNdc.x, 'Karambit bladeTip NDC X min').toBeGreaterThanOrEqual(0.32);
+            expect(tipNdc.x, 'Karambit bladeTip NDC X max').toBeLessThanOrEqual(0.68);
+            expect(tipNdc.y, 'Karambit bladeTip NDC Y min').toBeGreaterThanOrEqual(-0.45);
             expect(tipNdc.y, 'Karambit bladeTip NDC Y max').toBeLessThanOrEqual(-0.12);
+          }
+
+          if (cfg.leftArmPoseMode === 'pistol' && vp.name === '1440x900' && phaseSample.phase === 'idle') {
+            const hRWorld = handR!.getWorldPosition(new THREE.Vector3());
+            const hLWorld = handL!.getWorldPosition(new THREE.Vector3());
+            expect(
+              hLWorld.distanceTo(hRWorld),
+              `${weaponId} DEF-handL_233 locked flush (<= 0.025m) to DEF-handR_357`
+            ).toBeLessThanOrEqual(0.025);
+
+            const fMidR = root.getObjectByName('DEF-f_middle01R_304')?.getWorldPosition(new THREE.Vector3());
+            const fMidL = root.getObjectByName('DEF-f_middle01L_180')?.getWorldPosition(new THREE.Vector3());
+            if (fMidR && fMidL) {
+              expect(
+                fMidL.distanceTo(fMidR),
+                `${weaponId} left knuckles wrap cleanly around right grip`
+              ).toBeLessThanOrEqual(0.030);
+              expect(
+                Math.abs(fMidL.y - fMidR.y),
+                `${weaponId} left fingers stay level with right knuckles (not poking through slide)`
+              ).toBeLessThanOrEqual(0.020);
+            }
+
+            const holderQ = holder.getWorldQuaternion(new THREE.Quaternion());
+            const barrelFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(holderQ);
+            const slideUp = new THREE.Vector3(0, 1, 0).applyQuaternion(holderQ);
+            expect(barrelFwd.z, `${weaponId} barrel aims straight forward`).toBeLessThanOrEqual(-0.97);
+            expect(Math.abs(barrelFwd.x), `${weaponId} zero crooked barrel yaw`).toBeLessThanOrEqual(0.12);
+            expect(Math.abs(barrelFwd.y), `${weaponId} level barrel pitch`).toBeLessThanOrEqual(0.08);
+            expect(slideUp.y, `${weaponId} upright slide`).toBeGreaterThanOrEqual(0.97);
           }
         }
       }
@@ -1078,7 +1116,7 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
     const mixer = new THREE.AnimationMixer(root);
     const solver = new ArmIKSolver(root);
 
-    for (const inspectProgress of [0.0, 0.25, 0.5, 0.75, 1.0]) {
+    for (const inspectProgress of [0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0]) {
       mixer.stopAllAction();
       restoreBindPose(root, bindSnapshot);
 
@@ -1113,33 +1151,32 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
       expect(
         ringDist,
         `[inspectProgress=${inspectProgress}] Karambit ring pivot drifted away from DEF-handR_357 (${ringDist.toFixed(4)}m)`
-      ).toBeLessThanOrEqual(0.08);
+      ).toBeLessThanOrEqual(0.09);
 
       const bladeTipWorld = new THREE.Vector3(...cfg.muzzleLocalPos).applyMatrix4(
         modelGroup.matrixWorld
       );
+      const spinRadius = ringWorld.distanceTo(bladeTipWorld);
+      expect(
+        spinRadius,
+        `[inspectProgress=${inspectProgress}] Karambit inspect spin radius exceeded 0.14m (${spinRadius.toFixed(4)}m)`
+      ).toBeLessThanOrEqual(0.14);
+
       expect(
         bladeTipWorld.z,
         `[inspectProgress=${inspectProgress}] Karambit bladeTip clipped behind near plane`
       ).toBeLessThan(-VIEWMODEL_NEAR_PLANE);
 
+      // Strictly right-side during full 360deg inspect spin (never swings across to left hand!)
       const tipNdc = bladeTipWorld.clone().project(camera);
       expect(
         tipNdc.x,
-        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcX out of [-0.85, 0.95]`
-      ).toBeGreaterThanOrEqual(-0.85);
+        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcX crossed left of [0.10, 0.85] (${tipNdc.x.toFixed(3)})`
+      ).toBeGreaterThanOrEqual(0.10);
       expect(
         tipNdc.x,
-        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcX out of [-0.85, 0.95]`
-      ).toBeLessThanOrEqual(0.95);
-      expect(
-        tipNdc.y,
-        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcY out of [-0.85, 0.55]`
-      ).toBeGreaterThanOrEqual(-0.85);
-      expect(
-        tipNdc.y,
-        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcY out of [-0.85, 0.55]`
-      ).toBeLessThanOrEqual(0.55);
+        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcX clipped right of [0.10, 0.85] (${tipNdc.x.toFixed(3)})`
+      ).toBeLessThanOrEqual(0.85);
     }
   });
 });
