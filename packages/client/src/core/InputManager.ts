@@ -19,6 +19,16 @@ export interface InputCallbacks {
   onDropWeapon?: () => void; // G key for drop weapon
   onUtilityQuickSelect?: (type: 'smoke' | 'flash' | 'he' | 'molotov') => void;
   onToggleCustomizer?: () => void; // F2 key for live customizer lab
+  onAutoBuy?: () => void; // F1 key
+  onRebuy?: () => void; // F4 key
+  onToggleRadioMenu?: () => void; // H key
+  onRadioCommand?: (num: number) => void; // Digit 0-9 when radio menu is open
+  onSprayLogo?: () => void; // T key
+  onToggleNightVision?: () => void; // N key
+  onBuyAmmo?: (kind: 'primary' | 'secondary') => void; // Comma / Period
+  onCycleSpectatorMode?: () => void; // Space while spectating
+  isRadioMenuOpen?: () => boolean;
+  isSpectating?: () => boolean;
 }
 
 // Source engine standard m_yaw: 0.022 degrees per mouse count
@@ -162,6 +172,20 @@ export class InputManager {
         return;
       }
 
+      // F1 Auto-Buy & F4 Re-Buy
+      if (e.code === 'F1') {
+        if (e.repeat) return;
+        e.preventDefault();
+        this.callbacks.onAutoBuy?.();
+        return;
+      }
+      if (e.code === 'F4') {
+        if (e.repeat) return;
+        e.preventDefault();
+        this.callbacks.onRebuy?.();
+        return;
+      }
+
       // F2 Sandbox Customizer
       if (e.code === 'F2') {
         if (e.repeat) return;
@@ -175,6 +199,24 @@ export class InputManager {
         if (e.repeat) return;
         this.callbacks.onPracticeToggle();
         return;
+      }
+
+      // Radio Comms Menu (H Key)
+      if (e.code === 'KeyH') {
+        if (e.repeat) return;
+        this.callbacks.onToggleRadioMenu?.();
+        return;
+      }
+
+      // If Radio Menu is open, Digit 0-9 issue tactical radio commands
+      if (this.callbacks.isRadioMenuOpen?.()) {
+        if ((e.code.startsWith('Digit') || e.code.startsWith('Numpad')) && !e.repeat) {
+          const num = parseInt(e.code.replace('Digit', '').replace('Numpad', ''), 10);
+          if (!Number.isNaN(num) && num >= 0 && num <= 9) {
+            this.callbacks.onRadioCommand?.(num);
+            return;
+          }
+        }
       }
 
       // Buy Menu (B Key)
@@ -202,6 +244,10 @@ export class InputManager {
       // Escape key handles closing modals cleanly
       if (e.code === 'Escape') {
         if (e.repeat) return;
+        if (this.callbacks.isRadioMenuOpen?.()) {
+          this.callbacks.onToggleRadioMenu?.();
+          return;
+        }
         const custEl = document.getElementById('customizer-modal');
         if (custEl && getComputedStyle(custEl).display !== 'none') {
           this.callbacks.onToggleCustomizer?.();
@@ -229,9 +275,13 @@ export class InputManager {
         return;
       }
 
-      // Space key with 100ms Jump Buffer
+      // Space key: cycle spectator mode if spectating, otherwise 100ms Jump Buffer
       if (e.code === 'Space') {
         if (!e.repeat) {
+          if (this.callbacks.isSpectating?.()) {
+            this.callbacks.onCycleSpectatorMode?.();
+            return;
+          }
           this.spaceKeyHeld = true;
           this.input.jump = true;
           this.jumpBufferRemaining = 0.10; // 100ms buffer
@@ -277,6 +327,10 @@ export class InputManager {
         case 'KeyQ': this.callbacks.onQuickSwitch(); break;
         case 'KeyF': this.callbacks.onInspectWeapon?.(); break;
         case 'KeyG': this.callbacks.onDropWeapon?.(); break;
+        case 'KeyT': this.callbacks.onSprayLogo?.(); break;
+        case 'KeyN': this.callbacks.onToggleNightVision?.(); break;
+        case 'Comma': this.callbacks.onBuyAmmo?.('primary'); break;
+        case 'Period': this.callbacks.onBuyAmmo?.('secondary'); break;
         case 'KeyZ': this.callbacks.onUtilityQuickSelect?.('smoke'); break;
         case 'KeyX': this.callbacks.onUtilityQuickSelect?.('flash'); break;
         case 'KeyC': this.callbacks.onUtilityQuickSelect?.('he'); break;

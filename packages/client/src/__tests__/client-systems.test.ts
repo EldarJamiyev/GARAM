@@ -1259,20 +1259,22 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         };
       };
 
-      const { DE_DUST2_BLOCKS, SpatialGrid } = await import('@garam/shared');
+      const { DE_DUST2_BLOCKS, DE_DUST2_SPAWN_POINTS, SpatialGrid } = await import('@garam/shared');
 
       // 2. All 5 Vanguard bots on de_dust2 receive unique hold anchors strictly >= 3.0m apart
+      const ctSpawnY = DE_DUST2_SPAWN_POINTS.VANGUARD_CT.y;
+      const tSpawn = DE_DUST2_SPAWN_POINTS.OBSIDIAN_T;
       const bots = [
-        makeBot('ct1', 'Vanguard', 6.0, 35.0),
-        makeBot('ct2', 'Vanguard', 8.0, 34.0),
-        makeBot('ct3', 'Vanguard', 4.0, 34.0),
-        makeBot('ct4', 'Vanguard', 10.0, 33.0),
-        makeBot('ct5', 'Vanguard', 12.0, 31.0),
-        makeBot('t1', 'Syndicate', -60, -10),
-        makeBot('t2', 'Syndicate', -58, -10),
-        makeBot('t3', 'Syndicate', -56, -10),
-        makeBot('t4', 'Syndicate', -54, -10),
-        makeBot('t5', 'Syndicate', -52, -10),
+        makeBot('ct1', 'Vanguard', 6.66, -55.2),
+        makeBot('ct2', 'Vanguard', 3.0, -55.2),
+        makeBot('ct3', 'Vanguard', -0.74, -55.2),
+        makeBot('ct4', 'Vanguard', -2.8, -54.2),
+        makeBot('ct5', 'Vanguard', 9.62, -55.8),
+        makeBot('t1', 'Syndicate', tSpawn.x, tSpawn.z),
+        makeBot('t2', 'Syndicate', tSpawn.x + 2.5, tSpawn.z),
+        makeBot('t3', 'Syndicate', tSpawn.x + 5.0, tSpawn.z),
+        makeBot('t4', 'Syndicate', tSpawn.x - 2.5, tSpawn.z),
+        makeBot('t5', 'Syndicate', tSpawn.x - 5.0, tSpawn.z),
       ];
 
       for (let trial = 0; trial < 8; trial++) {
@@ -1299,14 +1301,15 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         }
       }
 
-      // 3. Simulate 16 seconds of real Dust 2 movement from CT Spawn: all 5 CT bots climb A Ramp
-      // cleanly past the wooden crate and fan out across A Site / Long / Short / Goose (zero conga-line stacking).
+      // 3. Simulate real Dust 2 movement from 1.48x CT Spawn: all 5 CT bots climb CT Ramp
+      // cleanly and fan out across A Site / Long / Short / Goose (zero conga-line stacking).
       const grid = new SpatialGrid(DE_DUST2_BLOCKS);
-      const playerFeet = new THREE.Vector3(-62, 3.5, -10);
-      const playerEye = new THREE.Vector3(-62, 5.18, -10);
+      const playerFeet = new THREE.Vector3(tSpawn.x, tSpawn.y, tSpawn.z);
+      const playerEye = new THREE.Vector3(tSpawn.x, tSpawn.y + 1.68, tSpawn.z);
       const ctOnly = bots.slice(0, 5);
+      for (const b of ctOnly) b.mesh.position.y = ctSpawnY;
       botAI.startNewRound(2, ctOnly as never, 0, 0);
-      for (let tick = 0; tick < 320; tick++) {
+      for (let tick = 0; tick < 420; tick++) {
         botAI.update(
           ctOnly as never,
           0.05,
@@ -1329,7 +1332,7 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       let totalPairwiseDist = 0;
       let pairCount = 0;
       for (let a = 0; a < ctOnly.length; a++) {
-        if (ctOnly[a].mesh.position.y >= 3.0) reachedUpperSite++;
+        if (ctOnly[a].mesh.position.y >= 4.5) reachedUpperSite++;
         for (let b = a + 1; b < ctOnly.length; b++) {
           totalPairwiseDist += Math.hypot(
             ctOnly[a].mesh.position.x - ctOnly[b].mesh.position.x,
@@ -1338,7 +1341,10 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
           pairCount++;
         }
       }
-      expect(reachedUpperSite, 'All 5 CT bots climb A Ramp onto upper A-Site').toBe(5);
+      const posSummary = ctOnly
+        .map((b) => `${b.id}=(${b.mesh.position.x.toFixed(1)},${b.mesh.position.y.toFixed(2)},${b.mesh.position.z.toFixed(1)})`)
+        .join(' ');
+      expect(reachedUpperSite, `All 5 CT bots climb CT Ramp onto upper Dust 2 level [${posSummary}]`).toBe(5);
       expect(totalPairwiseDist / pairCount, 'Average pairwise spread across Dust 2 zones >= 6.0m').toBeGreaterThanOrEqual(
         6.0
       );

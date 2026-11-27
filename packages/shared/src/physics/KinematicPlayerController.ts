@@ -293,11 +293,126 @@ export function resolveHorizontalAABB(
   };
 }
 
+export interface LadderVolume {
+  id: string;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  minZ: number;
+  maxZ: number;
+  /** Unit normal pointing away from the ladder rungs toward the climber */
+  normalX: number;
+  normalZ: number;
+}
+
+export function isPointInsideLadder(
+  px: number,
+  py: number,
+  pz: number,
+  ladders: readonly LadderVolume[],
+  margin = 0.28
+): LadderVolume | null {
+  for (let i = 0; i < ladders.length; i++) {
+    const l = ladders[i];
+    if (
+      px >= l.minX - margin &&
+      px <= l.maxX + margin &&
+      pz >= l.minZ - margin &&
+      pz <= l.maxZ + margin &&
+      py + KINEMATICS.CAPSULE_HEIGHT_STAND >= l.minY &&
+      py <= l.maxY + 0.15
+    ) {
+      return l;
+    }
+  }
+  return null;
+}
+
+/**
+ * CS 1.6 func_ladder climbing physics:
+ * - Zero gravity while mounted on ladder rungs
+ * - Looking up while pressing W climbs UP; looking down while pressing W climbs DOWN
+ * - S reverses climb direction; A/D strafes horizontally along the ladder face
+ * - Space kicks off perpendicular to ladder normal + upward impulse
+ */
+export function stepLadderMovement(
+  state: PlayerState,
+  input: PlayerInput,
+  ladder: LadderVolume,
+  dt: number,
+  colliders: AABBCollider[],
+  bounds: MapBounds
+): boolean {
+  const climbSpeed = KINEMATICS.LADDER_CLIMB_SPEED; // ~190 HL units/s
+  const fwdX = -Math.sin(input.yaw) * Math.cos(input.pitch);
+  const fwdY = Math.sin(input.pitch);
+  const fwdZ = -Math.cos(input.yaw) * Math.cos(input.pitch);
+  const rightX = Math.cos(input.yaw);
+  const rightZ = -Math.sin(input.yaw);
+
+  if (input.jump) {
+    state.vx = ladder.normalX * KINEMATICS.LADDER_JUMP_PUSH;
+    state.vz = ladder.normalZ * KINEMATICS.LADDER_JUMP_PUSH;
+    state.vy = 4.4;
+    state.isGrounded = false;
+    return false;
+  }
+
+  let wishMoveFwd = 0;
+  if (input.forward) wishMoveFwd += 1;
+  if (input.backward) wishMoveFwd -= 1;
+
+  let wishSide = 0;
+  if (input.right) wishSide += 1;
+  if (input.left) wishSide -= 1;
+
+  const slowFactor = input.walk ? 0.52 : 1.0;
+
+  // Vertical climb driven by view pitch + forward/back keys (authentic GoldSrc ladder feel)
+  const pitchFactor = Math.abs(fwdY) > 0.18 ? fwdY : fwdY >= 0 ? 0.85 : -0.85;
+  const climbVy = wishMoveFwd * pitchFactor * climbSpeed * slowFactor;
+
+  // Lateral shimmy along ladder plane
+  const tangX = -ladder.normalZ;
+  const tangZ = ladder.normalX;
+  const sideSpeed =
+    (wishSide * (rightX * tangX + rightZ * tangZ) + wishMoveFwd * (fwdX * tangX + fwdZ * tangZ)) *
+    climbSpeed *
+    0.65 *
+    slowFactor;
+
+  state.vx = tangX * sideSpeed - ladder.normalX * 0.45 * wishMoveFwd;
+  state.vz = tangZ * sideSpeed - ladder.normalZ * 0.45 * wishMoveFwd;
+  state.vy = climbVy;
+  state.isGrounded = true;
+
+  const hRes = resolveHorizontalAABB(
+    state.x,
+    state.y,
+    state.z,
+    state.vx,
+    state.vz,
+    dt,
+    KINEMATICS.CAPSULE_RADIUS,
+    KINEMATICS.CAPSULE_HEIGHT_STAND,
+    colliders,
+    true,
+    KINEMATICS.STEP_HEIGHT,
+    bounds
+  );
+  state.x = hRes.x;
+  state.z = hRes.z;
+  state.y = Math.max(ladder.minY, Math.min(ladder.maxY + 0.05, hRes.y + state.vy * dt));
+  return true;
+}
+
 export class KinematicPlayerController {
   public state: PlayerState;
   public prevState: { x: number; y: number; z: number; currentEyeHeight: number };
   public radius = KINEMATICS.CAPSULE_RADIUS;
   public actualCrouching = false;
+  public isOnLadder = false;
 
   // Sprint E2 Tournament Kinematics depth
   public stepOffsetY = 0;              // Smooth vertical step camera damping
@@ -384,6 +499,7 @@ export class KinematicPlayerController {
     this.prevState.currentEyeHeight = KINEMATICS.EYE_HEIGHT_STAND;
 
     this.actualCrouching = false;
+    this.isOnLadder = false;
     this.stepOffsetY = 0;
     this.taggingFactor = 1.0;
     this.landingSpeedFactor = 1.0;
@@ -421,7 +537,8 @@ export class KinematicPlayerController {
     weaponMaxSpeed = KINEMATICS.SPEED_RIFLE,
     colliders: AABBCollider[] = [],
     bounds: MapBounds = DEFAULT_MAP_BOUNDS,
-    spatialGrid?: SpatialGrid
+    spatialGrid?: SpatialGrid,
+    ladders: readonly LadderVolume[] = []
   ): void {
     // Store previous physics state before ticking for sub-tick render interpolation
     this.prevState.x = this.state.x;
@@ -536,6 +653,20 @@ export class KinematicPlayerController {
     const wasGrounded = this.state.isGrounded;
     const prevVy = this.state.vy;
     const prevY = this.state.y;
+
+    // CS 1.6 func_ladder climbing branch
+    const activeLadder =
+      ladders.length > 0
+        ? isPointInsideLadder(this.state.x, this.state.y, this.state.z, ladders)
+        : null;
+    this.isOnLadder = false;
+    if (activeLadder && (input.forward || input.backward || !this.state.isGrounded || input.jump)) {
+      const remained = stepLadderMovement(this.state, input, activeLadder, dt, activeColliders, bounds);
+      if (remained) {
+        this.isOnLadder = true;
+        return;
+      }
+    }
 
     // Ground counter-strafing kinematics
     if (this.state.isGrounded) {

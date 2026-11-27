@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-171%20Passing-00FF88?style=for-the-badge" alt="171 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-176%20Passing-00FF88?style=for-the-badge" alt="176 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -25,7 +25,7 @@
   2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin, deterministic PRNG spread (`BallisticsSpread`), per-weapon fire cooldowns, 180ms weapon-deploy lockouts, and bomb plant/defuse ownership mutexes are strictly enforced server-side. Includes atomic IP connection caps, smooth token-bucket rate limiting, trusted proxy hop parsing, strict production `Origin` validation, 2KB payload caps, full-RTT `ping_challenge`/`pong_challenge` verification, and recursive prototype-pollution defenses.
   3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All primary rifles and pistols (`garam-47`, `vanguard-m4`, `m4a4`, `sovereign-awp`, `desert-eagle`, `usp-s`, `glock-18`) enforce `sprayPattern[0] = [0.0, 0.0]` with full magazine-length recoil arrays. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy, and scoped Sovereign AWP shots support high-penetration collateral hits (`penetrationPower >= 250`).
   4. **Human-Perception Tactical Bot AI (Zero Prefires, Anti-Clump & Counter-Strafe Footwork):** Collision-free tactical waypoint & nav-graph patrolling across both `DE_DUST2 (A-SITE)` and `CS_OFFICE (2-SITE)` with unique per-bot round-start hold destinations, `>= 2.05m` personal-space separation even while holding angles, `>= 3.0m` LOS-verified threat watch angles (eliminating wall-staring), forward-FOV visual perception, peripheral/distance/surprise reaction latencies, strict crosshair-alignment firing gates, counter-strafed burst-and-strafe combat footwork with natural mid-range tactical crouching, cover retreats on reload/low HP, flashbang blindness & smooth anti-flash turns, live mid-match difficulty re-scaling, and smoke-occluded `hasLineOfSight`.
-  5. **CS2 (Source 2) Dual-Pass PBR Rendering, Authentic Weapon Grips, Pure Combat HUD & 12 Studio Audio Samples:** Depth-isolated viewmodel rendering (`60°–66°` FOV) with dedicated `RoomEnvironment` PMREM studio reflections, 3-point viewmodel lighting, calibrated per-weapon PBR materials, golden Mediterranean `DE_DUST2` daylight with warm sandstone grading & grounded contact shadows, unified CS2 Rigify first-person arms (`cs2_fps_arms.glb`) with locked two-handed Weaver pistol grips, relaxed palm-down Karambit stance & biomechanical curled fingers, fiery 8-point orange-gold muzzle flash star, near-plane-clamped razor-thin amber tracers, pooled billboarded crimson blood-mist puffs + rear-wall/floor blood splatters, full 9-weapon CS2 arsenal, 12 studio ElevenLabs CS2 audio samples (`ak47_shot`, `m4a4_shot`, `m4_suppressed`, `mp9_shot`, `deagle_shot`, `usps_shot`, `glock18_shot`, `awp_shot`, `headshot_dink`, `c4_beep`, `knife_draw`, `low_ammo_click`) + ascending kill chimes, authentic CS2 HUD (top `ALIVE | TIMER+SCORE | ALIVE` header with pulsing crimson C4 icon, pure top-right SVG killfeed with weapon silhouettes/headshot skull/wallbang icons, separate compact bottom-left radio/system feed, crisp SVG curved directional damage arc, `320ms` kill-beam flare + skull kill-card fan, sleek horizontal MVP round-win ribbon), synchronous hard-cut round resets, and compact overflow-free Lobby.
+  5. **CS2 (Source 2) Dual-Pass PBR Rendering, Authentic Weapon Grips, Pure Combat HUD & 12 Studio Audio Samples:** Depth-isolated viewmodel rendering (`60°–66°` FOV) with dedicated `RoomEnvironment` PMREM studio reflections, 3-point viewmodel lighting, calibrated per-weapon PBR materials, golden Mediterranean `DE_DUST2` daylight with warm sandstone grading & grounded contact shadows, unified CS2 Rigify first-person arms (`cs2_fps_arms.glb`) with locked two-handed Weaver pistol grips, relaxed palm-down Karambit stance & biomechanical curled fingers, fiery 8-point orange-gold muzzle flash star, near-plane-clamped razor-thin amber tracers, pooled billboarded crimson blood-mist puffs + rear-wall/floor blood splatters, full 18-weapon CS2 + CS 1.6 arsenal, 12 studio ElevenLabs CS2 audio samples (`ak47_shot`, `m4a4_shot`, `m4_suppressed`, `mp9_shot`, `deagle_shot`, `usps_shot`, `glock18_shot`, `awp_shot`, `headshot_dink`, `c4_beep`, `knife_draw`, `low_ammo_click`) + ascending kill chimes, authentic CS2 HUD (top `ALIVE | TIMER+SCORE | ALIVE` header with pulsing crimson C4 icon, pure top-right SVG killfeed with weapon silhouettes/headshot skull/wallbang icons, separate compact bottom-left radio/system feed, crisp SVG curved directional damage arc, `320ms` kill-beam flare + skull kill-card fan, sleek horizontal MVP round-win ribbon), synchronous hard-cut round resets, and compact overflow-free Lobby.
   6. **Shared `MapRegistry` & Adaptive Clock-Skew Immune 64-Tick Netcode:** Both client and authoritative 64-tick `GameRoom.ts` resolve map colliders, spawn points, buy zones, bombsites, and bot patrol routes through a single shared `MapRegistry` (`mapId` handshake on `join`/`welcome`), eliminating online server-client map desync alongside 64-slot ring-buffer `O(1)` half-RTT hitbox rewind, Int16-clamped Binary Protocol v2 (`36 + 29*N` bytes), and 2×128Hz batched binary inputs (`0x03`, 41 bytes).
   7. **Authoritative Utility Physics & MR12 Halftime Rules:** Shared `UtilitySimulation` steps server-side bouncing grenade arcs with sloped voxel ramp-lip deflection, active `MapBounds`, LOS-occluded HE blast waves, and smoke-extinguishable 40 DPS Molotov zones alongside automatic MR12 Round 13 halftime side-swap and `$800` pistol-round resets.
   8. **Zero-Quality-Loss WebGL2 Optimization & `UNLIMITED FPS` Pacing:** Static map/light matrix freezing (`matrixAutoUpdate = false`), freeze-time/throttled shadow updates (`invalidateShadows`/`updateShadows`), frustum-culled and behind-camera LOD-skipped 3P `OperatorRig` updates, blur-free HUD compositing, `TypedArray` zero-allocation `[F3]` frame-time telemetry, smart software-WebGL detection banner without overwriting saved GPU presets, and selectable Lobby frame pacing (`VSYNC`, `120 FPS`, `240 FPS`, `UNLIMITED FPS` via reusable `MessageChannel`).
@@ -46,7 +46,7 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
 
 ---
 
-## 3. Competitive Arena Pool (`MapRegistry`: `DE_DUST2` & `CS_OFFICE`)
+## 3. Competitive Arena Pool (`MapRegistry`: 5 Classic Arenas)
 
 <p align="center">
   <img src="docs/assets/decitadel-tactical-map.svg" alt="GARAM Tactical Radar Blueprint" width="100%">
@@ -55,31 +55,46 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
 Players can switch maps live in the Lobby (`MAP` selector) or synchronize automatically via the 64-tick multiplayer `join`/`welcome` handshake:
 
 1. **`DE_DUST2 (A-SITE)` (`de_dust2`, Default):**
-   - High-fidelity Counter-Strike 2 Dust 2 A-Site Wing GLB (`packages/client/public/models/de_dust2.glb`) paired with **271 precomputed AABB colliders** (`DeDust2Data.ts`) and real-time Lobby progress streaming.
+   - High-fidelity Counter-Strike 2 Dust 2 A-Site Wing GLB (`packages/client/public/models/de_dust2.glb`) paired with **precomputed AABB colliders** (`DeDust2Data.ts`) and real-time Lobby progress streaming.
    - Covers **CT Spawn**, **A Ramp**, **Bombsite A**, **A Pit**, **A Car**, **A Long Doors**, and **A Short Catwalk** for rapid 5v5 A-Site executes and retakes.
-2. **`CS_OFFICE (2-SITE)` (`cs_office`, Full 2-Site Rotation):**
-   - Full two-level snowy corporate office complex (`CsOfficeData.ts`, `84m × 76m`) with **Bombsite A (Executive Boardroom)** and **Bombsite B (Loading Dock / Server Wing)**, Front Courtyard, Garage, Main Hall, Breakroom, Side Hall, Stairwell, Paper Storage, and Sniper Window overlooks for macro 2-site rotations and fake executes.
+2. **`CS_OFFICE (2-SITE)` (`cs_office`, Hostage Rescue & 2-Site Defusal):**
+   - Full two-level snowy corporate office complex (`CsOfficeData.ts`, `84m × 76m`) featuring selectable **Hostage Rescue** (`4` interactive escorted hostages + CT Courtyard Rescue Zone) or **2-Site Bomb Defusal**, plus destructible glass windows and ceiling vents.
+3. **`DE_NUKE (VERTICAL 2-SITE)` (`de_nuke`, Dual-Level Facility):**
+   - Multi-level industrial reactor arena (`DeNukeData.ts`) with Upper A-Site rafters, climbable **vertical ladders**, breakable vent shafts dropping into Lower B-Site, Outside yard, and Ramp room.
+4. **`DE_INFERNO (BANANA & MID)` (`de_inferno`, Mediterranean Chokepoints):**
+   - Classic cobblestone village arena (`DeInfernoData.ts`) featuring Banana, B-Site Fountain, Mid, Apartments, Boiler, Arch, and A-Site Pit with close-quarters utility duels.
+5. **`FY_SNOW (CLASSIC 1.6 ARENA)` (`fy_snow`, Fast Elimination):**
+   - Iconic symmetrical Counter-Strike 1.6 snow courtyard (`FySnowData.ts`) with four central pillars, floor-spawned rifles/shotguns/AWPs that refresh each round, and pure elimination pacing.
 
 ---
 
-## 4. Competitive Arsenal & Ballistics (9 CS2 Weapons)
+## 4. Competitive Arsenal & Ballistics (18 CS2 + CS 1.6 Weapons)
 
 <p align="center">
   <img src="docs/assets/arsenal-ballistics.svg" alt="GARAM Arsenal and Ballistics Telemetry" width="100%">
 </p>
 
-### Weapon Specifications & CS2 Recoil Patterns
+### Weapon Specifications & Recoil Patterns
 
 | Weapon | Slot | Cost | Damage (Body / Head) | RPM | Mag / Reserve | Unique Mechanical Features |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Garam-47** | 1 | $2,700 | 36 / 144 HP | 600 | 30 / 90 | CS2 '7' recoil spray curve, 1-shot headshot kill, authentic curved banana magazine. |
-| **Vanguard M4A1-S** | 1 | $2,750 | 33 / 132 HP | 666 | 25 / 75 | Perforated suppressor, muffled 24m acoustic radius, tight laser spray grouping. |
+| **Vanguard M4A1-S** | 1 | $2,750 | 33 / 132 HP | 666 | 25 / 75 | Detachable suppressor (`Mouse 2`: `+2` raw dmg unsilenced), muffled 24m acoustic radius. |
 | **M4A4** | 1 | $3,100 | 33 / 132 HP | 666 | 30 / 90 | Full 30-round STANAG magazine CT rifle for sustained multi-target site anchor holds. |
+| **Clarion 5.56 (FAMAS)** | 1 | $2,250 | 30 / 120 HP | 666 | 25 / 90 | Vanguard budget bullpup rifle with `Mouse 2` 3-round `1100 RPM` burst-fire toggle. |
+| **IDF Defender (Galil)** | 1 | $2,000 | 30 / 120 HP | 675 | 35 / 90 | Syndicate eco/force rifle with high-capacity 35-round curved steel magazine. |
 | **MP9** | 1 | $1,250 | 26 / 104 HP | 857 | 30 / 120 | High-mobility force-buy SMG (`$600` kill reward) with blistering 857 RPM CQC fire rate. |
+| **K&M MP5 Navy** | 1 | $1,500 | 26 / 104 HP | 800 | 30 / 120 | Classic CS 1.6 tight-spray SMG (`$600` kill reward) with high run-and-gun accuracy. |
+| **ES C90 (P90)** | 1 | $2,350 | 26 / 104 HP | 900 | 50 / 100 | Top-loaded 50-round bullpup SMG built for high-speed site rushes and anti-eco sweeps. |
+| **Leone 12G Super (M3)** | 1 | $1,700 | 20×9 / 80×9 HP | 68 | 8 / 32 | Pump-action 9-pellet buckshot cannon (`$900` kill reward) with interruptible shell reload. |
+| **Leone YG1265 (XM1014)** | 1 | $3,000 | 22×6 / 88×6 HP | 240 | 7 / 32 | Semi/auto tactical 6-pellet shotgun (`$900` kill reward) with shell-by-shell tube reload. |
+| **Schmidt Scout** | 1 | $2,750 | 75 / 300 HP | 48 | 10 / 90 | Signature CS 1.6 `6.50 m/s` ultra-fast mobility, dual-stage scope, low jump inaccuracy. |
 | **Sovereign AWP** | 1 | $4,750 | 115 / 460 HP | 45 | 5 / 30 | 1-shot lethal torso kill, dual-stage 28°/10° optical zoom, high-penetration collaterals. |
+| **Vanguard Ballistic Shield** | 1 | $2,200 | 45 / 45 HP | 90 | 1 / 0 | CT tactical riot shield blocking frontal gunfire; `Mouse 2` raises full-coverage viewport. |
 | **Desert Eagle** | 2 | $700 | 53 / 212 HP | 267 | 7 / 35 | Heavy `.50 AE` pocket cannon, serrated cocking slide, lethal 1-shot headshot at close/mid. |
-| **USP-S** | 2 | $200 | 35 / 140 HP | 352 | 12 / 24 | Tactical suppressed CT sidearm with crisp first-shot accuracy and low recoil kick. |
-| **Glock-18** | 2 | $200 | 30 / 120 HP | 400 | 20 / 120 | High-capacity 20-round Syndicate sidearm built for fast entry pacing. |
+| **USP-S** | 2 | $200 | 35 / 140 HP | 352 | 12 / 24 | Tactical CT sidearm with `Mouse 2` detachable suppressor (`+2` raw dmg unsilenced). |
+| **Glock-18** | 2 | $200 | 30 / 120 HP | 400 | 20 / 120 | Syndicate 20-round sidearm with `Mouse 2` classic 3-round `920 RPM` burst-fire toggle. |
+| **.40 Dual Elites** | 2 | $800 | 45 / 180 HP | 500 | 30 / 120 | Syndicate dual-wielded pistols alternating left/right barrels across a 30-round pool. |
 | **Crimson Karambit** | 3 | $0 | 55 / 55 (180 Backstab) | 120 | 1 / 0 | Curved hawkbill blade in authentic CS2 dual-hand bottom-edge CQC posture with `[F]` ring spin. |
 
 ### 5-Zone Raycast Ballistics Multipliers
@@ -95,24 +110,27 @@ Players can switch maps live in the Lobby (`MAP` selector) or synchronize automa
 
 | Action | Primary Input | Secondary / Alternate | Notes |
 | :--- | :---: | :---: | :--- |
-| **Move Forward / Back / Strafe** | `W`, `S`, `A`, `D` | — | 128Hz fixed kinematics with instant counter-strafing. |
-| **Jump / Crouch-Jump** | `Space` | — | Air strafing enabled (`wishDir` acceleration). |
+| **Move Forward / Back / Strafe** | `W`, `S`, `A`, `D` | — | 128Hz fixed kinematics, counter-strafing, and vertical ladder climbing. |
+| **Jump / Crouch-Jump** | `Space` | — | Air strafing enabled (`wishDir` acceleration); cycles Spectator camera mode when dead. |
 | **Crouch (Duck)** | `ControlLeft` | — | Smooth eye height transition ($1.72\text{m} \to 1.16\text{m}$). |
 | **Walk (Silent Movement)** | `ShiftLeft` | — | Restricts speed to $3.30\text{m/s}$, eliminates all footstep audio cues. |
-| **Primary Fire / Slash** | `Mouse 1 (Left)` | — | Automatic or semi-auto fire / Karambit alternating slashes. |
-| **Secondary Fire / Scope / Stab** | `Mouse 2 (Right)` | — | AWP dual-stage zoom / Karambit heavy hook thrust. |
-| **Reload Weapon** | `R` | — | Full animation timer with ammo reserve replenishment. |
+| **Primary Fire / Slash** | `Mouse 1 (Left)` | — | Automatic, burst, pump, or semi-auto fire / Karambit alternating slashes. |
+| **Secondary Action (M2)** | `Mouse 2 (Right)` | — | AWP/Scout zoom, M4A1-S/USP-S silencer toggle, Glock/FAMAS 3-rd burst, Shield raise, Karambit stab. |
+| **Reload Weapon** | `R` | — | Full animation timer or interruptible shell-by-shell shotgun tube reload. |
 | **Quick Switch Weapon** | `Q` | — | Instantly flips to previous weapon slot with draw animation. |
-| **Weapon Slot Selection** | `1`, `2`, `3`, `4`, `5` | `Scroll Wheel` | Primary (1), Secondary (2), Knife (3), Utility (4), Bomb (5). |
+| **Weapon Slot Selection** | `1`, `2`, `3`, `4`, `5` | `Scroll Wheel` | Primary (1), Secondary (2), Knife (3), Utility cycle (4), Bomb (5). |
 | **Grenade Quick-Select** | `Z`, `X`, `C`, `V` | — | Smoke (Z), Flash (X), HE Grenade (C), Molotov (V). |
 | **Drop Active Weapon** | `G` | — | Tosses active firearm into 3D world with physical drop arc. |
-| **Interact / Defuse / Loot Floor** | `E` | — | Hold to defuse (5s kit, 10s raw) or press aiming at dropped weapon. |
+| **Interact / Defuse / Hostage / Loot** | `E` | — | Hold to defuse (5s kit, 10s raw), escort `cs_office` hostages, or loot floor weapons. |
 | **Inspect Weapon & Knife Spin** | `F` | — | Continuous CS2 finger-ring spin on Karambit, sway inspect on guns. |
 | **Tactical Buy Menu** | `B` | — | Available in buy zones during freeze time or first 20s. |
+| **CS 1.6 Auto-Buy / Re-Buy / Ammo** | `F1` / `F4` | `,` / `.` | Auto-Buy (`F1`), Re-Buy previous kit (`F4`), Buy Primary Ammo (`,`), Buy Secondary Ammo (`.`). |
+| **CS 1.6 Tactical Radio Comms** | `H` then `1–9` | — | Issues voiced team callouts & commands (`Cover Me`, `Follow Me`, `Hold Position`, `Regroup`, etc.) obeyed by bots. |
+| **Spray Emblem / NightVision** | `T` / `N` | — | Stamps custom CS 1.6 spray decal on walls (`T`); toggles tactical green NVG (`N`, requires $1,250 NVG). |
 | **Performance Monitor Overlay** | `F3` | — | Real-time FPS, frame time, latency, draw calls, triangles. |
 | **Sandbox Customizer Panel** | `F2` | — | Live crosshairs, infinite ammo, bot freeze, and practice cash. |
 | **Scoreboard / Combat Status** | `Tab` | — | Displays live player stats, K/D/A, ping, and bot rosters. |
-| **Spectator Teammate Cycle** | `Mouse 1` / `Mouse 2` | — | Active on death to spectate living allies in third-person. |
+| **Spectator Teammate & Mode Cycle** | `Mouse 1` / `Mouse 2` | `Space` | Cycles living allies (`M1`/`M2`) and switches First-Person / Chase / Free-Look (`Space`). |
 
 ---
 
@@ -122,7 +140,7 @@ Players can switch maps live in the Lobby (`MAP` selector) or synchronize automa
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (171 Passing Tests Across 20 Suites)
+### Test Suite Coverage (176 Passing Tests Across 21 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
@@ -147,10 +165,11 @@ npm test
  ✓ packages/shared/src/__tests__/callout.test.ts              (5 tests)
  ✓ packages/shared/src/__tests__/dedust2.test.ts              (6 tests)
  ✓ packages/shared/src/__tests__/economy.test.ts              (5 tests)
+ ✓ packages/shared/src/__tests__/cs16-pack.test.ts            (5 tests)
  ✓ packages/shared/src/__tests__/docs-sync.test.ts            (3 tests)
 
- Test Files  20 passed (20)
-      Tests  171 passed (171)
+ Test Files  21 passed (21)
+      Tests  176 passed (176)
 ```
 
 ---

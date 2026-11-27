@@ -12,6 +12,11 @@ import {
   PlayerInput,
   AABBCollider,
   executeTacticalRaycast,
+  executeShotgunRaycast,
+  isBlockedByTacticalShield,
+  computeAutoBuySequence,
+  computeRebuySequence,
+  RebuySnapshot,
   hasLineOfSight,
   computeDeterministicShotDirection,
   stepGrenadePhysics,
@@ -116,6 +121,13 @@ interface HumanSession {
   recentlyVisibleEnemies: Map<string, number>;
   stalledTicks: number;
   burnDamageAccum: number;
+  detachedSilencers: Set<string>;
+  burstModeWeapons: Set<string>;
+  isShieldRaised: boolean;
+  hasNightVision: boolean;
+  shellReloadTimer: number;
+  rebuySnapshot: RebuySnapshot;
+  lastSprayMs: number;
 }
 
 interface ServerBot {
@@ -236,6 +248,9 @@ export class GameRoom {
   private mapId: MapId;
   private mapDescriptor: MapDescriptor;
   private staticColliders: readonly AABBCollider[];
+  private serverColliders: AABBCollider[] = [];
+  private breakableHp = new Map<string, number>();
+  private breakableColliderMap = new Map<string, AABBCollider>();
   private spatialGrid: SpatialGrid;
 
   constructor(initialMapId: MapId = DEFAULT_MAP_ID) {
@@ -243,8 +258,28 @@ export class GameRoom {
     this.mapDescriptor = getMapDescriptor(initialMapId);
     this.staticColliders = freezeColliders(this.mapDescriptor);
     this.spatialGrid = new SpatialGrid(this.mapDescriptor.blocks, 10);
+    this.initBreakablesForMap();
     this.initDefaultBots();
     this.startLoop();
+  }
+
+  private initBreakablesForMap(): void {
+    this.breakableHp.clear();
+    this.breakableColliderMap.clear();
+    this.serverColliders = this.staticColliders.map((c) => ({ ...c }));
+    for (const brk of this.mapDescriptor.breakables) {
+      this.breakableHp.set(brk.id, brk.health);
+      const col: AABBCollider = {
+        minX: brk.minX,
+        maxX: brk.maxX,
+        minY: brk.minY,
+        maxY: brk.maxY,
+        minZ: brk.minZ,
+        maxZ: brk.maxZ,
+      };
+      this.breakableColliderMap.set(brk.id, col);
+      this.serverColliders.push(col);
+    }
   }
 
   public getMapId(): MapId {
@@ -262,6 +297,7 @@ export class GameRoom {
     this.mapDescriptor = nextDesc;
     this.staticColliders = freezeColliders(nextDesc);
     this.spatialGrid = new SpatialGrid(nextDesc.blocks, 10);
+    this.initBreakablesForMap();
     this.bots = [];
     this.initDefaultBots();
     this.rebalanceTeamBots();
@@ -587,6 +623,20 @@ export class GameRoom {
         recentlyVisibleEnemies: new Map(),
         stalledTicks: 0,
         burnDamageAccum: 0,
+        detachedSilencers: new Set(),
+        burstModeWeapons: new Set(),
+        isShieldRaised: false,
+        hasNightVision: false,
+        shellReloadTimer: 0,
+        rebuySnapshot: {
+          primaryWeaponId: startingWeapon,
+          secondaryWeaponId: 'desert-eagle',
+          armorTier: 'kevlar-helmet',
+          hasDefuseKit: team === 'Vanguard',
+          hasNightVision: false,
+          utilities: ['smoke-grenade', 'flashbang', 'he-grenade', 'molotov'],
+        },
+        lastSprayMs: 0,
       };
 
       this.sessions.set(sessionId, session);
@@ -664,6 +714,91 @@ export class GameRoom {
 
     if (packet.type === 'fire') {
       this.handleFire(session, packet, now);
+      return;
+    }
+
+    if (packet.type === 'secondary_toggle') {
+      if (!session.ownedWeapons.has(packet.weaponId)) return;
+      if (packet.mode === 'silencer') {
+        if (session.detachedSilencers.has(packet.weaponId)) {
+          session.detachedSilencers.delete(packet.weaponId);
+        } else {
+          session.detachedSilencers.add(packet.weaponId);
+        }
+      } else if (packet.mode === 'burst') {
+        if (session.burstModeWeapons.has(packet.weaponId)) {
+          session.burstModeWeapons.delete(packet.weaponId);
+        } else {
+          session.burstModeWeapons.add(packet.weaponId);
+        }
+      } else if (packet.mode === 'shield' && packet.weaponId === 'tactical-shield') {
+        session.isShieldRaised = !session.isShieldRaised;
+      }
+      return;
+    }
+
+    if (packet.type === 'autobuy') {
+      this.handleAutoBuy(session);
+      return;
+    }
+
+    if (packet.type === 'rebuy') {
+      this.handleRebuy(session);
+      return;
+    }
+
+    if (packet.type === 'radio_cmd') {
+      const radioTextMap: Record<string, string> = {
+        cover_me: 'Cover me!',
+        follow_me: 'Follow me!',
+        hold_pos: 'Hold this position.',
+        need_backup: 'Taking fire, need backup!',
+        go_go: 'Go go go — storm the front!',
+        regroup: 'Regroup team!',
+        enemy_spotted: 'Enemy spotted!',
+        sector_clear: 'Sector clear.',
+        report_in: 'Team, report in!',
+      };
+      const text = radioTextMap[packet.commandId] ?? packet.commandId;
+      this.sessions.forEach((target) => {
+        if (target.team === session.team) {
+          this.sendToSession(target.id, {
+            type: 'radio_broadcast',
+            senderName: session.name,
+            team: session.team,
+            text,
+            callout: packet.callout,
+          });
+        }
+      });
+      return;
+    }
+
+    if (packet.type === 'spray_logo') {
+      if (now - session.lastSprayMs < 20000) return;
+      session.lastSprayMs = now;
+      this.broadcast({
+        type: 'spray_event',
+        emblemId: packet.emblemId,
+        pos: packet.pos,
+        normal: packet.normal,
+      });
+      return;
+    }
+
+    if (packet.type === 'breakable_hit') {
+      const curHp = this.breakableHp.get(packet.blockId);
+      if (curHp === undefined || curHp <= 0) return;
+      const nextHp = curHp - Math.max(1, packet.damage);
+      this.breakableHp.set(packet.blockId, nextHp);
+      if (nextHp <= 0) {
+        const col = this.breakableColliderMap.get(packet.blockId);
+        if (col) {
+          col.minY = -999;
+          col.maxY = -998;
+        }
+        this.broadcast({ type: 'breakable_broken', blockId: packet.blockId });
+      }
     }
   }
 
@@ -686,6 +821,64 @@ export class GameRoom {
     });
   }
 
+  private buildBuyContext(session: HumanSession) {
+    let currentPrimaryId: string | null = null;
+    let currentSecondaryId: string | null = null;
+    for (const wId of session.ownedWeapons) {
+      const def = WEAPONS[wId];
+      if (!def) continue;
+      if (def.slot === 1) currentPrimaryId = def.id;
+      else if (def.slot === 2) currentSecondaryId = def.id;
+    }
+    const ownedUtilities: Record<string, number> = {};
+    session.ownedUtilities.forEach((cnt, key) => {
+      ownedUtilities[key] = cnt;
+    });
+    return {
+      faction: session.team,
+      cash: session.cash,
+      currentPrimaryId,
+      currentSecondaryId,
+      armor: session.armor,
+      hasHelmet: session.hasHelmet,
+      hasDefuseKit: session.hasDefuseKit,
+      hasNightVision: session.hasNightVision,
+      ownedUtilities,
+    };
+  }
+
+  private captureSessionRebuy(session: HumanSession): void {
+    const ctx = this.buildBuyContext(session);
+    const utilities: string[] = [];
+    session.ownedUtilities.forEach((cnt, key) => {
+      for (let i = 0; i < cnt; i++) utilities.push(key);
+    });
+    session.rebuySnapshot = {
+      primaryWeaponId: ctx.currentPrimaryId,
+      secondaryWeaponId: ctx.currentSecondaryId,
+      armorTier: session.armor > 0 ? (session.hasHelmet ? 'kevlar-helmet' : 'kevlar') : 'none',
+      hasDefuseKit: session.hasDefuseKit,
+      hasNightVision: session.hasNightVision,
+      utilities,
+    };
+  }
+
+  private handleAutoBuy(session: HumanSession): void {
+    if (session.isDead || !this.isInBuyWindowAndZone(session)) return;
+    const plan = computeAutoBuySequence(this.buildBuyContext(session));
+    for (const item of plan) {
+      this.handleBuy(session, item);
+    }
+  }
+
+  private handleRebuy(session: HumanSession): void {
+    if (session.isDead || !this.isInBuyWindowAndZone(session)) return;
+    const plan = computeRebuySequence(this.buildBuyContext(session), session.rebuySnapshot);
+    for (const item of plan) {
+      this.handleBuy(session, item);
+    }
+  }
+
   private handleBuy(session: HumanSession, item: string): void {
     if (session.isDead || !this.isInBuyWindowAndZone(session)) return;
 
@@ -693,24 +886,59 @@ export class GameRoom {
       if (session.armor >= 100 || session.cash < ECONOMY.prices.kevlar) return;
       session.cash -= ECONOMY.prices.kevlar;
       session.armor = 100;
+      this.captureSessionRebuy(session);
       this.sendEconomySync(session);
       return;
     }
 
-    if (item === 'kevlar_helmet' || item === 'helmet') {
+    if (item === 'kevlar_helmet' || item === 'kevlar-helmet' || item === 'helmet') {
       const cost = session.armor >= 100 ? ECONOMY.prices.helmet : ECONOMY.prices.kevlarHelmetCombo;
       if ((session.armor >= 100 && session.hasHelmet) || session.cash < cost) return;
       session.cash -= cost;
       session.armor = 100;
       session.hasHelmet = true;
+      this.captureSessionRebuy(session);
       this.sendEconomySync(session);
       return;
     }
 
-    if (item === 'defuse_kit') {
+    if (item === 'defuse_kit' || item === 'defuse-kit') {
       if (session.team !== 'Vanguard' || session.hasDefuseKit || session.cash < ECONOMY.prices.defuseKit) return;
       session.cash -= ECONOMY.prices.defuseKit;
       session.hasDefuseKit = true;
+      this.captureSessionRebuy(session);
+      this.sendEconomySync(session);
+      return;
+    }
+
+    if (item === 'nvg') {
+      if (session.hasNightVision || session.cash < ECONOMY.prices.nightVision) return;
+      session.cash -= ECONOMY.prices.nightVision;
+      session.hasNightVision = true;
+      this.captureSessionRebuy(session);
+      this.sendEconomySync(session);
+      return;
+    }
+
+    if (item === 'primammo' || item === 'secammo') {
+      const targetSlot = item === 'primammo' ? 1 : 2;
+      const clipCost =
+        item === 'primammo' ? ECONOMY.prices.primaryAmmoClip : ECONOMY.prices.secondaryAmmoClip;
+      if (session.cash < clipCost) return;
+      let targetWeaponId: string | null = null;
+      for (const wId of session.ownedWeapons) {
+        if (WEAPONS[wId]?.slot === targetSlot) {
+          targetWeaponId = wId;
+          break;
+        }
+      }
+      if (!targetWeaponId) return;
+      const def = WEAPONS[targetWeaponId];
+      const ammo = session.weaponAmmo.get(targetWeaponId);
+      if (!def || !ammo || ammo.reserve >= def.reserveAmmo) return;
+      session.cash -= clipCost;
+      ammo.reserve = Math.min(def.reserveAmmo, ammo.reserve + def.magCapacity);
+      this.syncSessionActiveAmmo(session);
       this.sendEconomySync(session);
       return;
     }
@@ -722,12 +950,14 @@ export class GameRoom {
       if (currentCount >= cap || session.cash < price) return;
       session.cash -= price;
       session.ownedUtilities.set(item, currentCount + 1);
+      this.captureSessionRebuy(session);
       this.sendEconomySync(session);
       return;
     }
 
     const weapon = WEAPONS[item];
     if (!weapon || weapon.price <= 0 || session.cash < weapon.price) return;
+    if (weapon.id === 'tactical-shield' && session.team !== 'Vanguard') return;
     // Block duplicate purchase of already-owned weapon
     if (session.ownedWeapons.has(weapon.id)) return;
 
@@ -746,7 +976,9 @@ export class GameRoom {
     session.weaponAmmo.set(weapon.id, { current: weapon.magCapacity, reserve: weapon.reserveAmmo });
     session.activeWeaponId = weapon.id;
     session.isReloading = false;
+    session.isShieldRaised = false;
     this.syncSessionActiveAmmo(session);
+    this.captureSessionRebuy(session);
     this.sendEconomySync(session);
   }
 
@@ -886,7 +1118,7 @@ export class GameRoom {
     }
 
     const weapon = WEAPONS[packet.weaponId];
-    if (!weapon) return;
+    if (!weapon || weapon.id === 'tactical-shield' || session.isShieldRaised) return;
 
     // Enforce weapon-switch deploy delay if player switched weapons via fire packet
     if (session.activeWeaponId !== weapon.id) {
@@ -968,8 +1200,94 @@ export class GameRoom {
     session.consecutiveShots++;
 
     const ray: Ray = { origin, direction };
-    const baseDmg = packet.isSecondaryMelee && weapon.id === 'garam-karambit' ? 90 : weapon.damage;
+    const isSilencedDetached = session.detachedSilencers.has(weapon.id);
+    const baseDmg =
+      packet.isSecondaryMelee && weapon.id === 'garam-karambit'
+        ? 90
+        : isSilencedDetached && weapon.unsilencedDamageBonus
+          ? weapon.damage + weapon.unsilencedDamageBonus
+          : weapon.damage;
     const maxDistance = weapon.category === 'melee' ? MELEE_MAX_RANGE : 250;
+
+    // CS 1.6 Multi-Pellet Shotgun Raycast (Leone M3 / XM1014)
+    if (weapon.pelletCount && weapon.pelletCount > 1) {
+      const pelletOutcomes = executeShotgunRaycast(
+        origin,
+        packet.yaw,
+        packet.pitch,
+        weapon.pelletCount,
+        weapon.pelletSpreadRad ?? 0.062,
+        baseDmg,
+        weapon.armorPenetration,
+        weapon.penetrationPower,
+        this.mapDescriptor.blocks,
+        rewoundTargets,
+        weapon.damageDropoffPer10m,
+        this.spatialGrid,
+        weapon.headDamageMultiplier,
+        shotSeed
+      );
+
+      const damageByTarget = new Map<
+        string,
+        { totalDamage: number; totalArmorDamage: number; anyHeadshot: boolean }
+      >();
+      for (const pellet of pelletOutcomes) {
+        for (const hit of pellet.hits) {
+          if (!hit.targetId) continue;
+          const prev = damageByTarget.get(hit.targetId) ?? {
+            totalDamage: 0,
+            totalArmorDamage: 0,
+            anyHeadshot: false,
+          };
+          prev.totalDamage += hit.awardedDamage;
+          prev.totalArmorDamage += hit.armorDamage;
+          if (hit.isHeadshot) prev.anyHeadshot = true;
+          damageByTarget.set(hit.targetId, prev);
+        }
+      }
+
+      for (const [targetId, agg] of damageByTarget.entries()) {
+        const victimHuman = this.sessions.get(targetId);
+        const victimBot = this.bots.find((b) => b.active && b.id === targetId);
+        if (victimHuman && !victimHuman.isDead && victimHuman.team !== session.team) {
+          if (
+            isBlockedByTacticalShield(
+              ray.direction,
+              victimHuman.controller.state.yaw,
+              victimHuman.isShieldRaised,
+              agg.anyHeadshot ? 'HEAD' : 'CHEST'
+            )
+          ) {
+            continue;
+          }
+          this.applyDamageToHuman(
+            victimHuman,
+            agg.totalDamage,
+            agg.totalArmorDamage,
+            weapon.taggingPower,
+            session.id,
+            session.name,
+            weapon.name,
+            weapon.killReward,
+            agg.anyHeadshot
+          );
+        } else if (victimBot && !victimBot.isDead && victimBot.team !== session.team) {
+          this.applyDamageToBot(
+            victimBot,
+            agg.totalDamage,
+            agg.totalArmorDamage,
+            weapon.taggingPower,
+            session.id,
+            session.name,
+            weapon.name,
+            weapon.killReward,
+            agg.anyHeadshot
+          );
+        }
+      }
+      return;
+    }
 
     const hits = executeTacticalRaycast(
       ray,
@@ -993,6 +1311,16 @@ export class GameRoom {
       const victimBot = this.bots.find((b) => b.active && b.id === hit.targetId);
 
       if (victimHuman && !victimHuman.isDead && victimHuman.team !== session.team) {
+        if (
+          isBlockedByTacticalShield(
+            ray.direction,
+            victimHuman.controller.state.yaw,
+            victimHuman.isShieldRaised,
+            hit.hitZone
+          )
+        ) {
+          continue;
+        }
         this.applyDamageToHuman(
           victimHuman,
           hit.awardedDamage,
@@ -1482,13 +1810,18 @@ export class GameRoom {
             }
           : frame.input;
 
+        const effectiveMoveSpeed =
+          weapon.id === 'tactical-shield' && s.isShieldRaised
+            ? KINEMATICS.SPEED_SHIELD_UP
+            : weapon.movementSpeed;
         s.controller.update(
           effectiveInput,
           KINEMATICS.FIXED_DT,
-          weapon.movementSpeed,
-          this.staticColliders as AABBCollider[],
-          undefined,
-          this.spatialGrid
+          effectiveMoveSpeed,
+          this.serverColliders,
+          this.mapDescriptor.bounds,
+          this.spatialGrid,
+          this.mapDescriptor.ladders
         );
 
         s.framesProcessedThisSecond++;
@@ -1787,6 +2120,7 @@ export class GameRoom {
     this.activeMolotovs = [];
     this.activePlanterId = null;
     this.activeDefuserId = null;
+    this.initBreakablesForMap();
 
     const isHalftimeReset = this.matchSim.round === ECONOMY.halfTimeRound + 1;
 
@@ -1802,6 +2136,7 @@ export class GameRoom {
         s.armor = 0;
         s.hasHelmet = false;
         s.hasDefuseKit = false;
+        s.hasNightVision = false;
         s.ownedWeapons = new Set(['desert-eagle', 'garam-karambit']);
         s.activeWeaponId = 'desert-eagle';
         s.ownedUtilities.clear();
@@ -1810,6 +2145,7 @@ export class GameRoom {
       s.isDead = false;
       s.health = 100;
       s.isReloading = false;
+      s.isShieldRaised = false;
       s.consecutiveShots = 0;
       s.plantDefuseAction = 'none';
       s.burnDamageAccum = 0;

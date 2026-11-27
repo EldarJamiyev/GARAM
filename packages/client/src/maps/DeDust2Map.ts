@@ -5,6 +5,7 @@ import {
   DE_DUST2_COLLIDERS,
   DE_DUST2_BOTS,
   DE_DUST2_BOMBSITES,
+  DE_DUST2_WORLD_SCALE,
   DE_DUST2_Y_OFFSET,
 } from '@garam/shared';
 import { OperatorRig } from '../render/OperatorRig.js';
@@ -38,11 +39,25 @@ function createSiteStencilTexture(label: string, color: string): THREE.CanvasTex
 }
 
 function tuneDust2Material(mat: THREE.Material, maxAniso: number): void {
+  if (mat instanceof THREE.MeshBasicMaterial) {
+    if (mat.map) {
+      mat.map.anisotropy = maxAniso;
+      mat.map.colorSpace = THREE.SRGBColorSpace;
+      mat.map.needsUpdate = true;
+    }
+    mat.needsUpdate = true;
+    return;
+  }
+
   if (!(mat instanceof THREE.MeshStandardMaterial)) return;
 
   const tint = mat.userData?.tint;
   if (Array.isArray(tint) && tint.length >= 3) {
     mat.color.setRGB(Number(tint[0]), Number(tint[1]), Number(tint[2]));
+  }
+
+  if (mat.map) {
+    mat.map.colorSpace = THREE.SRGBColorSpace;
   }
 
   for (const map of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.aoMap]) {
@@ -77,8 +92,8 @@ function tuneDust2Material(mat: THREE.Material, maxAniso: number): void {
 }
 
 /**
- * Loads the real 3D PBR-textured de_dust2.glb arena (MIT geometry + Poly Haven CC0 WebP textures)
- * aligned 1:1 with the exact SAT watertight colliders in DE_DUST2_BLOCKS (shifted +3.5m on Y).
+ * Loads the real 3D baked-lightmap de_dust2.glb arena (de_dust_2_with_real_light.glb)
+ * scaled 1.48x to true 1:1 CS human proportions and aligned with DE_DUST2_BLOCKS.
  */
 export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): MapBuildResult {
   const assetMgr = AssetManager.getInstance();
@@ -90,7 +105,7 @@ export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): Ma
   mapRoot.userData.isMapRoot = true;
   scene.add(mapRoot);
 
-  assetMgr.reportProgress(15, 'STREAMING DE_DUST2 (A-SITE) 3D ARENA...');
+  assetMgr.reportProgress(15, 'STREAMING DE_DUST2 3D ARENA...');
 
   loader.load(
     '/models/de_dust2.glb',
@@ -101,6 +116,7 @@ export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): Ma
       }
       const root = gltf.scene;
       root.name = 'de_dust2_world';
+      root.scale.setScalar(DE_DUST2_WORLD_SCALE);
       root.position.set(0, DE_DUST2_Y_OFFSET, 0);
 
       root.traverse((obj) => {
@@ -129,44 +145,42 @@ export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): Ma
       root.traverse((obj) => {
         obj.matrixAutoUpdate = false;
       });
-      assetMgr.reportProgress(100, 'DE_DUST2 (A-SITE) ARENA READY');
+      assetMgr.reportProgress(100, 'DE_DUST2 ARENA READY');
       onGlbReady?.();
     },
     (xhr) => {
       if (xhr && xhr.total > 0) {
         const pct = Math.min(96, Math.round(15 + (xhr.loaded / xhr.total) * 81));
-        assetMgr.reportProgress(pct, 'STREAMING DE_DUST2 (A-SITE) 3D ARENA...');
+        assetMgr.reportProgress(pct, 'STREAMING DE_DUST2 3D ARENA...');
       }
     },
     (err) => {
       console.error('[DeDust2Map] Failed to load /models/de_dust2.glb:', err);
-      assetMgr.reportProgress(100, 'DE_DUST2 (A-SITE) COLLIDERS READY');
+      assetMgr.reportProgress(100, 'DE_DUST2 COLLIDERS READY');
     }
   );
 
-  // Crisp grounded bombsite A floor stencil (flush with concrete deck, no box geometry)
-  const siteATex = createSiteStencilTexture('A', 'rgba(235, 82, 34, 0.78)');
-  const siteAMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.8, 3.8),
-    new THREE.MeshBasicMaterial({
-      map: siteATex,
-      transparent: true,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-    })
-  );
-  siteAMesh.rotation.x = -Math.PI / 2;
-  siteAMesh.position.set(
-    DE_DUST2_BOMBSITES.A.center.x,
-    DE_DUST2_BOMBSITES.A.center.y + 0.03,
-    DE_DUST2_BOMBSITES.A.center.z
-  );
-  siteAMesh.geometry.computeBoundingSphere();
-  siteAMesh.frustumCulled = true;
-  mapRoot.add(siteAMesh);
+  // Crisp grounded bombsite A & B floor stencils (flush with deck, no box geometry)
+  for (const site of [DE_DUST2_BOMBSITES.A, DE_DUST2_BOMBSITES.B]) {
+    const siteTex = createSiteStencilTexture(site.name, 'rgba(235, 82, 34, 0.78)');
+    const siteMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.8, 3.8),
+      new THREE.MeshBasicMaterial({
+        map: siteTex,
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+      })
+    );
+    siteMesh.rotation.x = -Math.PI / 2;
+    siteMesh.position.set(site.center.x, site.center.y + 0.03, site.center.z);
+    siteMesh.geometry.computeBoundingSphere();
+    siteMesh.frustumCulled = true;
+    mapRoot.add(siteMesh);
+    siteMesh.matrixAutoUpdate = false;
+  }
   mapRoot.updateMatrixWorld(true);
-  siteAMesh.matrixAutoUpdate = false;
   mapRoot.matrixAutoUpdate = false;
 
   // Spawn 9 grounded 5v5 tactical operators on verified Dust2 spawn & split positions

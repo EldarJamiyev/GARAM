@@ -40,6 +40,7 @@ export class RoundManager {
   public bombPosition: THREE.Vector3 | null = null;
   public bombMesh: THREE.Group | null = null;
   public isBombDefused = false;
+  public objectiveType: 'bomb' | 'hostage' | 'elimination' = 'bomb';
 
   public plantProgress = 0;
   public defuseProgress = 0;
@@ -70,6 +71,10 @@ export class RoundManager {
     this.bombsites = bombsites;
     this.siteAPos.set(bombsites.A.center.x, 0, bombsites.A.center.z);
     this.siteBPos.set(bombsites.B.center.x, 0, bombsites.B.center.z);
+  }
+
+  public setObjectiveType(type: 'bomb' | 'hostage' | 'elimination'): void {
+    this.objectiveType = type;
   }
 
   public startMatch(): void {
@@ -148,7 +153,7 @@ export class RoundManager {
     if (this.phase === 'ROUND_LIVE') {
       this.callbacks.onTimerTick(Math.max(0, Math.ceil(this.phaseTimer)), false);
 
-      if (isPlayerCarrier && playerHealth > 0) {
+      if (this.objectiveType === 'bomb' && isPlayerCarrier && playerHealth > 0) {
         _flatPlayerPos.set(playerFeetPos.x, 0, playerFeetPos.z);
         const distA = _flatPlayerPos.distanceTo(this.siteAPos);
         const distB = _flatPlayerPos.distanceTo(this.siteBPos);
@@ -168,7 +173,13 @@ export class RoundManager {
       }
 
       if (this.phaseTimer <= 0) {
-        this.endRound('Vanguard', 'Time Expired — Objective Secured');
+        if (this.objectiveType === 'hostage') {
+          this.endRound('Syndicate', 'Time Expired — Hostages Not Rescued');
+        } else if (this.objectiveType === 'elimination') {
+          this.endRound('Vanguard', 'Time Expired — Arena Hold');
+        } else {
+          this.endRound('Vanguard', 'Time Expired — Objective Secured');
+        }
         return;
       }
 

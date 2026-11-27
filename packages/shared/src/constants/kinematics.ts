@@ -7,12 +7,16 @@ export const KINEMATICS = {
   EYE_HEIGHT_CROUCH: 1.16,
   CROUCH_LERP_SPEED: 18.0,
 
-  SPEED_KNIFE: 6.35,      // 250 units/s
-  SPEED_PISTOL: 6.10,     // 240 units/s
-  SPEED_RIFLE: 5.45,      // 215 units/s
-  SPEED_AWP: 5.08,        // 200 units/s
-  SPEED_WALK_SILENT: 3.30,// 130 units/s
-  SPEED_CROUCH: 2.15,     // 85 units/s
+  SPEED_KNIFE: 6.35,        // 250 units/s
+  SPEED_SCOUT: 6.50,        // 260 units/s (CS 1.6 Schmidt Scout sprint parity)
+  SPEED_PISTOL: 6.10,       // 240 units/s
+  SPEED_RIFLE: 5.45,        // 215 units/s
+  SPEED_AWP: 5.08,          // 200 units/s
+  SPEED_SHIELD_UP: 3.90,    // 156 units/s while Tactical Shield raised
+  SPEED_WALK_SILENT: 3.30,  // 130 units/s
+  SPEED_CROUCH: 2.15,       // 85 units/s
+  LADDER_CLIMB_SPEED: 4.80, // 190 units/s vertical climb rate
+  LADDER_JUMP_PUSH: 5.20,   // Kick-off impulse away from ladder normal
 
   ACCEL_GROUND: 5.6,
   FRICTION_GROUND: 5.2,
@@ -46,4 +50,8 @@ export const MATERIALS = {
   DRYWALL: { resistance: 0.30, costPerMeter: 22, damageMultiplier: 0.70 },
   METAL_SHEET: { resistance: 0.60, costPerMeter: 45, damageMultiplier: 0.45 },
   CONCRETE: { resistance: 1.0, costPerMeter: 9999, damageMultiplier: 0.0 },
+  SNOW: { resistance: 0.25, costPerMeter: 12, damageMultiplier: 0.80 },
+  DIRT: { resistance: 0.45, costPerMeter: 18, damageMultiplier: 0.70 },
+  GLASS: { resistance: 0.05, costPerMeter: 2, damageMultiplier: 0.96 },
+  VENT_DUCT: { resistance: 0.55, costPerMeter: 30, damageMultiplier: 0.50 },
 };

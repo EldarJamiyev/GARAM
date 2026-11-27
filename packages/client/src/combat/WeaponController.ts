@@ -4,6 +4,7 @@ import {
   MapBlockCollider,
   SpatialGrid,
   executeTacticalRaycast,
+  executeShotgunRaycast,
   hasLineOfSight,
   TargetCollider,
   Ray,
@@ -37,6 +38,9 @@ export interface WeaponCombatCallbacks {
   onUtilityThrown: () => void;
   onHitmarker?: (headshot: boolean) => void;
   onFire?: (weapon: WeaponDef, isScoped: boolean, rayDir: THREE.Vector3, isSecondaryMelee: boolean) => void;
+  onRadioNotice?: (message: string) => void;
+  onBreakableHit?: (blockId: string) => void;
+  onSecondaryToggle?: (weaponId: string, mode: 'silencer' | 'burst' | 'shield') => void;
 }
 
 export class WeaponController {
@@ -63,6 +67,22 @@ export class WeaponController {
 
   private nextMeleeTime = 0;
   private targetsScratch: TargetCollider[] = [];
+  private burstQueueRemaining = 0;
+  private burstNextFireMs = 0;
+  private burstContext: {
+    camera: THREE.PerspectiveCamera;
+    currentSpeed: number;
+    isGrounded: boolean;
+    isCrouching: boolean;
+    blocks: MapBlockCollider[];
+    bots: BotEntity[];
+    spatialGrid?: SpatialGrid;
+  } | null = null;
+  private breakableManager?: { checkRayHit: (o: THREE.Vector3, d: THREE.Vector3, maxD?: number) => string | null };
+
+  public setBreakableManager(mgr: { checkRayHit: (o: THREE.Vector3, d: THREE.Vector3, maxD?: number) => string | null }): void {
+    this.breakableManager = mgr;
+  }
 
   constructor(
     inventory: InventoryManager,
@@ -97,12 +117,33 @@ export class WeaponController {
       this.consecutiveShots = Math.max(0, this.consecutiveShots - Math.ceil(dt * 14));
     }
 
-    if (this.zoomStage > 0 && weapon.id === 'sovereign-awp') {
+    if (this.burstQueueRemaining > 0 && now >= this.burstNextFireMs && this.burstContext) {
+      const st = this.inventory.getActiveSlotState();
+      if (st.currentAmmo > 0 && weapon.secondaryAction === 'toggle_burst') {
+        this.burstQueueRemaining--;
+        this.burstNextFireMs = now + (60 / (weapon.burstFireRateRpm || 960)) * 1000;
+        this.executeBallisticShot(
+          this.burstContext.camera,
+          this.burstContext.currentSpeed,
+          this.burstContext.isGrounded,
+          this.burstContext.isCrouching,
+          this.burstContext.blocks,
+          this.burstContext.bots,
+          this.burstContext.spatialGrid,
+          true
+        );
+      } else {
+        this.burstQueueRemaining = 0;
+      }
+    }
+
+    if (this.zoomStage > 0 && (weapon.id === 'sovereign-awp' || weapon.id === 'schmidt-scout')) {
       const scopeEl = this.scopeEl || document.getElementById('sniper-scope');
       if (scopeEl) {
+        const blurThreshold = weapon.id === 'schmidt-scout' ? 3.5 : 1.0;
         const nextFilter =
-          currentSpeed > 1.0
-            ? `blur(${Math.min(8, (currentSpeed - 1.0) * 2.2).toFixed(1)}px)`
+          currentSpeed > blurThreshold
+            ? `blur(${Math.min(8, (currentSpeed - blurThreshold) * 2.2).toFixed(1)}px)`
             : 'none';
         if (nextFilter !== this.lastScopeBlur) {
           scopeEl.style.filter = nextFilter;
@@ -136,6 +177,10 @@ export class WeaponController {
       return;
     }
 
+    if (weapon.id === 'tactical-shield') {
+      return;
+    }
+
     if (weapon.category === 'melee') {
       this.executeKarambitAttack(camera, bots, blocks, false, spatialGrid);
       return;
@@ -144,9 +189,28 @@ export class WeaponController {
     const fireIntervalMs = (60 / weapon.fireRateRpm) * 1000;
     if (now - this.lastShotTime < fireIntervalMs) return;
 
+    this.executeBallisticShot(camera, currentSpeed, isGrounded, isCrouching, blocks, bots, spatialGrid, false);
+  }
+
+  private executeBallisticShot(
+    camera: THREE.PerspectiveCamera,
+    currentSpeed: number,
+    isGrounded: boolean,
+    isCrouching: boolean,
+    blocks: MapBlockCollider[],
+    bots: BotEntity[],
+    spatialGrid: SpatialGrid | undefined,
+    isBurstFollowup: boolean
+  ): void {
+    const now = performance.now();
+    const weapon = this.inventory.getActiveWeapon();
+
     this.lastShotTime = now;
     this.inventory.onFireExecuted(now);
-    this.audio.playGunshot(weapon.id);
+
+    const silenced = this.inventory.isSilencerAttached(weapon.id);
+    const effectiveDamage = silenced ? weapon.damage : weapon.damage + (weapon.unsilencedDamageBonus || 0);
+    this.audio.playGunshot(weapon.id, undefined, undefined, undefined, silenced);
 
     const wasScoped = this.zoomStage > 0;
 
@@ -207,115 +271,186 @@ export class WeaponController {
       t.hitboxes = b.rig?.getWorldHitboxes();
     }
 
-    const sharedRay: Ray = {
-      origin: { x: eyePos.x, y: eyePos.y, z: eyePos.z },
-      direction: { x: _rayDir.x, y: _rayDir.y, z: _rayDir.z },
-    };
+    const brokenId = this.breakableManager?.checkRayHit(eyePos, _rayDir, 60);
+    if (brokenId) {
+      this.callbacks.onBreakableHit?.(brokenId);
+    }
 
-    const hits = executeTacticalRaycast(
-      sharedRay,
-      weapon.damage,
-      weapon.armorPenetration,
-      weapon.penetrationPower,
-      250,
-      blocks,
-      this.targetsScratch,
-      weapon.damageDropoffPer10m || 0.98,
-      spatialGrid,
-      weapon.headDamageMultiplier
-    );
+    if (weapon.pelletCount && weapon.pelletCount > 1) {
+      const pelletOutcomes = executeShotgunRaycast(
+        { x: eyePos.x, y: eyePos.y, z: eyePos.z },
+        camera.rotation.y,
+        camera.rotation.x,
+        weapon.pelletCount,
+        weapon.pelletSpreadRad || 0.065,
+        effectiveDamage,
+        weapon.armorPenetration,
+        weapon.penetrationPower,
+        blocks,
+        this.targetsScratch,
+        weapon.damageDropoffPer10m || 0.65,
+        spatialGrid,
+        weapon.headDamageMultiplier,
+        Math.floor(now) & 0xffff
+      );
 
-    _terminalPoint.copy(eyePos).addScaledVector(_rayDir, 160);
-
-    if (hits.length > 0) {
-      for (const hit of hits) {
-        _hitVec.set(hit.point.x, hit.point.y, hit.point.z);
-        _terminalPoint.copy(_hitVec);
-
-        if (hit.targetId) {
-          const victim = bots.find((b) => b.id === hit.targetId);
-          if (victim && !victim.isDead) {
-            if (victim.team === playerTeam) {
-              this.callbacks.onHitmarker?.(false);
-              break;
+      const damageByBot = new Map<BotEntity, { hp: number; armor: number; headshot: boolean; hitPt: THREE.Vector3 }>();
+      for (const p of pelletOutcomes) {
+        _terminalPoint.set(
+          eyePos.x + p.rayDirection.x * 55,
+          eyePos.y + p.rayDirection.y * 55,
+          eyePos.z + p.rayDirection.z * 55
+        );
+        for (const hit of p.hits) {
+          _hitVec.set(hit.point.x, hit.point.y, hit.point.z);
+          _terminalPoint.copy(_hitVec);
+          if (hit.targetId) {
+            const victim = bots.find((b) => b.id === hit.targetId);
+            if (victim && !victim.isDead && victim.team !== playerTeam) {
+              const prev = damageByBot.get(victim) || { hp: 0, armor: 0, headshot: false, hitPt: _hitVec.clone() };
+              prev.hp += hit.awardedDamage;
+              prev.armor += hit.armorDamage;
+              if (hit.isHeadshot) prev.headshot = true;
+              prev.hitPt.copy(_hitVec);
+              damageByBot.set(victim, prev);
             }
+          } else {
+            _hitNormal.set(hit.normal.x, hit.normal.y, hit.normal.z);
+            this.effects.spawnBulletDecal(_hitVec, _hitNormal, hit.material);
+            this.effects.spawnImpactBurst(_hitVec, _hitNormal, hit.material);
+          }
+        }
+        this.effects.spawnTracer(eyePos, _terminalPoint, weapon.id, _right);
+      }
 
-            if (hit.isHeadshot) {
-              this.audio.playHeadshotDink();
-            } else {
-              this.audio.playBodyHitCrunch(_hitVec, eyePos, blocks);
-            }
+      damageByBot.forEach((agg, victim) => {
+        if (agg.headshot) {
+          this.audio.playHeadshotDink();
+        } else {
+          this.audio.playBodyHitCrunch(agg.hitPt, eyePos, blocks);
+        }
+        _reverseNormal.copy(_rayDir).negate();
+        this.effects.spawnBloodBurst(agg.hitPt, _reverseNormal, agg.headshot);
+        victim.rig?.triggerFlinch();
+        this.callbacks.onHitmarker?.(agg.headshot);
+        victim.armor = Math.max(0, victim.armor - agg.armor);
+        victim.health = Math.max(0, victim.health - agg.hp);
+        this.effects.spawnDamagePopup(agg.hitPt, Math.round(agg.hp), agg.headshot);
+        if (victim.health <= 0) {
+          victim.isDead = true;
+          this.callbacks.onKill(callsign, victim, agg.headshot, weapon.name, weapon.killReward);
+        }
+      });
+    } else {
+      const sharedRay: Ray = {
+        origin: { x: eyePos.x, y: eyePos.y, z: eyePos.z },
+        direction: { x: _rayDir.x, y: _rayDir.y, z: _rayDir.z },
+      };
 
-            _reverseNormal.copy(_rayDir).negate();
-            this.effects.spawnBloodBurst(_hitVec, _reverseNormal, !!hit.isHeadshot);
-            // Cast 3.5m continuation ray behind struck operator to paint CS2 wall blood splatter (fallback to floor beneath)
-            const wallHits = executeTacticalRaycast(
-              {
-                origin: { x: _hitVec.x + _rayDir.x * 0.15, y: _hitVec.y + _rayDir.y * 0.15, z: _hitVec.z + _rayDir.z * 0.15 },
-                direction: { x: _rayDir.x, y: _rayDir.y, z: _rayDir.z },
-              },
-              1,
-              0,
-              0,
-              3.5,
-              blocks,
-              [],
-              1.0,
-              spatialGrid
-            );
-            if (wallHits.length > 0 && !wallHits[0].targetId) {
-              _exitVec.set(wallHits[0].point.x, wallHits[0].point.y, wallHits[0].point.z);
-              _hitNormal.set(wallHits[0].normal.x, wallHits[0].normal.y, wallHits[0].normal.z);
-              this.effects.spawnBloodDecal(_exitVec, _hitNormal, !!hit.isHeadshot);
-            } else {
-              const floorHits = executeTacticalRaycast(
+      const hits = executeTacticalRaycast(
+        sharedRay,
+        effectiveDamage,
+        weapon.armorPenetration,
+        weapon.penetrationPower,
+        250,
+        blocks,
+        this.targetsScratch,
+        weapon.damageDropoffPer10m || 0.98,
+        spatialGrid,
+        weapon.headDamageMultiplier
+      );
+
+      _terminalPoint.copy(eyePos).addScaledVector(_rayDir, 160);
+
+      if (hits.length > 0) {
+        for (const hit of hits) {
+          _hitVec.set(hit.point.x, hit.point.y, hit.point.z);
+          _terminalPoint.copy(_hitVec);
+
+          if (hit.targetId) {
+            const victim = bots.find((b) => b.id === hit.targetId);
+            if (victim && !victim.isDead) {
+              if (victim.team === playerTeam) {
+                this.callbacks.onHitmarker?.(false);
+                break;
+              }
+
+              if (hit.isHeadshot) {
+                this.audio.playHeadshotDink();
+              } else {
+                this.audio.playBodyHitCrunch(_hitVec, eyePos, blocks);
+              }
+
+              _reverseNormal.copy(_rayDir).negate();
+              this.effects.spawnBloodBurst(_hitVec, _reverseNormal, !!hit.isHeadshot);
+              const wallHits = executeTacticalRaycast(
                 {
-                  origin: { x: _hitVec.x + _rayDir.x * 0.45, y: _hitVec.y, z: _hitVec.z + _rayDir.z * 0.45 },
-                  direction: { x: 0, y: -1, z: 0 },
+                  origin: { x: _hitVec.x + _rayDir.x * 0.15, y: _hitVec.y + _rayDir.y * 0.15, z: _hitVec.z + _rayDir.z * 0.15 },
+                  direction: { x: _rayDir.x, y: _rayDir.y, z: _rayDir.z },
                 },
                 1,
                 0,
                 0,
-                2.5,
+                3.5,
                 blocks,
                 [],
                 1.0,
                 spatialGrid
               );
-              if (floorHits.length > 0 && !floorHits[0].targetId) {
-                _exitVec.set(floorHits[0].point.x, floorHits[0].point.y, floorHits[0].point.z);
-                _hitNormal.set(floorHits[0].normal.x, floorHits[0].normal.y, floorHits[0].normal.z);
+              if (wallHits.length > 0 && !wallHits[0].targetId) {
+                _exitVec.set(wallHits[0].point.x, wallHits[0].point.y, wallHits[0].point.z);
+                _hitNormal.set(wallHits[0].normal.x, wallHits[0].normal.y, wallHits[0].normal.z);
                 this.effects.spawnBloodDecal(_exitVec, _hitNormal, !!hit.isHeadshot);
+              } else {
+                const floorHits = executeTacticalRaycast(
+                  {
+                    origin: { x: _hitVec.x + _rayDir.x * 0.45, y: _hitVec.y, z: _hitVec.z + _rayDir.z * 0.45 },
+                    direction: { x: 0, y: -1, z: 0 },
+                  },
+                  1,
+                  0,
+                  0,
+                  2.5,
+                  blocks,
+                  [],
+                  1.0,
+                  spatialGrid
+                );
+                if (floorHits.length > 0 && !floorHits[0].targetId) {
+                  _exitVec.set(floorHits[0].point.x, floorHits[0].point.y, floorHits[0].point.z);
+                  _hitNormal.set(floorHits[0].normal.x, floorHits[0].normal.y, floorHits[0].normal.z);
+                  this.effects.spawnBloodDecal(_exitVec, _hitNormal, !!hit.isHeadshot);
+                }
+              }
+              victim.rig?.triggerFlinch();
+              this.callbacks.onHitmarker?.(!!hit.isHeadshot);
+
+              victim.armor = Math.max(0, victim.armor - hit.armorDamage);
+              victim.health = Math.max(0, victim.health - hit.awardedDamage);
+              this.effects.spawnDamagePopup(_hitVec, hit.awardedDamage, !!hit.isHeadshot);
+
+              if (victim.health <= 0) {
+                victim.isDead = true;
+                this.callbacks.onKill(callsign, victim, !!hit.isHeadshot, weapon.name, weapon.killReward);
               }
             }
-            victim.rig?.triggerFlinch();
-            this.callbacks.onHitmarker?.(!!hit.isHeadshot);
+          } else {
+            _hitNormal.set(hit.normal.x, hit.normal.y, hit.normal.z);
+            this.effects.spawnBulletDecal(_hitVec, _hitNormal, hit.material);
+            this.effects.spawnImpactBurst(_hitVec, _hitNormal, hit.material);
+            this.audio.playSurfaceImpact(hit.material as 'CONCRETE' | 'WOOD_THIN' | 'METAL_SHEET', _hitVec, eyePos, blocks);
 
-            victim.armor = Math.max(0, victim.armor - hit.armorDamage);
-            victim.health = Math.max(0, victim.health - hit.awardedDamage);
-            this.effects.spawnDamagePopup(_hitVec, hit.awardedDamage, !!hit.isHeadshot);
-
-            if (victim.health <= 0) {
-              victim.isDead = true;
-              this.callbacks.onKill(callsign, victim, !!hit.isHeadshot, weapon.name, weapon.killReward);
+            if (hit.exitPoint) {
+              _exitVec.set(hit.exitPoint.x, hit.exitPoint.y, hit.exitPoint.z);
+              _reverseNormal.set(-hit.normal.x, -hit.normal.y, -hit.normal.z);
+              this.effects.spawnBulletDecal(_exitVec, _reverseNormal, hit.material);
             }
-          }
-        } else {
-          _hitNormal.set(hit.normal.x, hit.normal.y, hit.normal.z);
-          this.effects.spawnBulletDecal(_hitVec, _hitNormal, hit.material);
-          this.effects.spawnImpactBurst(_hitVec, _hitNormal, hit.material);
-          this.audio.playSurfaceImpact(hit.material as 'CONCRETE' | 'WOOD_THIN' | 'METAL_SHEET', _hitVec, eyePos, blocks);
-
-          if (hit.exitPoint) {
-            _exitVec.set(hit.exitPoint.x, hit.exitPoint.y, hit.exitPoint.z);
-            _reverseNormal.set(-hit.normal.x, -hit.normal.y, -hit.normal.z);
-            this.effects.spawnBulletDecal(_exitVec, _reverseNormal, hit.material);
           }
         }
       }
-    }
 
-    this.effects.spawnTracer(eyePos, _terminalPoint, weapon.id, _right);
+      this.effects.spawnTracer(eyePos, _terminalPoint, weapon.id, _right);
+    }
 
     let sprayPitchDeg = 0;
     let sprayYawDeg = 0;
@@ -332,16 +467,28 @@ export class WeaponController {
     const punchYawRad = ((sprayYawDeg * Math.PI) / 180) * punchScale;
 
     let punchKick = 0.026;
-    if (weapon.id === 'sovereign-awp') punchKick = 0.075;
+    if (weapon.id === 'sovereign-awp' || weapon.id === 'leone-m3') punchKick = 0.075;
+    else if (weapon.id === 'schmidt-scout' || weapon.id === 'xm1014') punchKick = 0.056;
     else if (weapon.id === 'desert-eagle') punchKick = 0.048;
     else if (weapon.id === 'vanguard-m4') punchKick = 0.015;
 
     this.aimPunchPitch = punchPitchRad + (weapon.id === 'sovereign-awp' ? punchKick : 0);
     this.aimPunchYaw = punchYawRad;
     this.callbacks.onCameraPunch(punchPitchRad + punchKick, punchYawRad);
-    this.viewmodel.fireRecoil(punchKick * 2.5, 0.05);
+    if (weapon.isDualWield) {
+      this.viewmodel.fireDualElitesShot();
+    } else {
+      this.viewmodel.fireRecoil(punchKick * 2.5, 0.05);
+    }
 
-    if (weapon.id === 'sovereign-awp' && wasScoped) {
+    // Queue 3-round burst follow-ups on Glock-18 & Clarion FAMAS
+    if (!isBurstFollowup && weapon.secondaryAction === 'toggle_burst' && this.inventory.burstModeWeapons.has(weapon.id)) {
+      this.burstQueueRemaining = Math.max(0, (weapon.burstCount || 3) - 1);
+      this.burstNextFireMs = now + (60 / (weapon.burstFireRateRpm || 960)) * 1000;
+      this.burstContext = { camera, currentSpeed, isGrounded, isCrouching, blocks, bots, spatialGrid };
+    }
+
+    if ((weapon.id === 'sovereign-awp' || weapon.id === 'schmidt-scout') && wasScoped) {
       this.resetZoom();
     }
   }
@@ -354,12 +501,40 @@ export class WeaponController {
   ): void {
     const weapon = this.inventory.getActiveWeapon();
 
+    if (weapon.secondaryAction === 'toggle_silencer') {
+      const attached = this.inventory.toggleSilencer(weapon.id);
+      this.viewmodel.setSilencerAttached(attached);
+      this.audio.playSilencerToggle(attached);
+      this.callbacks.onSecondaryToggle?.(weapon.id, 'silencer');
+      this.callbacks.onRadioNotice?.(
+        attached ? `${weapon.name}: Suppressor Attached` : `${weapon.name}: Suppressor Detached`
+      );
+      return;
+    }
+
+    if (weapon.secondaryAction === 'toggle_burst') {
+      const burstOn = this.inventory.toggleBurstMode(weapon.id);
+      this.callbacks.onSecondaryToggle?.(weapon.id, 'burst');
+      this.callbacks.onRadioNotice?.(
+        burstOn ? `${weapon.name}: 3-Round Burst Mode` : `${weapon.name}: Standard Fire Mode`
+      );
+      return;
+    }
+
+    if (weapon.secondaryAction === 'raise_shield') {
+      const next = !this.viewmodel.isShieldRaised;
+      this.viewmodel.setShieldRaised(next);
+      this.callbacks.onSecondaryToggle?.(weapon.id, 'shield');
+      this.callbacks.onRadioNotice?.(next ? 'Tactical Shield: BALLISTIC GUARD UP' : 'Tactical Shield: LOWERED');
+      return;
+    }
+
     if (weapon.category === 'melee') {
       this.executeKarambitAttack(camera, bots, blocks, true, spatialGrid);
       return;
     }
 
-    if (weapon.id === 'sovereign-awp') {
+    if (weapon.id === 'sovereign-awp' || weapon.id === 'schmidt-scout') {
       this.zoomStage = (this.zoomStage + 1) % 3;
       let fov = settingsStore.settings.fov;
       let sens = settingsStore.settings.mouseSensitivity;
@@ -407,6 +582,10 @@ export class WeaponController {
     const callsign = settingsStore.settings.callsign || 'Operator';
 
     this.callbacks.onFire?.(this.inventory.getActiveWeapon(), false, _forward, isHeavyStab);
+    const brokenId = this.breakableManager?.checkRayHit(eye, _forward, 2.5);
+    if (brokenId) {
+      this.callbacks.onBreakableHit?.(brokenId);
+    }
 
     for (const bot of bots) {
       if (bot.isDead || bot.team === playerTeam) continue;
@@ -465,6 +644,9 @@ export class WeaponController {
     this.consecutiveShots = 0;
     this.lastShotTime = 0;
     this.nextMeleeTime = 0;
+    this.burstQueueRemaining = 0;
+    this.burstContext = null;
+    this.viewmodel.setShieldRaised(false);
   }
 
   public inspectWeapon(): void {

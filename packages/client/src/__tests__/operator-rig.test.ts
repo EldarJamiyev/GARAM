@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { fileURLToPath } from 'url';
 import * as THREE from 'three';
 import { NodeIO } from '@gltf-transform/core';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -7,8 +6,13 @@ import { AssetManager } from '../render/AssetManager.js';
 import { OperatorArmIK, WORLD_WEAPON_CATALOG } from '../render/OperatorArmIK.js';
 import { buildProceduralCS2Weapon } from '../render/ProceduralWeaponBuilder.js';
 
+function urlToLocalPath(u: URL): string {
+  const p = decodeURIComponent(u.pathname);
+  return /^\/[A-Za-z]:/.test(p) ? p.slice(1) : p;
+}
+
 async function loadStrippedGlb(relPath: string, opts: Parameters<typeof AssetManager.normalizeGLB>[2]) {
-  const fullPath = fileURLToPath(new URL(`../../public/models/${relPath}`, import.meta.url));
+  const fullPath = urlToLocalPath(new URL(`../../public/models/${relPath}`, import.meta.url));
   const io = new NodeIO();
   const doc = await io.read(fullPath);
   for (const tex of doc.getRoot().listTextures()) tex.dispose();
@@ -91,10 +95,10 @@ describe('3P OperatorRig & OperatorArmIK (Vanguard + Syndicate)', () => {
       { id: 'garam-47', glb: 'garam47.glb' },
       { id: 'sovereign-awp', glb: 'awp.glb' },
       { id: 'desert-eagle', glb: 'deagle.glb' },
-      { id: 'm4a4' },
-      { id: 'usp-s' },
-      { id: 'glock-18' },
-      { id: 'mp9' },
+      { id: 'm4a4', glb: 'm4a4.glb' },
+      { id: 'usp-s', glb: 'usps.glb' },
+      { id: 'glock-18', glb: 'glock18.glb' },
+      { id: 'mp9', glb: 'mp9.glb' },
     ];
 
     for (const agentFile of agentFiles) {

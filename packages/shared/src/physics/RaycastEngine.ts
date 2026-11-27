@@ -779,3 +779,81 @@ export function hasLineOfSight(
 
   return true;
 }
+
+export interface PelletRayOutcome {
+  rayDirection: Vec3;
+  hits: RaycastHit[];
+}
+
+/**
+ * Deterministic CS 1.6 multi-pellet buckshot dispersion (for Leone M3 = 9 pellets, XM1014 = 6 pellets).
+ * Pellet 0 is tight center-biased while outer pellets trace a golden-angle ring pattern.
+ */
+export function executeShotgunRaycast(
+  origin: Vec3,
+  yaw: number,
+  pitch: number,
+  pelletCount: number,
+  pelletSpreadRad: number,
+  baseDamagePerPellet: number,
+  armorPenetration: number,
+  penetrationPower: number,
+  blocks: MapBlockCollider[],
+  targets: TargetCollider[],
+  rangeDropoff: number,
+  spatialGrid?: SpatialGrid,
+  headDamageMultiplier = 4.0,
+  seed = 1
+): PelletRayOutcome[] {
+  const outcomes: PelletRayOutcome[] = [];
+  const goldenAngle = 2.399963229728653;
+
+  for (let p = 0; p < pelletCount; p++) {
+    let sx = 0;
+    let sy = 0;
+    if (p > 0) {
+      const hash = Math.abs(Math.sin((seed + p) * 19.371) * 43758.5453) % 1;
+      const radial = Math.sqrt(p / pelletCount) * pelletSpreadRad * (0.78 + hash * 0.44);
+      const theta = p * goldenAngle + hash * 0.55;
+      sx = Math.cos(theta) * radial;
+      sy = Math.sin(theta) * radial;
+    }
+    const dir = computeSpreadRayDirection(yaw, pitch, sx, sy);
+    const hits = executeTacticalRaycast(
+      { origin, direction: dir },
+      baseDamagePerPellet,
+      armorPenetration,
+      penetrationPower,
+      75, // Effective shotgun range
+      blocks,
+      targets,
+      rangeDropoff,
+      spatialGrid,
+      headDamageMultiplier
+    );
+    outcomes.push({ rayDirection: dir, hits });
+  }
+  return outcomes;
+}
+
+/**
+ * Checks whether a target holding a raised Tactical Shield blocks an incoming bullet vector.
+ */
+export function isBlockedByTacticalShield(
+  bulletDir: Vec3,
+  targetYaw: number,
+  hasRaisedShield: boolean,
+  hitZone?: HitZone
+): boolean {
+  if (!hasRaisedShield) return false;
+  if (hitZone === 'LEGS') return false; // Feet remain exposed under raised shield (authentic CS 1.6 counterplay!)
+  // Target forward (-Z in Three.js yaw convention)
+  const tgtFwdX = -Math.sin(targetYaw);
+  const tgtFwdZ = -Math.cos(targetYaw);
+  const incomingTowardShooterX = -bulletDir.x;
+  const incomingTowardShooterZ = -bulletDir.z;
+  const len = Math.hypot(incomingTowardShooterX, incomingTowardShooterZ);
+  if (len < 1e-6) return false;
+  const dot = (tgtFwdX * incomingTowardShooterX + tgtFwdZ * incomingTowardShooterZ) / len;
+  return dot >= 0.42; // ~65 deg frontal ballistic shield arc
+}

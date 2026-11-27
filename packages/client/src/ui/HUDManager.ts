@@ -89,6 +89,24 @@ function getWeaponSilhouetteSvg(weaponId: string): string {
       return '<svg viewBox="0 0 26 14" width="20" height="12" fill="currentColor" aria-hidden="true"><path d="M4.5 4.4h16.5v2.4h-8.4L11 12H8l1.4-5.2H4.5V4.4z"/></svg>';
     case 'garam-karambit':
       return '<svg viewBox="0 0 28 14" width="22" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="6.2" cy="8.5" r="2.2"/><path d="M8.4 7.8c3.2-2.8 8.4-4.6 15.2-3.4-3.8 2.4-7.4 3.6-11.2 4.1" fill="currentColor"/></svg>';
+    case 'mp5-navy':
+      return '<svg viewBox="0 0 36 14" width="28" height="12" fill="currentColor" aria-hidden="true"><path d="M2 7h6V5.5h15.5V7H32v1.6h-8.5v1h-2.3l1.1 3.5H20l-1.3-3.5h-4.8l-.8 2.6h-2l.5-2.6H2V7z"/></svg>';
+    case 'clarion-famas':
+      return '<svg viewBox="0 0 42 14" width="34" height="12" fill="currentColor" aria-hidden="true"><path d="M2 7.4h11V4.4h14v3h12v1.5H28.5l-.5 2.2h-4.5l-.6 1.8h-2.4l.4-2.8H13l-.7 2.8H9.8l.4-2.8H2V7.4zm13.2-1.8v1.8h9.6V5.6h-9.6z"/></svg>';
+    case 'defender-galil':
+      return '<svg viewBox="0 0 44 14" width="34" height="12" fill="currentColor" aria-hidden="true"><path d="M1 8.2h8.2l1.8-1.9h12.2v1.2h16v1.4H26l-.8 1.5h-2l.9 2.7h-2.3l-1.2-3.1h-5.6l-.8 2.6H12l.4-2.6H9.4L3.2 11.8H1V8.2z"/></svg>';
+    case 'schmidt-scout':
+      return '<svg viewBox="0 0 48 14" width="38" height="12" fill="currentColor" aria-hidden="true"><path d="M1 8.4h9.5l2-1.6h13v.7h20v1.2H25.5l-1.5 1.4h-7.8l-.6 1.8h-2.2l.4-1.8H10L4 11.8H1V8.4zm14.5-3.8h7.5v1.4h-7.5V4.6z"/></svg>';
+    case 'p90':
+      return '<svg viewBox="0 0 34 14" width="28" height="12" fill="currentColor" aria-hidden="true"><path d="M3 5.8h22.5v1.2H31v1.8h-6.5l-1.6 3.2h-4.6l.8-2.4h-5.4l-.9 2.4H8.5l1.2-2.4H3V5.8zm4-1.4h16.2v1H7v-1z"/></svg>';
+    case 'leone-m3':
+      return '<svg viewBox="0 0 44 14" width="35" height="12" fill="currentColor" aria-hidden="true"><path d="M1 8.6h8.8l2-1.8h28.8v1.3H28.8v1.2h-9.2l-1.2 1h-6.2L4.2 12H1V8.6z"/></svg>';
+    case 'xm1014':
+      return '<svg viewBox="0 0 44 14" width="35" height="12" fill="currentColor" aria-hidden="true"><path d="M1 8h8.5l1.8-1.6h29.2v1.5H27.4v1.1h-9l-1 1.1h-2.8l-.8 2.2h-2.2l.6-2.4H9.2L3.5 11.6H1V8z"/></svg>';
+    case 'dual-elites':
+      return '<svg viewBox="0 0 32 14" width="26" height="12" fill="currentColor" aria-hidden="true"><path d="M2 3.2h12v2H8.4L7.2 9.4H4.8l1.1-4.2H2v-2zm15 2.4h12v2h-5.6l-1.2 4.2h-2.4l1.1-4.2H17v-2z"/></svg>';
+    case 'tactical-shield':
+      return '<svg viewBox="0 0 24 14" width="20" height="12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="6" y="1.4" width="12" height="11.2" rx="1.6" fill="currentColor" fill-opacity="0.25"/><rect x="8.2" y="3.4" width="7.6" height="2.4" rx="0.5" fill="currentColor"/></svg>';
     default:
       return '<svg viewBox="0 0 34 14" width="28" height="12" fill="currentColor" aria-hidden="true"><path d="M2 7h28v2H19l-1 3h-2l.6-3H9L4 11H2V7z"/></svg>';
   }
@@ -125,6 +143,7 @@ export class HUDManager {
   private killfeedEl = document.getElementById('killfeed');
   private radioFeedEl = document.getElementById('cs2-radio-feed');
   private sniperScopeEl = document.getElementById('sniper-scope');
+  private nvgOverlayEl = document.getElementById('nvg-overlay');
   private calloutEl = document.getElementById('hud-callout');
   private scoreboardTbody = document.getElementById('score-tbody');
   private killCardsEl = document.getElementById('cs2-kill-cards');
@@ -347,6 +366,15 @@ export class HUDManager {
     this.lastScopeVisible = visible;
     if (this.sniperScopeEl) {
       this.sniperScopeEl.style.display = visible ? 'block' : 'none';
+    }
+  }
+
+  public setNightVision(active: boolean): void {
+    if (!this.nvgOverlayEl) {
+      this.nvgOverlayEl = document.getElementById('nvg-overlay');
+    }
+    if (this.nvgOverlayEl) {
+      this.nvgOverlayEl.style.display = active ? 'block' : 'none';
     }
   }
 

@@ -3,10 +3,24 @@ import { BotEntity } from '../maps/DeCitadelMap.js';
 import { settingsStore } from '../core/SettingsStore.js';
 
 const _forward = new THREE.Vector3();
+const _right = new THREE.Vector3();
 const _camPos = new THREE.Vector3();
+
+export type SpectatorCameraMode = 'CHASE' | 'FIRST_PERSON' | 'FREE_ROAM';
+
+export interface SpectatorMoveInput {
+  forward: boolean;
+  backward: boolean;
+  left: boolean;
+  right: boolean;
+  jump?: boolean;
+  crouch?: boolean;
+}
 
 export class SpectatorManager {
   public isSpectating = false;
+  public mode: SpectatorCameraMode = 'CHASE';
+  private freePos = new THREE.Vector3();
   private spectateIndex = 0;
   private bannerEl: HTMLElement | null = null;
   private deathCamTimer = 0;
@@ -71,7 +85,21 @@ export class SpectatorManager {
     return livingAllies[this.spectateIndex];
   }
 
-  public update(dt: number, camera: THREE.PerspectiveCamera, bots: BotEntity[]): void {
+  public cycleCameraMode(camera: THREE.PerspectiveCamera): void {
+    const order: SpectatorCameraMode[] = ['CHASE', 'FIRST_PERSON', 'FREE_ROAM'];
+    this.mode = order[(order.indexOf(this.mode) + 1) % order.length];
+    if (this.mode === 'FREE_ROAM') {
+      this.freePos.copy(camera.position);
+    }
+    this.lastBannerKey = '';
+  }
+
+  public update(
+    dt: number,
+    camera: THREE.PerspectiveCamera,
+    bots: BotEntity[],
+    input?: SpectatorMoveInput
+  ): void {
     if (!this.isSpectating) return;
 
     if (this.deathCamTimer > 0) {
@@ -83,35 +111,70 @@ export class SpectatorManager {
     }
 
     const livingAllies = this.getLivingAllies(bots);
-    if (livingAllies.length === 0) {
+    if (livingAllies.length === 0 && this.mode !== 'FREE_ROAM') {
       this.stop();
+      return;
+    }
+
+    if (this.mode === 'FREE_ROAM') {
+      if (input) {
+        const speed = 12.0;
+        camera.getWorldDirection(_forward);
+        _right.crossVectors(_forward, camera.up).normalize();
+        if (input.forward) this.freePos.addScaledVector(_forward, speed * dt);
+        if (input.backward) this.freePos.addScaledVector(_forward, -speed * dt);
+        if (input.right) this.freePos.addScaledVector(_right, speed * dt);
+        if (input.left) this.freePos.addScaledVector(_right, -speed * dt);
+        if (input.jump) this.freePos.y += speed * 0.7 * dt;
+        if (input.crouch) this.freePos.y -= speed * 0.7 * dt;
+        camera.position.copy(this.freePos);
+      }
+      const targetBot = livingAllies[this.spectateIndex % Math.max(1, livingAllies.length)];
+      this.updateBanner(targetBot ?? null);
       return;
     }
 
     const targetBot = livingAllies[this.spectateIndex % livingAllies.length];
     if (targetBot) {
       const pos = targetBot.mesh.position;
-      _forward.set(0, 0, 1).applyEuler(targetBot.mesh.rotation);
-      _camPos.set(pos.x, pos.y + 1.85, pos.z).addScaledVector(_forward, -2.2);
-      camera.position.lerp(_camPos, Math.min(1.0, 18 * dt));
-      camera.lookAt(pos.x, pos.y + 1.6, pos.z);
+      if (this.mode === 'FIRST_PERSON') {
+        camera.position.set(pos.x, pos.y + 1.66, pos.z);
+        camera.rotation.set(0, targetBot.mesh.rotation.y + Math.PI, 0, 'YXZ');
+      } else {
+        _forward.set(0, 0, 1).applyEuler(targetBot.mesh.rotation);
+        _camPos.set(pos.x, pos.y + 1.85, pos.z).addScaledVector(_forward, -2.2);
+        camera.position.lerp(_camPos, Math.min(1.0, 18 * dt));
+        camera.lookAt(pos.x, pos.y + 1.6, pos.z);
+      }
       this.updateBanner(targetBot);
     }
   }
 
-  private updateBanner(bot: BotEntity): void {
+  private updateBanner(bot: BotEntity | null): void {
     if (!this.bannerEl) return;
-    const key = `${bot.id}:${Math.round(bot.health)}`;
+    const key = `${this.mode}:${bot ? `${bot.id}:${Math.round(bot.health)}` : 'free'}`;
     if (key === this.lastBannerKey) return;
     this.lastBannerKey = key;
 
-    const accent = bot.team === 'Syndicate' ? '#f59e0b' : '#3b9eff';
     this.bannerEl.style.display = 'block';
     this.bannerEl.textContent = '';
 
+    if (this.mode === 'FREE_ROAM' || !bot) {
+      const modeSpan = document.createElement('span');
+      modeSpan.style.color = '#fbbf24';
+      modeSpan.textContent = 'FREE ROAM CAMERA  |  ';
+      const hintSpan = document.createElement('span');
+      hintSpan.style.color = '#8e959e';
+      hintSpan.style.fontSize = '11px';
+      hintSpan.textContent = '[WASD] FLY • [SPACE] CHANGE MODE';
+      this.bannerEl.append(modeSpan, hintSpan);
+      return;
+    }
+
+    const accent = bot.team === 'Syndicate' ? '#f59e0b' : '#3b9eff';
     const labelSpan = document.createElement('span');
     labelSpan.style.color = accent;
-    labelSpan.textContent = 'SPECTATING: ';
+    labelSpan.textContent = `SPECTATING (${this.mode}): `;
 
     const nameText = document.createTextNode(`${bot.name.toUpperCase()} • `);
 
@@ -119,12 +182,12 @@ export class SpectatorManager {
     hpSpan.style.color = '#00ff88';
     hpSpan.textContent = `${Math.round(bot.health)} HP`;
 
-    const sepText = document.createTextNode(' • GARAM-47  |  ');
+    const sepText = document.createTextNode(` • ${(bot.weaponId || 'garam-47').toUpperCase()}  |  `);
 
     const hintSpan = document.createElement('span');
     hintSpan.style.color = '#8e959e';
     hintSpan.style.fontSize = '11px';
-    hintSpan.textContent = '[M1 / M2] CYCLE TEAMMATE';
+    hintSpan.textContent = '[M1/M2] TEAMMATE • [SPACE] CAMERA MODE';
 
     this.bannerEl.append(labelSpan, nameText, hpSpan, sepText, hintSpan);
   }

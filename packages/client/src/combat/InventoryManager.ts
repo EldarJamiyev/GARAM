@@ -37,10 +37,54 @@ export class InventoryManager {
 
   public onReloadCancelled?: () => void;
 
+  // CS 1.6 weapon secondary mode & utility cycling state
+  public burstModeWeapons = new Set<string>();
+  public detachedSilencers = new Set<string>();
+  private readonly utilityCycleOrder = ['smoke-grenade', 'flashbang', 'he-grenade', 'molotov'] as const;
+
   // Cached sandbox override merge (0 allocations per 128Hz tick)
   private cachedOverrideId = '';
   private cachedOverrideRef: Partial<WeaponDef> | undefined = undefined;
   private cachedWeaponDef: WeaponDef | null = null;
+
+  public isSilencerAttached(weaponId: string): boolean {
+    return !this.detachedSilencers.has(weaponId);
+  }
+
+  public toggleSilencer(weaponId: string): boolean {
+    if (this.detachedSilencers.has(weaponId)) {
+      this.detachedSilencers.delete(weaponId);
+      return true;
+    }
+    this.detachedSilencers.add(weaponId);
+    return false;
+  }
+
+  public toggleBurstMode(weaponId: string): boolean {
+    if (this.burstModeWeapons.has(weaponId)) {
+      this.burstModeWeapons.delete(weaponId);
+      return false;
+    }
+    this.burstModeWeapons.add(weaponId);
+    return true;
+  }
+
+  /** CS 1.6 [4] key cycling across all owned grenades in EconomyManager */
+  public cycleOwnedUtility(owned: Record<string, number>, infinite: boolean): boolean {
+    const currentId = this.slots[4]?.weaponId;
+    const startIdx = currentId
+      ? this.utilityCycleOrder.indexOf(currentId as (typeof this.utilityCycleOrder)[number])
+      : -1;
+    for (let offset = 1; offset <= this.utilityCycleOrder.length; offset++) {
+      const candidate = this.utilityCycleOrder[(startIdx + offset) % this.utilityCycleOrder.length];
+      if (infinite || (owned[candidate] || 0) > 0) {
+        this.slots[4] = { weaponId: candidate, currentAmmo: 1, reserveAmmo: 0 };
+        this.equipSlot(4, true);
+        return true;
+      }
+    }
+    return false;
+  }
 
   constructor() {
     // Default loadout
@@ -178,16 +222,20 @@ export class InventoryManager {
   }
 
   public canFire(now: number, isMouseDown: boolean): { canFire: boolean; reason?: string } {
+    const weapon = this.getActiveWeapon();
+    const state = this.getActiveSlotState();
+
     if (this.isReloading) {
-      return { canFire: false, reason: 'reloading' };
+      if (weapon.shellByShellReload && state.currentAmmo > 0) {
+        this.cancelReload();
+      } else {
+        return { canFire: false, reason: 'reloading' };
+      }
     }
 
     if (this.boltCycleRemaining > 0) {
       return { canFire: false, reason: 'bolt_cycle' };
     }
-
-    const weapon = this.getActiveWeapon();
-    const state = this.getActiveSlotState();
 
     if (weapon.category !== 'melee' && state.currentAmmo <= 0) {
       return { canFire: false, reason: 'out_of_ammo' };
@@ -197,6 +245,8 @@ export class InventoryManager {
       return { canFire: false, reason: 'semi_held' };
     }
 
+    void now;
+    void isMouseDown;
     return { canFire: true };
   }
 
@@ -231,8 +281,8 @@ export class InventoryManager {
     if (state.reserveAmmo <= 0) return false;
 
     this.isReloading = true;
-    this.reloadDuration = weapon.reloadTime;
-    this.reloadRemaining = weapon.reloadTime;
+    this.reloadDuration = weapon.shellByShellReload ? (weapon.shellInsertTimeSec ?? 0.42) : weapon.reloadTime;
+    this.reloadRemaining = this.reloadDuration;
     return true;
   }
 
@@ -257,14 +307,27 @@ export class InventoryManager {
     if (this.isReloading) {
       this.reloadRemaining -= dt;
       if (this.reloadRemaining <= 0) {
-        this.isReloading = false;
         const weapon = this.getActiveWeapon();
         const state = this.getActiveSlotState();
-        const needed = weapon.magCapacity - state.currentAmmo;
-        const transfer = Math.min(needed, state.reserveAmmo);
-        state.currentAmmo += transfer;
-        state.reserveAmmo -= transfer;
-        reloadCompleted = true;
+        if (weapon.shellByShellReload) {
+          if (state.currentAmmo < weapon.magCapacity && state.reserveAmmo > 0) {
+            state.currentAmmo += 1;
+            state.reserveAmmo -= 1;
+          }
+          if (state.currentAmmo < weapon.magCapacity && state.reserveAmmo > 0) {
+            this.reloadRemaining = this.reloadDuration;
+          } else {
+            this.isReloading = false;
+            reloadCompleted = true;
+          }
+        } else {
+          this.isReloading = false;
+          const needed = weapon.magCapacity - state.currentAmmo;
+          const transfer = Math.min(needed, state.reserveAmmo);
+          state.currentAmmo += transfer;
+          state.reserveAmmo -= transfer;
+          reloadCompleted = true;
+        }
       }
     }
 

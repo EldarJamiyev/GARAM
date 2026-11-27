@@ -19,12 +19,22 @@ export interface EconomyConfig {
   lossBonusStep: number;
   lossBonusMax: number;
   tLossBonusPostPlant: number;
+  hostageInteractBonus: number;
+  hostageRescueBonus: number;
+  hostageWinCash: number;
   prices: {
     kevlar: number;
     helmet: number;
     kevlarHelmetCombo: number;
     defuseKit: number;
     smokeGrenade: number;
+    flashbang: number;
+    heGrenade: number;
+    molotov: number;
+    nightVision: number;
+    tacticalShield: number;
+    primaryAmmoClip: number;
+    secondaryAmmoClip: number;
   };
 }
 
@@ -49,12 +59,22 @@ export const ECONOMY: EconomyConfig = {
   lossBonusStep: 500,
   lossBonusMax: 3400, // $1400, $1900, $2400, $2900, $3400 (streak 0..4)
   tLossBonusPostPlant: 800,
+  hostageInteractBonus: 150,
+  hostageRescueBonus: 1000,
+  hostageWinCash: 3500,
   prices: {
     kevlar: 650,
     helmet: 350,
     kevlarHelmetCombo: 1000,
     defuseKit: 300,
     smokeGrenade: 300,
+    flashbang: 200,
+    heGrenade: 300,
+    molotov: 400,
+    nightVision: 1250,
+    tacticalShield: 2200,
+    primaryAmmoClip: 60,
+    secondaryAmmoClip: 25,
   },
 };
 

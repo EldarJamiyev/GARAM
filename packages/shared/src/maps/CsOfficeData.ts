@@ -1,6 +1,15 @@
 import { AABBCollider, MapBounds } from '../physics/KinematicPlayerController.js';
 
-export type SurfaceMaterial = 'CONCRETE' | 'WOOD_THIN' | 'DRYWALL' | 'METAL_SHEET';
+export type SurfaceMaterial =
+  | 'CONCRETE'
+  | 'WOOD_THIN'
+  | 'DRYWALL'
+  | 'METAL_SHEET'
+  | 'GLASS'
+  | 'SNOW'
+  | 'DIRT'
+  | 'VENT_DUCT'
+  | 'TILE';
 
 export interface SurfaceMaterialProps {
   /** Attenuation factor mu (higher = easier to penetrate) */
@@ -18,7 +27,35 @@ export const SURFACE_MATERIALS: Record<SurfaceMaterial, SurfaceMaterialProps> = 
   WOOD_THIN: { mu: 0.75, cost: 10, maxThickness: 2.2, isImpenetrable: false },
   DRYWALL: { mu: 0.70, cost: 18, maxThickness: 1.5, isImpenetrable: false },
   METAL_SHEET: { mu: 0.45, cost: 36, maxThickness: 1.2, isImpenetrable: false },
+  GLASS: { mu: 0.95, cost: 2, maxThickness: 1.5, isImpenetrable: false },
+  SNOW: { mu: 0.80, cost: 12, maxThickness: 1.8, isImpenetrable: false },
+  DIRT: { mu: 0.70, cost: 16, maxThickness: 1.4, isImpenetrable: false },
+  VENT_DUCT: { mu: 0.50, cost: 26, maxThickness: 1.0, isImpenetrable: false },
+  TILE: { mu: 0.0, cost: 999, maxThickness: 0.0, isImpenetrable: true },
 };
+
+export function getGroundSurfaceMaterial(
+  x: number,
+  y: number,
+  z: number,
+  blocks: readonly MapBlockCollider[]
+): SurfaceMaterial {
+  let bestTop = -Infinity;
+  let bestMat: SurfaceMaterial = 'CONCRETE';
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ) {
+      if (b.maxY <= y + 0.12 && b.maxY > bestTop) {
+        bestTop = b.maxY;
+        if (b.theme === 'snow') bestMat = 'SNOW';
+        else if (b.theme === 'office_floor' || b.theme === 'wood') bestMat = b.theme === 'wood' ? 'WOOD_THIN' : 'TILE';
+        else if (b.theme === 'metal') bestMat = 'METAL_SHEET';
+        else bestMat = b.material;
+      }
+    }
+  }
+  return bestMat;
+}
 
 export interface Vec3 {
   x: number;

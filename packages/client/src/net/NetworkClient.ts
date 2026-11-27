@@ -10,6 +10,7 @@ import {
   SpatialGrid,
   BinaryCodec,
   BinaryInputData,
+  MapId,
 } from '@garam/shared';
 import { OperatorRig } from '../render/OperatorRig.js';
 import { HUDManager } from '../ui/HUDManager.js';
@@ -66,7 +67,19 @@ export interface NetworkClientCallbacks {
   onEconomySync?: (payload: EconomySyncPayload) => void;
   onUtilityEvent?: (payload: UtilityEventPayload) => void;
   onLocalStateSync?: (payload: LocalStateSyncPayload) => void;
-  onMapSync?: (mapId: 'de_dust2' | 'cs_office') => void;
+  onMapSync?: (mapId: MapId) => void;
+  onRadioBroadcast?: (payload: {
+    senderName: string;
+    team: 'Vanguard' | 'Syndicate';
+    text: string;
+    callout: string;
+  }) => void;
+  onBreakableBroken?: (blockId: string) => void;
+  onSprayEvent?: (payload: {
+    emblemId: string;
+    pos: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+  }) => void;
 }
 
 /**
@@ -217,7 +230,7 @@ export class NetworkClient {
     url = 'ws://localhost:2567',
     callsign = 'Operator',
     faction: 'Vanguard' | 'Syndicate' = 'Vanguard',
-    mapId: 'de_dust2' | 'cs_office' = 'de_dust2'
+    mapId: MapId = 'de_dust2'
   ): void {
     if (this.ws) {
       this.ws.close();
@@ -401,6 +414,40 @@ export class NetworkClient {
     this.send({ type: 'plant_defuse', action });
   }
 
+  public sendSecondaryToggle(weaponId: string, mode: 'silencer' | 'burst' | 'shield'): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'secondary_toggle', weaponId, mode });
+  }
+
+  public sendAutoBuy(): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'autobuy' });
+  }
+
+  public sendRebuy(): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'rebuy' });
+  }
+
+  public sendRadioCmd(commandId: string, callout = 'ARENA'): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'radio_cmd', commandId, callout });
+  }
+
+  public sendSprayLogo(
+    emblemId: string,
+    pos: { x: number; y: number; z: number },
+    normal: { x: number; y: number; z: number }
+  ): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'spray_logo', emblemId, pos, normal });
+  }
+
+  public sendBreakableHit(blockId: string, damage: number): void {
+    if (!this.isConnected) return;
+    this.send({ type: 'breakable_hit', blockId, damage });
+  }
+
   public sendUtilityThrow(
     utilityType: string,
     mode: 'long' | 'medium' | 'short',
@@ -545,6 +592,30 @@ export class NetworkClient {
         this.hud.showCenterBanner(`${packet.winner.toUpperCase()} WINS`, packet.reason || '', 4000);
       }
       this.callbacks.onScoresUpdated?.(packet.ctScore, packet.tScore);
+      return;
+    }
+
+    if (packet.type === 'radio_broadcast') {
+      this.callbacks.onRadioBroadcast?.({
+        senderName: packet.senderName,
+        team: packet.team,
+        text: packet.text,
+        callout: packet.callout,
+      });
+      return;
+    }
+
+    if (packet.type === 'breakable_broken') {
+      this.callbacks.onBreakableBroken?.(packet.blockId);
+      return;
+    }
+
+    if (packet.type === 'spray_event') {
+      this.callbacks.onSprayEvent?.({
+        emblemId: packet.emblemId,
+        pos: packet.pos,
+        normal: packet.normal,
+      });
       return;
     }
 

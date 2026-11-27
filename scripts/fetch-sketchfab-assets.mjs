@@ -1,23 +1,43 @@
 #!/usr/bin/env node
 /**
- * GARAM: ZERO HOUR — Sketchfab 3D Asset Pipeline
- * Downloads curated CC-BY CS2 / tactical 3D GLB models from Sketchfab using
- * SKETCHFAB_API_TOKEN from process.env or local .env (never hardcoded),
- * then runs scripts/optimize-glb.py to produce lean, web-ready PBR GLBs.
+ * GARAM: ZERO HOUR — Sketchfab 3D Asset & Collection Pipeline
+ * Queries Sketchfab API v3 for collection 4a662b6f095c4c04aa8473c89eee47f4 (https://skfb.ly/pQKYU)
+ * and the core CS2 tactical catalog using SKETCHFAB_API_TOKEN / SKETCHFAB_API_KEY from local .env
+ * (never printed or logged), downloads all downloadable GLB archives, and runs @gltf-transform
+ * (dedup, prune) + scripts/optimize-glb.py (<= 1024px baseColor, lossless PNG normal maps, <= 16 MiB).
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { optimizeGlb } from './optimize-glb.mjs';
+import { NodeIO } from '@gltf-transform/core';
+import { dedup, prune } from '@gltf-transform/functions';
+
+const COLLECTION_UID = '4a662b6f095c4c04aa8473c89eee47f4';
 
 function resolveToken() {
-  if (process.env.SKETCHFAB_API_TOKEN) return process.env.SKETCHFAB_API_TOKEN.trim();
+  for (const k of ['SKETCHFAB_API_TOKEN', 'SKETCHFAB_API_KEY']) {
+    if (process.env[k] && process.env[k].trim()) return process.env[k].trim();
+  }
   const envPath = path.resolve(process.cwd(), '.env');
   if (fs.existsSync(envPath)) {
-    const match = fs.readFileSync(envPath, 'utf8').match(/^SKETCHFAB_API_TOKEN=(.+)$/m);
-    if (match) return match[1].trim();
+    const txt = fs.readFileSync(envPath, 'utf8');
+    for (const line of txt.split(/\r?\n/)) {
+      const m = line.match(/^(?:SKETCHFAB_API_TOKEN|SKETCHFAB_API_KEY|Sketchfab api key)\s*[=:]\s*(.+)$/i);
+      if (m && m[1].trim()) {
+        return m[1].trim().replace(/^["']|["']$/g, '');
+      }
+    }
   }
   return '';
+}
+
+function classifyModelCategory(name = '') {
+  const n = name.toLowerCase();
+  if (/grenade|stun|flash|smoke|molotov/.test(n)) return 'utility';
+  if (/bomb|c4/.test(n)) return 'prop';
+  if (/dust|office|mirage|inferno|map/.test(n)) return 'map';
+  if (/agent|sas|balkan|operator|soldier/.test(n)) return 'operator';
+  return 'weapon';
 }
 
 const CATALOG = [
@@ -38,26 +58,53 @@ const CATALOG = [
   { out: 'cs_office.glb', uid: '4e36baec19194164acd47f7cc236d4e6', buildOfficeMap: true, label: 'MAP | CS_OFFICE (CS:GO Real Light version by neominigan)' },
 ];
 
+async function fetchCollectionModels(collectionUid, headers) {
+  const models = [];
+  let nextUrl = `https://api.sketchfab.com/v3/collections/${collectionUid}/models`;
+  while (nextUrl) {
+    const res = await fetch(nextUrl, { headers, signal: AbortSignal.timeout(20000) });
+    if (!res.ok) break;
+    const data = await res.json();
+    if (Array.isArray(data.results)) models.push(...data.results);
+    nextUrl = data.next || null;
+  }
+  return models;
+}
+
+async function runGltfTransformPass(filePath) {
+  const io = new NodeIO();
+  const doc = await io.read(filePath);
+  await doc.transform(dedup(), prune());
+  await io.write(filePath, doc);
+}
+
 async function main() {
   const token = resolveToken();
-  if (!token) {
-    console.error('Missing SKETCHFAB_API_TOKEN in environment or .env');
-    process.exit(1);
+  const headers = token ? { Authorization: `Token ${token}` } : {};
+
+  console.log(`[Sketchfab] Auditing Collection ${COLLECTION_UID} (https://skfb.ly/pQKYU)...`);
+  const collectionModels = await fetchCollectionModels(COLLECTION_UID, headers);
+  for (const m of collectionModels) {
+    const category = classifyModelCategory(m.name);
+    const license = m.license ? m.license.slug || m.license.label : 'standard';
+    console.log(
+      `  - ${m.name} | uid=${m.uid} | downloadable=${Boolean(m.isDownloadable)} | category=${category} | license=${license}`
+    );
   }
-  const headers = { Authorization: `Token ${token}` };
-  const tmpDir = path.resolve(process.cwd(), '.tmp_sketchfab');
+
+  if (!token) {
+    console.warn('[Sketchfab] No SKETCHFAB_API_TOKEN found in .env — skipping authenticated /download calls.');
+    return;
+  }
+
+  const tmpDir = '/tmp/sketchfab_raw';
   const outDir = path.resolve(process.cwd(), 'packages/client/public/models');
   fs.mkdirSync(tmpDir, { recursive: true });
   fs.mkdirSync(outDir, { recursive: true });
-  const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
 
   for (const item of CATALOG) {
     const rawPath = path.join(tmpDir, item.out);
     const finalPath = path.join(outDir, item.out);
-    if (fs.existsSync(finalPath) && fs.statSync(finalPath).size > 1000) {
-      console.log(`[Sketchfab] ${item.label} already exists at ${finalPath}, skipping.`);
-      continue;
-    }
     console.log(`[Sketchfab] Fetching ${item.label} (${item.uid})...`);
     const metaRes = await fetch(`https://api.sketchfab.com/v3/models/${item.uid}/download`, {
       headers,
@@ -88,7 +135,12 @@ async function main() {
         { stdio: 'inherit' }
       );
     } else {
-      await optimizeGlb(rawPath, finalPath, item.maxAlbedo, item.maxData);
+      await runGltfTransformPass(rawPath);
+      execFileSync(
+        'python3',
+        ['scripts/optimize-glb.py', rawPath, finalPath, String(item.maxAlbedo), String(item.maxData)],
+        { stdio: 'inherit' }
+      );
     }
   }
 }

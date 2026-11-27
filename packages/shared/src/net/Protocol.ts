@@ -57,6 +57,12 @@ export type ClientPacket =
   | { type: 'buy'; item: string }
   | { type: 'utility_throw'; utilityType: string; mode: 'long' | 'medium' | 'short'; origin: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; velocity: { x: number; y: number; z: number } }
   | { type: 'plant_defuse'; action: 'plant' | 'defuse' | 'cancel' }
+  | { type: 'secondary_toggle'; weaponId: string; mode: 'silencer' | 'burst' | 'shield' }
+  | { type: 'autobuy' }
+  | { type: 'rebuy' }
+  | { type: 'radio_cmd'; commandId: string; callout: string }
+  | { type: 'spray_logo'; emblemId: string; pos: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }
+  | { type: 'breakable_hit'; blockId: string; damage: number }
   | { type: 'ping'; timestamp: number }
   | { type: 'pong_challenge'; nonce: number };
 
@@ -70,5 +76,8 @@ export type ServerPacket =
   | { type: 'utility_event'; id: string; utilityType: string; origin: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; velocity: { x: number; y: number; z: number } }
   | { type: 'round_event'; phase: string; round: number; winner?: string; reason?: string; ctScore: number; tScore: number }
   | { type: 'economy_sync'; cash: number; ownedWeapons: string[]; armor: number; hasHelmet: boolean; hasDefuseKit: boolean }
+  | { type: 'radio_broadcast'; senderName: string; team: 'Vanguard' | 'Syndicate'; text: string; callout: string }
+  | { type: 'breakable_broken'; blockId: string }
+  | { type: 'spray_event'; emblemId: string; pos: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }
   | { type: 'ping_challenge'; nonce: number }
   | { type: 'pong'; clientTimestamp: number; serverTimestamp: number };

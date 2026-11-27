@@ -1,4 +1,4 @@
-import { ECONOMY, getLossBonus, SPAWN_ZONES } from '@garam/shared';
+import { ECONOMY, getLossBonus, SPAWN_ZONES, RebuySnapshot } from '@garam/shared';
 import { settingsStore } from '../core/SettingsStore.js';
 import type { UtilityType } from '../utility/UtilityManager.js';
 
@@ -17,7 +17,16 @@ export class EconomyManager {
   public armor = 100;
   public hasHelmet = true;
   public hasDefuseKit = false;
+  public hasNightVision = false;
   public practiceInfiniteUtility = false;
+  public rebuySnapshot: RebuySnapshot = {
+    primaryWeaponId: null,
+    secondaryWeaponId: null,
+    armorTier: 'none',
+    hasDefuseKit: false,
+    hasNightVision: false,
+    utilities: [],
+  };
   private spawnZones: BuyZonesConfig;
 
   public ownedUtilities: Record<UtilityType, number> = {
@@ -113,11 +122,27 @@ export class EconomyManager {
     return payout;
   }
 
+  public captureRebuySnapshot(primaryId: string | null, secondaryId: string | null): void {
+    const utils: string[] = [];
+    for (const [k, count] of Object.entries(this.ownedUtilities)) {
+      for (let i = 0; i < count; i++) utils.push(k);
+    }
+    this.rebuySnapshot = {
+      primaryWeaponId: primaryId,
+      secondaryWeaponId: secondaryId,
+      armorTier: this.hasHelmet && this.armor >= 100 ? 'kevlar-helmet' : this.armor >= 100 ? 'kevlar' : 'none',
+      hasDefuseKit: this.hasDefuseKit,
+      hasNightVision: this.hasNightVision,
+      utilities: utils,
+    };
+  }
+
   public devPracticeMoney(): void {
     this.cash = ECONOMY.maxCash;
     this.armor = 100;
     this.hasHelmet = true;
     this.hasDefuseKit = true;
+    this.hasNightVision = true;
     this.practiceInfiniteUtility = true;
     this.ownedUtilities = {
       'smoke-grenade': 1,

@@ -21,6 +21,8 @@ export interface LobbyUICallbacks {
   onMapChanged?: (mapId: ActiveMapId) => void;
   onQualityChanged?: (quality: GraphicsQuality) => void;
   onFpsLimitChanged?: (limit: FpsLimit) => void;
+  onRightHandChanged?: (rightHanded: boolean) => void;
+  onOfficeObjectiveChanged?: (mode: 'bomb' | 'hostage') => void;
 }
 
 export class LobbyUI {
@@ -169,6 +171,42 @@ export class LobbyUI {
         }
       });
     });
+
+    // 3d. CS 1.6 Classic Options (Right/Left Hand Viewmodel & CS_OFFICE Objective Mode)
+    const rightHandBtn = document.getElementById('btn-righthand');
+    if (rightHandBtn) {
+      const syncHandBtn = (rightHanded: boolean) => {
+        rightHandBtn.textContent = rightHanded ? 'VIEWMODEL: RIGHT HAND' : 'VIEWMODEL: LEFT HAND';
+        rightHandBtn.classList.toggle('active', rightHanded);
+        rightHandBtn.setAttribute('data-hand', rightHanded ? 'right' : 'left');
+      };
+      syncHandBtn(settingsStore.settings.rightHanded);
+      rightHandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const next = !settingsStore.settings.rightHanded;
+        settingsStore.update('rightHanded', next);
+        syncHandBtn(next);
+        this.callbacks.onRightHandChanged?.(next);
+      });
+    }
+
+    const officeModeBtn = document.getElementById('btn-office-mode');
+    if (officeModeBtn) {
+      const syncOfficeBtn = (mode: 'bomb' | 'hostage') => {
+        officeModeBtn.textContent =
+          mode === 'hostage' ? 'CS_OFFICE: HOSTAGE RESCUE' : 'CS_OFFICE: BOMB DEFUSAL';
+        officeModeBtn.classList.toggle('active', mode === 'hostage');
+        officeModeBtn.setAttribute('data-office', mode);
+      };
+      syncOfficeBtn(settingsStore.settings.csOfficeObjective);
+      officeModeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const next = settingsStore.settings.csOfficeObjective === 'hostage' ? 'bomb' : 'hostage';
+        settingsStore.update('csOfficeObjective', next);
+        syncOfficeBtn(next);
+        this.callbacks.onOfficeObjectiveChanged?.(next);
+      });
+    }
 
     // 4. Master Volume Slider
     const volSlider = document.getElementById('vol-slider') as HTMLInputElement | null;

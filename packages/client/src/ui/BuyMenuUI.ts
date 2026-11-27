@@ -3,7 +3,8 @@ import { EconomyManager } from '../match/EconomyManager.js';
 import { InventoryManager, SlotNumber } from '../combat/InventoryManager.js';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
 import { HUDManager } from './HUDManager.js';
-import { WEAPONS, ECONOMY } from '@garam/shared';
+import { WEAPONS, ECONOMY, computeAutoBuySequence, computeRebuySequence } from '@garam/shared';
+import { settingsStore } from '../core/SettingsStore.js';
 import type { UtilityType } from '../utility/UtilityManager.js';
 
 export interface BuyMenuStateSnapshot {
@@ -112,6 +113,50 @@ export class BuyMenuUI {
     }
   }
 
+  public executeAutoBuy(phase?: string, phaseTimer?: number, playerPos?: THREE.Vector3): void {
+    const plan = computeAutoBuySequence({
+      faction: settingsStore.settings.faction,
+      cash: this.economy.cash,
+      currentPrimaryId: this.inventory.slots[1]?.weaponId ?? null,
+      currentSecondaryId: this.inventory.slots[2]?.weaponId ?? null,
+      armor: this.economy.armor,
+      hasHelmet: this.economy.hasHelmet,
+      hasDefuseKit: this.economy.hasDefuseKit,
+      hasNightVision: this.economy.hasNightVision,
+      ownedUtilities: this.economy.ownedUtilities,
+    });
+    for (const item of plan) {
+      this.executePurchase(item, phase, phaseTimer, playerPos);
+    }
+  }
+
+  public executeRebuy(phase?: string, phaseTimer?: number, playerPos?: THREE.Vector3): void {
+    const plan = computeRebuySequence(
+      {
+        faction: settingsStore.settings.faction,
+        cash: this.economy.cash,
+        currentPrimaryId: this.inventory.slots[1]?.weaponId ?? null,
+        currentSecondaryId: this.inventory.slots[2]?.weaponId ?? null,
+        armor: this.economy.armor,
+        hasHelmet: this.economy.hasHelmet,
+        hasDefuseKit: this.economy.hasDefuseKit,
+        hasNightVision: this.economy.hasNightVision,
+        ownedUtilities: this.economy.ownedUtilities,
+      },
+      this.economy.rebuySnapshot
+    );
+    for (const item of plan) {
+      this.executePurchase(item, phase, phaseTimer, playerPos);
+    }
+  }
+
+  private captureRebuy(): void {
+    this.economy.captureRebuySnapshot(
+      this.inventory.slots[1]?.weaponId ?? null,
+      this.inventory.slots[2]?.weaponId ?? null
+    );
+  }
+
   public executePurchase(
     item: string,
     phase?: string,
@@ -141,6 +186,7 @@ export class BuyMenuUI {
       }
       if (this.economy.spendCash(650)) {
         this.economy.armor = 100;
+        this.captureRebuy();
         this.hud.addRadioMessage('Purchased Kevlar Vest ($650)');
         this.audio.playReload();
       } else {
@@ -157,6 +203,7 @@ export class BuyMenuUI {
       if (this.economy.spendCash(1000)) {
         this.economy.armor = 100;
         this.economy.hasHelmet = true;
+        this.captureRebuy();
         this.hud.addRadioMessage('Purchased Kevlar + Tactical Helmet ($1,000)');
         this.audio.playReload();
       } else {
@@ -173,7 +220,55 @@ export class BuyMenuUI {
       const kitPrice = ECONOMY.prices.defuseKit;
       if (this.economy.spendCash(kitPrice)) {
         this.economy.hasDefuseKit = true;
+        this.captureRebuy();
         this.hud.addRadioMessage(`Purchased Fast Defusal Kit ($${kitPrice})`);
+        this.audio.playReload();
+      } else {
+        this.triggerRejectionCue('INSUFFICIENT FUNDS');
+      }
+      return;
+    }
+
+    if (item === 'nvg') {
+      if (this.economy.hasNightVision) {
+        this.triggerRejectionCue('NVG ALREADY EQUIPPED');
+        return;
+      }
+      const nvgPrice = ECONOMY.prices.nightVision;
+      if (this.economy.spendCash(nvgPrice)) {
+        this.economy.hasNightVision = true;
+        this.captureRebuy();
+        this.hud.addRadioMessage(`Purchased NightVision Goggles ($${nvgPrice}) — Press [N]`);
+        this.audio.playNvgToggle(true);
+      } else {
+        this.triggerRejectionCue('INSUFFICIENT FUNDS');
+      }
+      return;
+    }
+
+    if (item === 'primammo' || item === 'secammo') {
+      const targetSlot: SlotNumber = item === 'primammo' ? 1 : 2;
+      const slotState = this.inventory.slots[targetSlot];
+      if (!slotState) {
+        this.triggerRejectionCue('NO WEAPON IN SLOT');
+        return;
+      }
+      const def = WEAPONS[slotState.weaponId];
+      if (!def || def.magCapacity <= 0) {
+        this.triggerRejectionCue('NO AMMO REQUIRED');
+        return;
+      }
+      if (slotState.reserveAmmo >= def.reserveAmmo) {
+        this.triggerRejectionCue('AMMO ALREADY FULL');
+        return;
+      }
+      const clipCost =
+        item === 'primammo' ? ECONOMY.prices.primaryAmmoClip : ECONOMY.prices.secondaryAmmoClip;
+      if (this.economy.spendCash(clipCost)) {
+        slotState.reserveAmmo = Math.min(def.reserveAmmo, slotState.reserveAmmo + def.magCapacity);
+        this.hud.addRadioMessage(
+          `Bought ${item === 'primammo' ? 'Primary' : 'Secondary'} Ammo Clip ($${clipCost})`
+        );
         this.audio.playReload();
       } else {
         this.triggerRejectionCue('INSUFFICIENT FUNDS');
@@ -195,6 +290,7 @@ export class BuyMenuUI {
           currentAmmo: 1,
           reserveAmmo: 0,
         };
+        this.captureRebuy();
         this.hud.addRadioMessage(`Purchased ${utilInfo.label} ($${utilInfo.price})`);
         this.audio.playReload();
       } else {
@@ -203,9 +299,13 @@ export class BuyMenuUI {
       return;
     }
 
-    // Firearms
+    // Firearms & Tactical Shield
     if (WEAPONS[item]) {
       const def = WEAPONS[item];
+      if (def.id === 'tactical-shield' && settingsStore.settings.faction !== 'Vanguard') {
+        this.triggerRejectionCue('VANGUARD ONLY');
+        return;
+      }
       if (this.economy.spendCash(def.price)) {
         const slot = def.slot;
         this.inventory.slots[slot] = {
@@ -215,6 +315,7 @@ export class BuyMenuUI {
         };
         this.inventory.equipSlot(slot, true);
         this.callbacks.onWeaponEquipped(slot);
+        this.captureRebuy();
         this.hud.addRadioMessage(`Requisitioned ${def.name} ($${def.price})`);
         this.audio.playReload();
       } else {
@@ -256,6 +357,38 @@ export class BuyMenuUI {
       practiceBtn.addEventListener('click', () => {
         this.economy.devPracticeMoney();
         this.hud.addRadioMessage('Practice Mode: $16,000 Cash + Infinite Utility Granted');
+      });
+    }
+
+    const autobuyBtn = document.getElementById('autobuy-btn');
+    if (autobuyBtn) {
+      autobuyBtn.addEventListener('click', () => {
+        const live = this.callbacks.getBuyState?.();
+        this.executeAutoBuy(live?.phase, live?.phaseTimer, live?.playerPos);
+      });
+    }
+
+    const rebuyBtn = document.getElementById('rebuy-btn');
+    if (rebuyBtn) {
+      rebuyBtn.addEventListener('click', () => {
+        const live = this.callbacks.getBuyState?.();
+        this.executeRebuy(live?.phase, live?.phaseTimer, live?.playerPos);
+      });
+    }
+
+    const primAmmoBtn = document.getElementById('primammo-btn');
+    if (primAmmoBtn) {
+      primAmmoBtn.addEventListener('click', () => {
+        const live = this.callbacks.getBuyState?.();
+        this.executePurchase('primammo', live?.phase, live?.phaseTimer, live?.playerPos);
+      });
+    }
+
+    const secAmmoBtn = document.getElementById('secammo-btn');
+    if (secAmmoBtn) {
+      secAmmoBtn.addEventListener('click', () => {
+        const live = this.callbacks.getBuyState?.();
+        this.executePurchase('secammo', live?.phase, live?.phaseTimer, live?.playerPos);
       });
     }
 

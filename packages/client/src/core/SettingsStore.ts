@@ -1,7 +1,9 @@
+import type { SprayEmblemId } from '../combat/SprayManager.js';
+
 export type BotDifficulty = 'Recruit' | 'Veteran' | 'Elite' | 'Sovereign';
 export type PlayerFaction = 'Vanguard' | 'Syndicate';
 export type GameMode = 'offline' | 'multiplayer';
-export type ActiveMapId = 'de_dust2' | 'cs_office';
+export type ActiveMapId = 'de_dust2' | 'cs_office' | 'de_nuke' | 'de_inferno' | 'fy_snow';
 export type GraphicsQuality = 'AUTO' | 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH';
 export type QualityTier = 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH';
 export type FpsLimit = 'VSYNC' | '120' | '240' | 'UNLIMITED';
@@ -32,6 +34,10 @@ export interface UserSettings {
   crosshair: CrosshairConfig;
   followRecoil: boolean;
   showHitboxes: boolean;
+  rightHanded: boolean;
+  fastSwitch: boolean;
+  sprayEmblem: SprayEmblemId;
+  csOfficeObjective: 'bomb' | 'hostage';
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -49,6 +55,10 @@ const DEFAULT_SETTINGS: UserSettings = {
   multiplayerHost: 'ws://localhost:2567',
   followRecoil: false,
   showHitboxes: false,
+  rightHanded: true,
+  fastSwitch: true,
+  sprayEmblem: 'sovereign',
+  csOfficeObjective: 'hostage',
   crosshair: {
     thickness: 2,
     length: 8,
@@ -74,6 +84,13 @@ const VALID_FPS_LIMITS: ReadonlySet<FpsLimit> = new Set([
   '120',
   '240',
   'UNLIMITED',
+]);
+const VALID_MAP_IDS: ReadonlySet<ActiveMapId> = new Set([
+  'de_dust2',
+  'cs_office',
+  'de_nuke',
+  'de_inferno',
+  'fy_snow',
 ]);
 
 export class SettingsStore {
@@ -107,9 +124,13 @@ export class SettingsStore {
           const rawFpsLimit = parsed.fpsLimit;
           const fpsLimit: FpsLimit =
             rawFpsLimit && VALID_FPS_LIMITS.has(rawFpsLimit) ? rawFpsLimit : 'VSYNC';
+          const rawMapId = parsed.mapId;
+          const mapId: ActiveMapId =
+            rawMapId && VALID_MAP_IDS.has(rawMapId) ? rawMapId : 'de_dust2';
           return {
             ...DEFAULT_SETTINGS,
             ...parsed,
+            mapId,
             graphicsQuality,
             fpsLimit,
             crosshair: { ...DEFAULT_SETTINGS.crosshair, ...(parsed.crosshair ?? {}) },

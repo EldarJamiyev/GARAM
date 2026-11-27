@@ -510,6 +510,86 @@ export class SceneManager {
     this.invalidateShadows();
   }
 
+  public configureNukeAtmosphere(): void {
+    this.horizonMesh.visible = true;
+    this.worldScene.fog = new THREE.FogExp2(0xd8cfc2, 0.0032);
+    this.hemiLight.color.setHex(0x9bc4e8);
+    this.hemiLight.groundColor.setHex(0x6b6f75);
+    this.hemiLight.intensity = 0.85;
+
+    this.sunLight.color.setHex(0xfff1d6);
+    this.sunLight.intensity = 2.65;
+    this.sunLight.position.set(52, 60, -28);
+    this.sunLight.target.position.set(4, 2.0, -4);
+    this.sunLight.target.updateMatrixWorld(true);
+    this.sunLight.updateMatrixWorld(true);
+
+    const d = 58;
+    this.sunLight.shadow.camera.left = -d;
+    this.sunLight.shadow.camera.right = d;
+    this.sunLight.shadow.camera.top = d;
+    this.sunLight.shadow.camera.bottom = -d;
+    this.sunLight.shadow.camera.updateProjectionMatrix();
+    this.viewmodelLighting.setMapStyle('de_nuke');
+    this.invalidateShadows();
+  }
+
+  public configureInfernoAtmosphere(): void {
+    this.horizonMesh.visible = true;
+    this.worldScene.fog = new THREE.FogExp2(0xdad4c4, 0.0034);
+    this.hemiLight.color.setHex(0x8bbde8);
+    this.hemiLight.groundColor.setHex(0x8c7258);
+    this.hemiLight.intensity = 0.72;
+
+    this.sunLight.color.setHex(0xffe8c2);
+    this.sunLight.intensity = 2.95;
+    this.sunLight.position.set(58, 48, 34);
+    this.sunLight.target.position.set(0, 1.5, 0);
+    this.sunLight.target.updateMatrixWorld(true);
+    this.sunLight.updateMatrixWorld(true);
+
+    const d = 56;
+    this.sunLight.shadow.camera.left = -d;
+    this.sunLight.shadow.camera.right = d;
+    this.sunLight.shadow.camera.top = d;
+    this.sunLight.shadow.camera.bottom = -d;
+    this.sunLight.shadow.camera.updateProjectionMatrix();
+    this.viewmodelLighting.setMapStyle('de_inferno');
+    this.invalidateShadows();
+  }
+
+  public configureSnowAtmosphere(): void {
+    this.horizonMesh.visible = false;
+    this.worldScene.fog = new THREE.FogExp2(0xd9ecff, 0.0045);
+    this.hemiLight.color.setHex(0xd9ecff);
+    this.hemiLight.groundColor.setHex(0xb8cbe0);
+    this.hemiLight.intensity = 1.05;
+
+    this.sunLight.color.setHex(0xf4f9ff);
+    this.sunLight.intensity = 2.25;
+    this.sunLight.position.set(32, 54, -26);
+    this.sunLight.target.position.set(0, 1.0, 0);
+    this.sunLight.target.updateMatrixWorld(true);
+    this.sunLight.updateMatrixWorld(true);
+
+    const d = 34;
+    this.sunLight.shadow.camera.left = -d;
+    this.sunLight.shadow.camera.right = d;
+    this.sunLight.shadow.camera.top = d;
+    this.sunLight.shadow.camera.bottom = -d;
+    this.sunLight.shadow.camera.updateProjectionMatrix();
+    this.viewmodelLighting.setMapStyle('fy_snow');
+    this.invalidateShadows();
+  }
+
+  public configureMapAtmosphere(mapId: string): void {
+    if (mapId === 'cs_office') this.configureOfficeAtmosphere();
+    else if (mapId === 'de_nuke') this.configureNukeAtmosphere();
+    else if (mapId === 'de_inferno') this.configureInfernoAtmosphere();
+    else if (mapId === 'fy_snow') this.configureSnowAtmosphere();
+    else this.configureDust2Atmosphere();
+  }
+
   public update(dt: number, cameraPos: THREE.Vector3, currentZone?: string): void {
     this.skyMesh.position.copy(cameraPos);
     this.playerFeetShadow.position.set(cameraPos.x, Math.max(0.02, cameraPos.y - 1.66), cameraPos.z);

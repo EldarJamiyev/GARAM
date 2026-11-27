@@ -849,6 +849,11 @@ export class WeaponViewmodel {
   private landingDipVel = 0;
   public isScoped = false;
   public currentFaction: 'Vanguard' | 'Syndicate' = 'Vanguard';
+  public isLeftHanded = false;
+  public isShieldRaised = false;
+  public isSilencerAttached = true;
+  public dualElitesLeftNext = false;
+  private shieldGuardBlend = 0;
   private viewportAspect =
     typeof window !== 'undefined' ? window.innerWidth / Math.max(1, window.innerHeight) : 16 / 9;
 
@@ -1339,6 +1344,15 @@ export class WeaponViewmodel {
       mp9: 'mp9',
       'usp-s': 'usps',
       'glock-18': 'glock18',
+      'mp5-navy': 'mp5_navy',
+      'clarion-famas': 'famas',
+      'defender-galil': 'galil',
+      'schmidt-scout': 'scout',
+      p90: 'p90',
+      'leone-m3': 'm3',
+      xm1014: 'xm1014',
+      'dual-elites': 'dual_elites',
+      'tactical-shield': 'tactical_shield',
     };
 
     // 3. Load All 9 CS2 Weapons in parallel and bind them to calibrated skeletal socket bones
@@ -1504,6 +1518,62 @@ export class WeaponViewmodel {
     if (this.armsLoaded) {
       this.syncArmVisibility();
       this.playWeaponAnimation('idle', 1.0);
+    }
+    if (this.isLeftHanded) {
+      this.setLeftHanded(true);
+    }
+  }
+
+  public setLeftHanded(leftHanded: boolean): void {
+    this.isLeftHanded = leftHanded;
+    this.mesh.scale.x = leftHanded ? -1 : 1;
+    this.mesh.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mat = (child as THREE.Mesh).material;
+        const mats = Array.isArray(mat) ? mat : [mat];
+        for (const m of mats) {
+          if (m && m.side !== THREE.DoubleSide) {
+            m.side = leftHanded ? THREE.BackSide : THREE.FrontSide;
+            m.needsUpdate = true;
+          }
+        }
+      }
+    });
+  }
+
+  public setSilencerAttached(attached: boolean): void {
+    this.isSilencerAttached = attached;
+    const roots = [
+      this.glbWeaponRoots.get(this.currentWeaponId),
+      this.weaponMeshes.get(this.currentWeaponId),
+    ];
+    for (const root of roots) {
+      if (!root) continue;
+      root.traverse((obj) => {
+        const n = (obj.name || '').toLowerCase();
+        if (n.includes('silencer') || n.includes('suppressor') || n.includes('muffler')) {
+          obj.visible = attached;
+        }
+      });
+    }
+  }
+
+  public setShieldRaised(raised: boolean): void {
+    this.isShieldRaised = raised;
+  }
+
+  public fireDualElitesShot(): void {
+    this.dualElitesLeftNext = !this.dualElitesLeftNext;
+    this.fireRecoil(0.055, 0.035);
+    const holder = this.glbWeaponRoots.get('dual-elites') || this.weaponMeshes.get('dual-elites');
+    if (!holder) return;
+    const targetName = this.dualElitesLeftNext ? 'v_weapon_elite_slide_l' : 'v_weapon_elite_slide_r';
+    const slide = holder.getObjectByName(targetName);
+    if (slide) {
+      slide.position.z -= 0.025;
+      setTimeout(() => {
+        slide.position.z += 0.025;
+      }, 75);
     }
   }
 
@@ -1743,6 +1813,7 @@ export class WeaponViewmodel {
       supGeo,
       new THREE.MeshStandardMaterial({ color: 0x181c22, roughness: 0.3, metalness: 0.9 })
     );
+    sup.name = 'v_weapon_silencer';
     sup.position.set(0, 0.01, -0.48);
     group.add(sup);
 
@@ -1827,22 +1898,32 @@ export class WeaponViewmodel {
 
     if (this.currentWeaponId === 'desert-eagle') {
       this.slideKick = 0.035; // 3.5 cm true metric slide blowback
-    } else if (this.currentWeaponId === 'usp-s' || this.currentWeaponId === 'glock-18') {
+    } else if (
+      this.currentWeaponId === 'usp-s' ||
+      this.currentWeaponId === 'glock-18' ||
+      this.currentWeaponId === 'dual-elites'
+    ) {
       this.slideKick = 0.026; // 2.6 cm pistol slide blowback
-    } else if (this.currentWeaponId === 'sovereign-awp') {
+    } else if (this.currentWeaponId === 'sovereign-awp' || this.currentWeaponId === 'schmidt-scout') {
       this.boltKick = 0.065; // 6.5 cm true metric bolt throw
     } else if (
       this.currentWeaponId === 'garam-47' ||
       this.currentWeaponId === 'vanguard-m4' ||
       this.currentWeaponId === 'm4a4' ||
-      this.currentWeaponId === 'mp9'
+      this.currentWeaponId === 'mp9' ||
+      this.currentWeaponId === 'mp5-navy' ||
+      this.currentWeaponId === 'clarion-famas' ||
+      this.currentWeaponId === 'defender-galil' ||
+      this.currentWeaponId === 'p90' ||
+      this.currentWeaponId === 'leone-m3' ||
+      this.currentWeaponId === 'xm1014'
     ) {
-      this.boltKick = 0.055; // 5.5 cm rifle/SMG bolt carrier cycling
+      this.boltKick = 0.055; // 5.5 cm rifle/SMG/shotgun bolt carrier cycling
     }
 
     // Play skeletal fire animation on unified FPS arms
     const fireSpeed =
-      this.currentWeaponId === 'sovereign-awp'
+      this.currentWeaponId === 'sovereign-awp' || this.currentWeaponId === 'schmidt-scout'
         ? 1.25
         : this.currentWeaponId === 'desert-eagle'
           ? 1.35
@@ -1850,8 +1931,9 @@ export class WeaponViewmodel {
     this.playWeaponAnimation('fire', fireSpeed);
     this.syncMuzzleTipPosition();
 
-    // Authentic CS2 Muzzle VFX: suppressed weapons emit zero orange fireball (only tight grey gas puff + dim bounce)
-    const isSuppressed = this.currentWeaponId === 'vanguard-m4' || this.currentWeaponId === 'usp-s';
+    // Authentic CS2 Muzzle VFX: suppressed weapons emit zero orange fireball only while silencer is attached
+    const isSuppressed =
+      (this.currentWeaponId === 'vanguard-m4' || this.currentWeaponId === 'usp-s') && this.isSilencerAttached;
     this.flashIsSuppressed = isSuppressed;
     this.flashDuration = 0.048;
     this.flashTimer = this.flashDuration;
@@ -2411,10 +2493,15 @@ export class WeaponViewmodel {
     this.recoilPitch += (0 - this.recoilPitch) * (1 - Math.exp(-22 * safeDt));
     this.recoilZ += (0 - this.recoilZ) * (1 - Math.exp(-24 * safeDt));
 
+    // Smooth ballistic Tactical Shield center guard blend
+    const targetShieldGuard =
+      this.currentWeaponId === 'tactical-shield' && this.isShieldRaised ? 1.0 : 0.0;
+    this.shieldGuardBlend += (targetShieldGuard - this.shieldGuardBlend) * (1 - Math.exp(-14 * safeDt));
+
     // Unified arms rig is already authored in camera space around Head_Cam (0, 0, 0)
-    const basePosX = usesUnifiedArms ? 0.0 : 0.14;
-    const basePosY = usesUnifiedArms ? 0.0 : -0.13;
-    const basePosZ = usesUnifiedArms ? 0.0 : -0.32;
+    const basePosX = (usesUnifiedArms ? 0.0 : 0.14) - 0.08 * this.shieldGuardBlend;
+    const basePosY = (usesUnifiedArms ? 0.0 : -0.13) + 0.06 * this.shieldGuardBlend;
+    const basePosZ = (usesUnifiedArms ? 0.0 : -0.32) - 0.05 * this.shieldGuardBlend;
 
     this.targetPos.x = basePosX + this.swayPosX + fig8X;
     this.targetPos.y = basePosY + this.swayPosY + fig8Y + walkBob * 0.35 + this.landingDipY + reloadY + drawY;

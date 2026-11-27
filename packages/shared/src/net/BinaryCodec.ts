@@ -12,29 +12,34 @@ function clampInt16(val: number): number {
   return rounded < -32768 ? -32768 : rounded > 32767 ? 32767 : rounded;
 }
 
-export const WEAPON_TO_INDEX: Record<string, number> = {
-  'garam-47': 0,
-  'vanguard-m4': 1,
-  'sovereign-awp': 2,
-  'desert-eagle': 3,
-  'garam-karambit': 4,
-  'smoke-grenade': 5,
-  'flashbang': 6,
-  'he-grenade': 7,
-  'molotov': 8,
-};
-
 export const INDEX_TO_WEAPON: string[] = [
-  'garam-47',
-  'vanguard-m4',
-  'sovereign-awp',
-  'desert-eagle',
-  'garam-karambit',
-  'smoke-grenade',
-  'flashbang',
-  'he-grenade',
-  'molotov',
+  'garam-47',       // 0
+  'vanguard-m4',    // 1
+  'm4a4',           // 2
+  'mp9',            // 3
+  'sovereign-awp',  // 4
+  'desert-eagle',   // 5
+  'usp-s',          // 6
+  'glock-18',       // 7
+  'garam-karambit', // 8
+  'smoke-grenade',  // 9
+  'flashbang',      // 10
+  'he-grenade',     // 11
+  'molotov',        // 12
+  'mp5-navy',       // 13
+  'clarion-famas',  // 14
+  'defender-galil', // 15
+  'schmidt-scout',  // 16
+  'p90',            // 17
+  'leone-m3',       // 18
+  'xm1014',         // 19
+  'dual-elites',    // 20
+  'tactical-shield',// 21
 ];
+
+export const WEAPON_TO_INDEX: Record<string, number> = Object.fromEntries(
+  INDEX_TO_WEAPON.map((id, idx) => [id, idx])
+);
 
 export interface BinarySnapshotData {
   tick: number;

@@ -10,6 +10,7 @@ import {
   KinematicPlayerController,
   KINEMATICS,
   getMapDescriptor,
+  MapDescriptor,
   MapId,
 } from '@garam/shared';
 import {
@@ -25,11 +26,22 @@ import { BotEntity } from '../maps/DeCitadelMap.js';
 import {
   BotAISystem,
   BotAISystemCallbacks,
+  BotMapConfig,
   DE_DUST2_BOT_MAP_CONFIG,
   CS_OFFICE_BOT_MAP_CONFIG,
+  DE_NUKE_BOT_MAP_CONFIG,
+  DE_INFERNO_BOT_MAP_CONFIG,
+  FY_SNOW_BOT_MAP_CONFIG,
 } from '../match/BotAISystem.js';
 import { buildDeDust2Map } from '../maps/DeDust2Map.js';
 import { buildCsOfficeMap } from '../maps/CsOfficeMap.js';
+import { buildDeNukeMap } from '../maps/DeNukeMap.js';
+import { buildDeInfernoMap } from '../maps/DeInfernoMap.js';
+import { buildFySnowMap } from '../maps/FySnowMap.js';
+import { BreakablePropManager } from '../maps/BreakablePropManager.js';
+import { SprayManager, SprayEmblemId } from '../combat/SprayManager.js';
+import { RadioCommsManager } from '../match/RadioCommsManager.js';
+import { HostageManager } from '../match/HostageManager.js';
 import { SceneManager } from '../render/SceneManager.js';
 import { AssetManager } from '../render/AssetManager.js';
 import { WeaponController, WeaponCombatCallbacks } from '../combat/WeaponController.js';
@@ -93,6 +105,11 @@ export interface GameContext {
   customizer?: CustomizerUI;
   buyMenuUI?: BuyMenuUI;
   networkClient?: NetworkClient;
+  breakableProps?: BreakablePropManager;
+  sprayManager?: SprayManager;
+  radioComms?: RadioCommsManager;
+  hostageManager?: HostageManager;
+  nvgActive?: { value: boolean };
 }
 
 const _utilThrowOrigin = new THREE.Vector3();
@@ -102,6 +119,55 @@ const _playerFeetScratch = new THREE.Vector3();
 
 const customizerPromises = new WeakMap<GameContext, Promise<CustomizerUI>>();
 
+export function getBotMapConfigForMap(mapId: ActiveMapId): BotMapConfig {
+  switch (mapId) {
+    case 'cs_office':
+      return CS_OFFICE_BOT_MAP_CONFIG;
+    case 'de_nuke':
+      return DE_NUKE_BOT_MAP_CONFIG;
+    case 'de_inferno':
+      return DE_INFERNO_BOT_MAP_CONFIG;
+    case 'fy_snow':
+      return FY_SNOW_BOT_MAP_CONFIG;
+    case 'de_dust2':
+    default:
+      return DE_DUST2_BOT_MAP_CONFIG;
+  }
+}
+
+export function buildArenaMap(
+  mapId: ActiveMapId,
+  worldScene: THREE.Scene,
+  droppedWeapons: DroppedWeaponManager,
+  onDust2Ready?: () => void
+): { blocks: MapBlockCollider[]; colliders: AABBCollider[]; bots: BotEntity[] } {
+  if (mapId === 'cs_office') return buildCsOfficeMap(worldScene);
+  if (mapId === 'de_nuke') return buildDeNukeMap(worldScene);
+  if (mapId === 'de_inferno') return buildDeInfernoMap(worldScene);
+  if (mapId === 'fy_snow') return buildFySnowMap(worldScene, droppedWeapons);
+  return buildDeDust2Map(worldScene, onDust2Ready);
+}
+
+export function initCS16Systems(ctx: GameContext, mapDesc: MapDescriptor): void {
+  ctx.breakableProps = new BreakablePropManager(ctx.worldScene, ctx.audio, ctx.effects);
+  ctx.sprayManager = new SprayManager(ctx.worldScene, ctx.audio, ctx.hud);
+  ctx.radioComms = new RadioCommsManager(ctx.audio, ctx.hud);
+  ctx.hostageManager = new HostageManager(ctx.worldScene, ctx.audio, ctx.hud);
+  ctx.nvgActive = { value: false };
+  ctx.weaponController?.setBreakableManager(ctx.breakableProps);
+
+  const mutableColliders = [...ctx.colliders];
+  ctx.breakableProps.initForMap(mapDesc.breakables, mutableColliders);
+  ctx.colliders = mutableColliders;
+  ctx.networkClient?.setMapColliders(ctx.colliders, ctx.spatialGrid);
+
+  const useHostages = mapDesc.id === 'cs_office' && settingsStore.settings.csOfficeObjective === 'hostage';
+  ctx.hostageManager.configure(useHostages, mapDesc.hostageSpawns, mapDesc.rescueZones);
+  ctx.roundManager?.setObjectiveType(
+    useHostages ? 'hostage' : mapDesc.id === 'fy_snow' ? 'elimination' : 'bomb'
+  );
+}
+
 export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
   const desc = getMapDescriptor(mapId);
 
@@ -110,6 +176,10 @@ export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
   ctx.utilityManager.resetRound();
   ctx.radar.clearSpotted();
   ctx.effects.clearAll();
+  ctx.sprayManager?.clearAll();
+  ctx.radioComms?.resetRound();
+  if (ctx.nvgActive) ctx.nvgActive.value = false;
+  ctx.hud.setNightVision(false);
 
   for (const bot of ctx.bots) {
     bot.rig?.dispose();
@@ -126,34 +196,32 @@ export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
     AssetManager.disposeObject3D(root, true);
   }
 
-  if (mapId === 'cs_office') {
-    ctx.sceneManager?.configureOfficeAtmosphere();
-  } else {
-    ctx.sceneManager?.configureDust2Atmosphere();
-  }
+  ctx.sceneManager?.configureMapAtmosphere(mapId);
 
-  const mapData =
-    mapId === 'cs_office'
-      ? buildCsOfficeMap(ctx.worldScene)
-      : buildDeDust2Map(ctx.worldScene, () => {
-          if (ctx.renderer) {
-            ctx.radar.bakeFromScene(ctx.renderer, ctx.worldScene);
-          }
-          ctx.sceneManager?.invalidateShadows();
-        });
+  const mapData = buildArenaMap(mapId, ctx.worldScene, ctx.droppedWeapons, () => {
+    if (ctx.renderer) {
+      ctx.radar.bakeFromScene(ctx.renderer, ctx.worldScene);
+    }
+    ctx.sceneManager?.invalidateShadows();
+  });
 
+  const mutableColliders = [...mapData.colliders];
+  ctx.breakableProps?.initForMap(desc.breakables, mutableColliders);
   ctx.blocks = mapData.blocks;
-  ctx.colliders = mapData.colliders;
+  ctx.colliders = mutableColliders;
   ctx.bots = mapData.bots;
   ctx.spatialGrid = new SpatialGrid(mapData.blocks, 6);
 
   ctx.economy.setSpawnZones(desc.spawnZones);
   ctx.utilityManager.setMapBounds(desc.bounds);
   ctx.roundManager?.setBombsites(desc.bombsites);
-  ctx.botAI?.setMapConfig(
-    mapId === 'cs_office' ? CS_OFFICE_BOT_MAP_CONFIG : DE_DUST2_BOT_MAP_CONFIG
+  const useHostages = mapId === 'cs_office' && settingsStore.settings.csOfficeObjective === 'hostage';
+  ctx.hostageManager?.configure(useHostages, desc.hostageSpawns, desc.rescueZones);
+  ctx.roundManager?.setObjectiveType(
+    useHostages ? 'hostage' : mapId === 'fy_snow' ? 'elimination' : 'bomb'
   );
-  ctx.networkClient?.setMapColliders(mapData.colliders, ctx.spatialGrid);
+  ctx.botAI?.setMapConfig(getBotMapConfigForMap(mapId));
+  ctx.networkClient?.setMapColliders(ctx.colliders, ctx.spatialGrid);
 
   ctx.radar.configureMap(desc.bounds, desc.bombsites, desc.isGlbArena);
   if (ctx.renderer) {
@@ -268,6 +336,20 @@ export function buildNetworkCallbacks(ctx: GameContext): NetworkClientCallbacks 
         activeSlot.currentAmmo = state.currentAmmo;
         activeSlot.reserveAmmo = state.reserveAmmo;
       }
+    },
+    onRadioBroadcast: (payload) => {
+      ctx.audio.playRadioClick?.(payload.text, 1.0);
+      ctx.hud.addRadioMessage(`[RADIO] ${payload.senderName}: "${payload.text}"`);
+    },
+    onBreakableBroken: (blockId: string) => {
+      ctx.breakableProps?.applyDamage(blockId, 999);
+    },
+    onSprayEvent: (payload) => {
+      ctx.sprayManager?.spawnSprayAt(
+        payload.emblemId as SprayEmblemId,
+        new THREE.Vector3(payload.pos.x, payload.pos.y, payload.pos.z),
+        new THREE.Vector3(payload.normal.x, payload.normal.y, payload.normal.z)
+      );
     },
   };
 }
@@ -392,10 +474,17 @@ export function buildWeaponControllerCallbacks(ctx: GameContext): WeaponCombatCa
     },
     onUtilityThrown: () => ctx.hud.addRadioMessage('Tactical Smoke Deployed'),
     onHitmarker: (headshot: boolean) => ctx.hud.triggerHitmarker(headshot),
+    onRadioNotice: (message: string) => ctx.hud.addRadioMessage(message),
+    onBreakableHit: (blockId: string) => ctx.networkClient?.sendBreakableHit(blockId, 100),
+    onSecondaryToggle: (weaponId: string, action: 'silencer' | 'burst' | 'shield') => {
+      ctx.networkClient?.sendSecondaryToggle(weaponId, action);
+    },
     onFire: (weapon: WeaponDef, isScoped: boolean, rayDir: THREE.Vector3, isSecondaryMelee: boolean) => {
       // Alert nearby hostile bots to gunshot acoustic signature (suppressed rifles have smaller radius)
       if (weapon.category !== 'melee') {
-        const isSuppressed = weapon.id === 'vanguard-m4' || weapon.id === 'usp-s';
+        const isSuppressed =
+          (weapon.id === 'vanguard-m4' || weapon.id === 'usp-s') &&
+          ctx.inventory.isSilencerAttached(weapon.id);
         ctx.botAI?.onSoundEvent({
           type: isSuppressed ? 'suppressed_gunfire' : 'gunfire',
           pos: ctx.worldCamera.position,
@@ -429,10 +518,17 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
         }
         ctx.hud.showCenterBanner(`ROUND ${round}`, 'FREEZE TIME — REQUISITION WEAPONS [B]', 3000);
       } else if (phase === 'ROUND_LIVE') {
+        const objType = ctx.roundManager?.objectiveType ?? 'bomb';
         const objective =
-          settingsStore.settings.faction === 'Syndicate'
-            ? 'PLANT PULSE CORE AT SITE A OR B'
-            : 'DEFEND SITES A & B';
+          objType === 'hostage'
+            ? settingsStore.settings.faction === 'Vanguard'
+              ? 'RESCUE HOSTAGES [E] TO EXTRACTION ZONE'
+              : 'DEFEND HOSTAGES FROM VANGUARD'
+            : objType === 'elimination'
+              ? 'ELIMINATE ALL HOSTILE OPERATORS'
+              : settingsStore.settings.faction === 'Syndicate'
+                ? 'PLANT PULSE CORE AT SITE A OR B'
+                : 'DEFEND SITES A & B';
         ctx.hud.showCenterBanner('LIVE', objective, 1800);
       }
     },
@@ -493,6 +589,26 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.inputManager?.resetMovementInputs();
 
       ctx.droppedWeapons.clearAll();
+      if (desc.floorWeaponSpawns.length > 0) {
+        const zeroDir = new THREE.Vector3(0, 0, 0);
+        for (const fw of desc.floorWeaponSpawns) {
+          const def = WEAPONS[fw.weaponId];
+          if (def) {
+            ctx.droppedWeapons.dropWeapon(
+              def.id,
+              def.magCapacity,
+              def.reserveAmmo,
+              new THREE.Vector3(fw.pos.x, fw.pos.y + 0.25, fw.pos.z),
+              zeroDir
+            );
+          }
+        }
+      }
+      ctx.breakableProps?.resetRound();
+      ctx.radioComms?.resetRound();
+      ctx.hostageManager?.resetRound(desc.hostageSpawns);
+      if (ctx.nvgActive) ctx.nvgActive.value = false;
+      ctx.hud.setNightVision?.(false);
       ctx.utilityManager.resetRound();
       ctx.effects.clearAll();
       ctx.radar.clearSpotted();
@@ -603,8 +719,8 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
       }
       const active = ctx.inventory.getActiveWeapon();
       if (ctx.roundManager?.phase === 'FREEZE_TIME') {
-        // Allow AWP scope check in freeze time, but block knife stab & grenade throws
-        if (active.id !== 'sovereign-awp') return;
+        // Allow scopes, silencer/burst toggles, and shield guard during freeze time; block knife stab & grenade throw
+        if (active.category === 'melee' || active.category === 'grenade') return;
       }
       if (active.category === 'grenade') {
         ctx.playerManager.throwUtilityGrenade('short', ctx.worldCamera);
@@ -630,6 +746,18 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
       }
     },
     onSlotSelect: (slot: SlotNumber) => {
+      if (slot === 4 && (ctx.inventory.activeSlot === 4 || !ctx.inventory.slots[4])) {
+        const nextUtil = ctx.inventory.cycleOwnedUtility(
+          ctx.economy.ownedUtilities,
+          ctx.economy.practiceInfiniteUtility
+        );
+        if (nextUtil) {
+          ctx.inventory.equipSlot(4, true);
+          ctx.audio.cancelReloadAudio();
+          ctx.syncActiveWeapon();
+          return;
+        }
+      }
       if (ctx.inventory.equipSlot(slot)) {
         ctx.audio.cancelReloadAudio();
         ctx.syncActiveWeapon();
@@ -684,6 +812,16 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
       void ensureCustomizer(ctx).then((cust) => cust.toggle(willOpen));
     },
     onInteractDown: () => {
+      _playerFeetScratch.set(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
+      if (ctx.hostageManager?.enabled && ctx.roundManager?.phase === 'ROUND_LIVE') {
+        const handledHostage = ctx.hostageManager.tryInteract(
+          'local',
+          settingsStore.settings.faction,
+          _playerFeetScratch,
+          (amount) => ctx.economy.addCash(amount)
+        );
+        if (handledHostage) return;
+      }
       if (ctx.roundManager?.phase !== 'FREEZE_TIME') {
         ctx.isInteracting.value = true;
         if (ctx.networkClient?.isConnected) {
@@ -702,6 +840,76 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
         ctx.networkClient.sendPlantDefuse('cancel');
       }
     },
+    onAutoBuy: () => {
+      _playerFeetScratch.set(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
+      ctx.buyMenuUI?.executeAutoBuy(
+        ctx.roundManager?.phase ?? 'ROUND_LIVE',
+        ctx.roundManager?.phaseTimer ?? 0,
+        _playerFeetScratch
+      );
+      ctx.networkClient?.sendAutoBuy();
+    },
+    onRebuy: () => {
+      _playerFeetScratch.set(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
+      ctx.buyMenuUI?.executeRebuy(
+        ctx.roundManager?.phase ?? 'ROUND_LIVE',
+        ctx.roundManager?.phaseTimer ?? 0,
+        _playerFeetScratch
+      );
+      ctx.networkClient?.sendRebuy();
+    },
+    onToggleRadioMenu: () => ctx.radioComms?.toggleMenu(),
+    onRadioCommand: (num: number) => {
+      _playerFeetScratch.set(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
+      const desc = getMapDescriptor(settingsStore.settings.mapId);
+      const callout = desc.getCalloutName(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
+      const cmd = ctx.radioComms?.issueCommand(
+        num,
+        settingsStore.settings.callsign || 'Operator',
+        settingsStore.settings.faction,
+        _playerFeetScratch,
+        callout,
+        ctx.bots
+      );
+      if (cmd) ctx.networkClient?.sendRadioCmd(cmd.id, callout);
+    },
+    onSprayLogo: () => {
+      const emblem = settingsStore.settings.sprayEmblem || 'sovereign';
+      const placed = ctx.sprayManager?.trySpray(ctx.worldCamera, ctx.blocks, ctx.spatialGrid, emblem);
+      if (placed) {
+        ctx.networkClient?.sendSprayLogo(
+          emblem,
+          { x: placed.pos.x, y: placed.pos.y, z: placed.pos.z },
+          { x: placed.normal.x, y: placed.normal.y, z: placed.normal.z }
+        );
+      }
+    },
+    onToggleNightVision: () => {
+      if (!ctx.economy.hasNightVision) {
+        ctx.hud.addRadioMessage('Buy NightVision Goggles ($1,250) in [B] Buy Menu first');
+        return;
+      }
+      if (!ctx.nvgActive) ctx.nvgActive = { value: false };
+      ctx.nvgActive.value = !ctx.nvgActive.value;
+      ctx.hud.setNightVision?.(ctx.nvgActive.value);
+      ctx.audio.playNvgToggle?.(ctx.nvgActive.value);
+    },
+    onBuyAmmo: (kind: 'primary' | 'secondary') => {
+      _playerFeetScratch.set(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z);
+      ctx.buyMenuUI?.executePurchase(
+        kind === 'primary' ? 'primammo' : 'secammo',
+        ctx.roundManager?.phase ?? 'ROUND_LIVE',
+        ctx.roundManager?.phaseTimer ?? 0,
+        _playerFeetScratch
+      );
+    },
+    onCycleSpectatorMode: () => {
+      if (ctx.spectator.isSpectating) {
+        ctx.spectator.cycleCameraMode(ctx.worldCamera);
+      }
+    },
+    isRadioMenuOpen: () => ctx.radioComms?.isMenuOpen ?? false,
+    isSpectating: () => ctx.spectator.isSpectating,
   };
 }
 
@@ -831,6 +1039,23 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
       ctx.applyFpsLimit?.(limit);
       ctx.hud.addRadioMessage(`Frame Pacing: ${limit}`);
     },
+    onRightHandChanged: (rightHanded: boolean) => {
+      ctx.viewmodel.setLeftHanded(!rightHanded);
+      ctx.hud.addRadioMessage(
+        rightHanded ? 'Viewmodel: Right-Handed (cl_righthand 1)' : 'Viewmodel: Left-Handed (cl_righthand 0)'
+      );
+    },
+    onOfficeObjectiveChanged: (mode: 'bomb' | 'hostage') => {
+      if (settingsStore.settings.mapId === 'cs_office') {
+        const desc = getMapDescriptor('cs_office');
+        const useHostages = mode === 'hostage';
+        ctx.hostageManager?.configure(useHostages, desc.hostageSpawns, desc.rescueZones);
+        ctx.roundManager?.setObjectiveType(useHostages ? 'hostage' : 'bomb');
+      }
+      ctx.hud.addRadioMessage(
+        mode === 'hostage' ? 'CS_OFFICE Objective: Hostage Rescue' : 'CS_OFFICE Objective: Bomb Defusal'
+      );
+    },
   };
 }
 
@@ -895,6 +1120,24 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
     ctx.playerManager.playerHealth
   );
 
+  if (ctx.hostageManager?.enabled && rm.phase === 'ROUND_LIVE') {
+    const activeDesc = getMapDescriptor(settingsStore.settings.mapId);
+    ctx.hostageManager.update(
+      frameDelta,
+      playerFeet,
+      settingsStore.settings.faction,
+      ctx.colliders,
+      activeDesc.bounds,
+      (amount) => ctx.economy.addCash(amount),
+      (reason) => rm.endRound('Vanguard', reason)
+    );
+  }
+
+  if (ctx.playerManager.playerHealth <= 0 && ctx.nvgActive?.value) {
+    ctx.nvgActive.value = false;
+    ctx.hud.setNightVision?.(false);
+  }
+
   ctx.utilityManager.update(frameDelta, ctx.colliders, ctx.blocks, playerFeet, worldCamera, ctx.bots, ctx.spatialGrid);
   const smokeOccluders = ctx.utilityManager.getActiveSmokeOccluders();
 
@@ -916,7 +1159,8 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
       isFreezeTime,
       ctx.spatialGrid,
       ctx.economy.hasHelmet,
-      _camForward
+      _camForward,
+      ctx.radioComms
     );
   }
 
@@ -932,7 +1176,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   );
 
   if (ctx.spectator.isSpectating) {
-    ctx.spectator.update(frameDelta, worldCamera, ctx.bots);
+    ctx.spectator.update(frameDelta, worldCamera, ctx.bots, inputMgr.input);
   } else {
     const predOff = net.predictionErrorOffset;
     worldCamera.position.set(s.interpX + predOff.x, s.interpEyeY + predOff.y, s.interpZ + predOff.z);

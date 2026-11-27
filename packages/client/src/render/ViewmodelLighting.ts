@@ -31,12 +31,21 @@ export class ViewmodelLighting {
     viewmodelScene.add(this.rimLight);
   }
 
-  public setMapStyle(map: 'de_dust2' | 'cs_office'): void {
+  public setMapStyle(map: 'de_dust2' | 'cs_office' | 'de_nuke' | 'de_inferno' | 'fy_snow'): void {
     if (map === 'de_dust2') {
       this.keyLight.color.setHex(0xfff1d8);
       this.fillLight.color.setHex(0x8fb8e8);
       this.rimLight.color.setHex(0xffefd6);
+    } else if (map === 'de_inferno') {
+      this.keyLight.color.setHex(0xffe9c8);
+      this.fillLight.color.setHex(0x8db9e6);
+      this.rimLight.color.setHex(0xffe4be);
+    } else if (map === 'de_nuke') {
+      this.keyLight.color.setHex(0xfff5e4);
+      this.fillLight.color.setHex(0x97bfe4);
+      this.rimLight.color.setHex(0xd6e8ff);
     } else {
+      // cs_office & fy_snow crisp cool winter daylight
       this.keyLight.color.setHex(0xf6f9ff);
       this.fillLight.color.setHex(0x9ac2ee);
       this.rimLight.color.setHex(0xc2dcff);

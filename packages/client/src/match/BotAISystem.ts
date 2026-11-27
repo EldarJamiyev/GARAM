@@ -25,6 +25,21 @@ import {
   DE_DUST2_BOUNDS,
   DE_DUST2_BOMBSITES,
   DE_DUST2_SPAWN_POINTS,
+  DE_NUKE_NAV_GRAPH,
+  DE_NUKE_BLOCKS,
+  DE_NUKE_BOUNDS,
+  DE_NUKE_BOMBSITES,
+  DE_NUKE_SPAWN_POINTS,
+  DE_INFERNO_NAV_GRAPH,
+  DE_INFERNO_BLOCKS,
+  DE_INFERNO_BOUNDS,
+  DE_INFERNO_BOMBSITES,
+  DE_INFERNO_SPAWN_POINTS,
+  FY_SNOW_NAV_GRAPH,
+  FY_SNOW_BLOCKS,
+  FY_SNOW_BOUNDS,
+  FY_SNOW_BOMBSITES,
+  FY_SNOW_SPAWN_POINTS,
   NavNode,
   findNearestNavNode,
   findPathAStar,
@@ -41,6 +56,7 @@ import {
   WEAPONS,
 } from '@garam/shared';
 import { BotEntity } from '../maps/DeCitadelMap.js';
+import type { RadioCommsManager } from './RadioCommsManager.js';
 
 export interface BotMapConfig {
   navGraph: Record<string, NavNode>;
@@ -252,25 +268,8 @@ export const CS_OFFICE_BOT_MAP_CONFIG: BotMapConfig = {
  */
 export const MIN_FRIENDLY_HOLD_SEPARATION_M = 3.0;
 
-/**
- * Dust 2 nav graph with A-Ramp exit centered cleanly through the open 2.5m gap
- * (X in [13.0..15.5], clearing the X[11..13] Z[11.5..12] wooden crate) so CT bots
- * never jam single-file against the left A-Site wall.
- */
-const DE_DUST2_BOT_NAV_GRAPH: Record<string, NavNode> = {
-  ...DE_DUST2_NAV_GRAPH,
-  ramp_mid: {
-    ...DE_DUST2_NAV_GRAPH.ramp_mid,
-    pos: { x: 13.8, y: 1.75, z: 20 },
-  },
-  ramp_top: {
-    ...DE_DUST2_NAV_GRAPH.ramp_top,
-    pos: { x: 14.3, y: 3.5, z: 10.2 },
-  },
-};
-
 export const DE_DUST2_BOT_MAP_CONFIG: BotMapConfig = {
-  navGraph: DE_DUST2_BOT_NAV_GRAPH,
+  navGraph: DE_DUST2_NAV_GRAPH,
   blocks: DE_DUST2_BLOCKS,
   bounds: DE_DUST2_BOUNDS,
   bombsites: DE_DUST2_BOMBSITES,
@@ -306,6 +305,42 @@ export const DE_DUST2_BOT_MAP_CONFIG: BotMapConfig = {
   ],
   smokeChokes: ['long_corner', 'ramp_top', 'short_plat', 'elbow'],
   postPlantFallbackNode: 'goose',
+};
+
+export const DE_NUKE_BOT_MAP_CONFIG: BotMapConfig = {
+  navGraph: DE_NUKE_NAV_GRAPH,
+  blocks: DE_NUKE_BLOCKS,
+  bounds: DE_NUKE_BOUNDS,
+  bombsites: DE_NUKE_BOMBSITES,
+  spawnPoints: DE_NUKE_SPAWN_POINTS,
+  vanguardHolds: ['nuke_a_site', 'nuke_ct_main', 'nuke_ct_ramp', 'nuke_yard_east', 'nuke_b_site'],
+  syndicateExecutes: ['nuke_a_site', 'nuke_b_site', 'nuke_hut_door', 'nuke_yard_mid'],
+  smokeChokes: ['nuke_yard_mid', 'nuke_ct_main', 'nuke_ct_ramp'],
+  postPlantFallbackNode: 'nuke_hut_door',
+};
+
+export const DE_INFERNO_BOT_MAP_CONFIG: BotMapConfig = {
+  navGraph: DE_INFERNO_NAV_GRAPH,
+  blocks: DE_INFERNO_BLOCKS,
+  bounds: DE_INFERNO_BOUNDS,
+  bombsites: DE_INFERNO_BOMBSITES,
+  spawnPoints: DE_INFERNO_SPAWN_POINTS,
+  vanguardHolds: ['inf_top_mid', 'inf_a_site', 'inf_pit', 'inf_b_site', 'inf_b_ct_entry'],
+  syndicateExecutes: ['inf_a_site', 'inf_b_site', 'inf_banana_mid', 'inf_top_mid'],
+  smokeChokes: ['inf_mid', 'inf_banana_mid', 'inf_ct_arch'],
+  postPlantFallbackNode: 'inf_pit',
+};
+
+export const FY_SNOW_BOT_MAP_CONFIG: BotMapConfig = {
+  navGraph: FY_SNOW_NAV_GRAPH,
+  blocks: FY_SNOW_BLOCKS,
+  bounds: FY_SNOW_BOUNDS,
+  bombsites: FY_SNOW_BOMBSITES,
+  spawnPoints: FY_SNOW_SPAWN_POINTS,
+  vanguardHolds: ['snow_w_lane', 'snow_mid', 'snow_e_lane'],
+  syndicateExecutes: ['snow_w_lane', 'snow_mid', 'snow_e_lane'],
+  smokeChokes: ['snow_mid'],
+  postPlantFallbackNode: 'snow_mid',
 };
 
 interface BotInternalState {
@@ -731,15 +766,27 @@ export class BotAISystem {
     );
   }
 
-  private findSupportingFloorY(x: number, y: number, z: number, colliders: AABBCollider[]): number {
+  private findSupportingFloorY(
+    x: number,
+    y: number,
+    z: number,
+    colliders: AABBCollider[],
+    prevY = y,
+    stepTolerance = KINEMATICS.STEP_HEIGHT
+  ): number {
     let bestY = 0;
     const r = KINEMATICS.CAPSULE_RADIUS;
+    const rSq = r * r;
+    const maxAcceptY = Math.max(y, prevY) + stepTolerance;
     for (let i = 0; i < colliders.length; i++) {
       const b = colliders[i];
-      if (x + r > b.minX && x - r < b.maxX && z + r > b.minZ && z - r < b.maxZ) {
-        if (b.maxY <= y + 0.25 && b.maxY > bestY) {
-          bestY = b.maxY;
-        }
+      if (b.maxY > maxAcceptY || b.maxY <= bestY) continue;
+      const cx = Math.max(b.minX, Math.min(x, b.maxX));
+      const cz = Math.max(b.minZ, Math.min(z, b.maxZ));
+      const dx = x - cx;
+      const dz = z - cz;
+      if (dx * dx + dz * dz <= rSq) {
+        bestY = b.maxY;
       }
     }
     return bestY;
@@ -935,14 +982,26 @@ export class BotAISystem {
       this.mapConfig.bounds
     );
 
-    const floorY = this.findSupportingFloorY(resolved.x, resolved.y, resolved.z, colliders);
-    let nextY = resolved.y;
+    const prevY = resolved.y;
+    const floorY = this.findSupportingFloorY(resolved.x, prevY, resolved.z, colliders, prevY, KINEMATICS.STEP_HEIGHT);
+    let nextY = prevY;
     if (nextY > floorY + 0.02) {
-      state.vy -= KINEMATICS.GRAVITY * dt;
-      nextY += state.vy * dt;
-      if (nextY <= floorY) {
+      if (nextY - floorY <= KINEMATICS.STEP_HEIGHT && state.vy <= 0) {
+        // Source-style smooth step-down on ramps/stairs so bots stay grounded
         nextY = floorY;
         state.vy = 0;
+      } else {
+        state.vy -= KINEMATICS.GRAVITY * dt;
+        const proposedY = nextY + state.vy * dt;
+        // Swept check ensures falling bots never tunnel through thin 0.125m floor slabs
+        const sweptFloorY = this.findSupportingFloorY(resolved.x, prevY, resolved.z, colliders, prevY, 0.25);
+        const landY = Math.max(floorY, sweptFloorY);
+        if (proposedY <= landY) {
+          nextY = landY;
+          state.vy = 0;
+        } else {
+          nextY = proposedY;
+        }
       }
     } else {
       nextY = floorY;
@@ -997,7 +1056,8 @@ export class BotAISystem {
     isFreezeTime = false,
     spatialGrid?: SpatialGrid,
     playerHasHelmet = true,
-    cameraForward?: THREE.Vector3
+    cameraForward?: THREE.Vector3,
+    radioComms?: RadioCommsManager
   ): void {
     const clampedDt = Math.min(0.05, Math.max(0.0001, dt));
     const config = DIFFICULTY_PRESETS[this.difficulty];
@@ -1786,6 +1846,49 @@ export class BotAISystem {
         state.hasCommittedPostPlant = false;
       }
 
+      // CS 1.6 Radio Command obedience for friendly bots (Follow Me / Hold Position / Need Backup)
+      if (radioComms && bot.team === playerTeam && playerHealth > 0) {
+        if (radioComms.escortBotId === bot.id) {
+          const distPlayer = Math.hypot(botPos.x - playerFeetPos.x, botPos.z - playerFeetPos.z);
+          if (distPlayer <= 2.4) {
+            state.holdAngleTimer = Math.max(state.holdAngleTimer, 0.35);
+          } else {
+            state.holdAngleTimer = 0;
+            const pathEnd = state.path[state.path.length - 1];
+            if (!pathEnd || dist3D(pathEnd, playerFeetPos) > 2.8) {
+              state.path = findPathAStar(
+                { x: botPos.x, y: botPos.y, z: botPos.z },
+                { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
+                undefined,
+                blocks,
+                this.mapConfig.navGraph
+              );
+              state.pathIndex = 0;
+            }
+          }
+        } else if (radioComms.holdBotIds.has(bot.id)) {
+          state.holdAngleTimer = Math.max(state.holdAngleTimer, 1.5);
+        } else if (
+          radioComms.assistTargetPos &&
+          now < radioComms.assistExpireAt &&
+          (state.role === 'rotator' || state.role === 'support')
+        ) {
+          const assistPos = radioComms.assistTargetPos;
+          const pathEnd = state.path[state.path.length - 1];
+          if (!pathEnd || dist3D(pathEnd, assistPos) > 3.5) {
+            state.path = findPathAStar(
+              { x: botPos.x, y: botPos.y, z: botPos.z },
+              { x: assistPos.x, y: assistPos.y, z: assistPos.z },
+              undefined,
+              blocks,
+              this.mapConfig.navGraph
+            );
+            state.pathIndex = 0;
+            state.holdAngleTimer = 0;
+          }
+        }
+      }
+
       // If blinded out of combat, retreat carefully toward nearest cover instead of marching forward
       if (state.blindTimer > 0.15) {
         const cover = this.findNearbyCoverPos(
@@ -1918,10 +2021,13 @@ export class BotAISystem {
             // Post-plant Syndicate defenders hold their crossfire angle watching the planted bomb
             state.holdAngleTimer = 2.5;
           } else {
-            // Anchors/lurkers hold longer; entries rotate faster to keep round pacing crisp
+            // Vanguard CT defenders hold their assigned zone angles until contact/plant; T entries rotate faster
             const holdBase = state.archetype.tacticalPatienceSec;
             const roleMul = state.role === 'anchor' ? 1.15 : state.role === 'lurker' ? 1.0 : 0.55;
-            state.holdAngleTimer = Math.max(1.4, holdBase * roleMul);
+            state.holdAngleTimer =
+              bot.team === 'Vanguard' && !isBombArmed
+                ? Math.max(10.0, holdBase * roleMul * 2.5)
+                : Math.max(1.4, holdBase * roleMul);
 
             // Pre-plan next meaningful tactical rotation node strictly >= 3.0m away from all friendly bots' holds & positions
             const pool =

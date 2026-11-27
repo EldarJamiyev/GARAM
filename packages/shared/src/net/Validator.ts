@@ -206,6 +206,61 @@ export function validateClientPacket(raw: unknown): ClientPacket | null {
       return { type: 'plant_defuse', action: packet.action };
     }
 
+    case 'secondary_toggle': {
+      if (typeof packet.weaponId !== 'string' || !WEAPON_ID_REGEX.test(packet.weaponId)) {
+        return null;
+      }
+      if (packet.mode !== 'silencer' && packet.mode !== 'burst' && packet.mode !== 'shield') {
+        return null;
+      }
+      return { type: 'secondary_toggle', weaponId: packet.weaponId, mode: packet.mode };
+    }
+
+    case 'autobuy':
+      return { type: 'autobuy' };
+
+    case 'rebuy':
+      return { type: 'rebuy' };
+
+    case 'radio_cmd': {
+      if (typeof packet.commandId !== 'string' || !/^[a-z0-9_\-]{2,32}$/.test(packet.commandId)) {
+        return null;
+      }
+      if (typeof packet.callout !== 'string' || packet.callout.length > 48) {
+        return null;
+      }
+      const cleanCallout = packet.callout.replace(/[^A-Za-z0-9 _\-\/]/g, '').trim() || 'ARENA';
+      return { type: 'radio_cmd', commandId: packet.commandId, callout: cleanCallout };
+    }
+
+    case 'spray_logo': {
+      if (typeof packet.emblemId !== 'string' || !/^[a-z0-9_\-]{2,32}$/.test(packet.emblemId)) {
+        return null;
+      }
+      const checkVec3 = (v: unknown): { x: number; y: number; z: number } | null => {
+        if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+        const o = v as Record<string, unknown>;
+        if (typeof o.x !== 'number' || !Number.isFinite(o.x) || Math.abs(o.x) > MAX_VEC_ABS) return null;
+        if (typeof o.y !== 'number' || !Number.isFinite(o.y) || Math.abs(o.y) > MAX_VEC_ABS) return null;
+        if (typeof o.z !== 'number' || !Number.isFinite(o.z) || Math.abs(o.z) > MAX_VEC_ABS) return null;
+        return { x: o.x, y: o.y, z: o.z };
+      };
+      const pos = checkVec3(packet.pos);
+      const normal = checkVec3(packet.normal);
+      if (!pos || !normal) return null;
+      return { type: 'spray_logo', emblemId: packet.emblemId, pos, normal };
+    }
+
+    case 'breakable_hit': {
+      if (typeof packet.blockId !== 'string' || !/^[a-z0-9_\-]{2,48}$/.test(packet.blockId)) {
+        return null;
+      }
+      if (typeof packet.damage !== 'number' || !Number.isFinite(packet.damage) || packet.damage <= 0 || packet.damage > 250) {
+        return null;
+      }
+      return { type: 'breakable_hit', blockId: packet.blockId, damage: packet.damage };
+    }
+
     case 'ping': {
       if (typeof packet.timestamp !== 'number' || !Number.isFinite(packet.timestamp)) {
         return null;

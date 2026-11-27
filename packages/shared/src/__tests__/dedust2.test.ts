@@ -119,67 +119,87 @@ describe('DE_DUST2 Real GLB Watertight Colliders & Tactical Navigation', () => {
     expect(siteToShort.length).toBeGreaterThan(3);
   });
 
-  it('allows smooth 128Hz kinematic traversal up A Ramp, down A Long, and up Short Stairs', () => {
+  it('allows smooth 128Hz kinematic traversal through Long Doors, Mid Double Doors, A Ramp, A Long, and Short Stairs', () => {
     const grid = new SpatialGrid(DE_DUST2_BLOCKS, 6);
     const dt = 1 / 128;
 
-    // 1. Walk North up A Ramp from (13, 0, 27) -> A Site (y = 3.5)
-    const rampRunner = new KinematicPlayerController(13, 0, 27);
-    for (let i = 0; i < 420; i++) {
-      rampRunner.update(createIdleInput({ forward: true, yaw: 0 }), dt, 5.45, DE_DUST2_COLLIDERS, DE_DUST2_BOUNDS, grid);
-    }
-    expect(rampRunner.state.z).toBeLessThan(15);
-    expect(rampRunner.state.y).toBeGreaterThanOrEqual(3.25);
+    const walkPath = (pts: Array<{ x: number; y: number; z: number }>, ticks = 800) => {
+      const c = new KinematicPlayerController(pts[0].x, pts[0].y, pts[0].z);
+      let pi = 1;
+      for (let i = 0; i < ticks && pi < pts.length; i++) {
+        const t = pts[pi];
+        const rx = t.x - c.state.x;
+        const rz = t.z - c.state.z;
+        if (Math.hypot(rx, rz) < 0.6) {
+          pi++;
+          continue;
+        }
+        const yaw = Math.atan2(-rx, -rz);
+        c.update(
+          createIdleInput({ forward: true, yaw }),
+          dt,
+          5.45,
+          DE_DUST2_COLLIDERS,
+          DE_DUST2_BOUNDS,
+          grid
+        );
+      }
+      return c;
+    };
 
-    // 2. Walk East down A Long from T Spawn (-61, 3.5, -10) -> Long Doors without clipping bounds
-    const longRunner = new KinematicPlayerController(-61, 3.5, -10);
-    for (let i = 0; i < 320; i++) {
-      longRunner.update(
-        createIdleInput({ forward: true, yaw: -Math.PI * 0.5 }),
-        dt,
-        5.45,
-        DE_DUST2_COLLIDERS,
-        DE_DUST2_BOUNDS,
-        grid
-      );
-    }
-    expect(longRunner.state.x).toBeGreaterThan(-52);
-    expect(longRunner.state.y).toBeCloseTo(3.5, 1);
+    // 1. Walk standing cleanly through Long Double Doors
+    const longDoors = walkPath([
+      { x: 15.4, y: 4.875, z: -5.0 },
+      { x: 15.6, y: 4.875, z: -6.5 },
+      { x: 16.8, y: 4.875, z: -7.7 },
+      { x: 17.2, y: 4.875, z: -10.5 },
+    ]);
+    expect(longDoors.state.z).toBeLessThan(-9.5);
 
-    // 3. Walk West up Short Stairs from (-3, 3.5, 8.5) -> Short Catwalk (y = 6.0)
-    const stairsRunner = new KinematicPlayerController(-3, 3.5, 8.5);
-    for (let i = 0; i < 320; i++) {
-      stairsRunner.update(
-        createIdleInput({ forward: true, yaw: Math.PI * 0.5 }),
-        dt,
-        5.45,
-        DE_DUST2_COLLIDERS,
-        DE_DUST2_BOUNDS,
-        grid
-      );
-    }
-    expect(stairsRunner.state.x).toBeLessThan(-9);
-    expect(stairsRunner.state.y).toBeGreaterThanOrEqual(5.75);
+    // 2. Walk standing cleanly through Mid Double Doors
+    const midDoors = walkPath([
+      { x: -9.6, y: 1.625, z: -39.2 },
+      { x: -9.2, y: 1.625, z: -40.8 },
+      { x: -10.8, y: 1.625, z: -42.2 },
+      { x: -10.8, y: 1.625, z: -44.0 },
+    ]);
+    expect(midDoors.state.z).toBeLessThan(-43.0);
 
-    // 4. Callouts resolve accurately
-    expect(getDust2CalloutName(6, 0, 36)).toBe('CT SPAWN');
-    expect(getDust2CalloutName(1, 3.5, -1)).toBe('A SITE');
-    expect(getDust2CalloutName(-40, 3.5, -9)).toBe('A LONG');
-    expect(getDust2CalloutName(-24, 6.0, 8.5)).toBe('A SHORT');
+    // 3. Walk East up CT Ramp from ramp_bot -> ramp_top
+    const rampRunner = walkPath([DE_DUST2_NAV_GRAPH.ramp_bot.pos, DE_DUST2_NAV_GRAPH.ramp_top.pos], 700);
+    expect(rampRunner.state.x).toBeGreaterThan(25.5);
+    expect(rampRunner.state.y).toBeGreaterThanOrEqual(4.75);
+
+    // 4. Walk North down A Long from barrels -> long_corner
+    const longRunner = walkPath([DE_DUST2_NAV_GRAPH.barrels.pos, DE_DUST2_NAV_GRAPH.long_corner.pos], 700);
+    expect(longRunner.state.z).toBeLessThan(-46.5);
+    expect(longRunner.state.y).toBeCloseTo(4.875, 1);
+
+    // 5. Walk North up Short Stairs from stairs_bot -> stairs_top
+    const stairsRunner = walkPath([DE_DUST2_NAV_GRAPH.stairs_bot.pos, DE_DUST2_NAV_GRAPH.stairs_top.pos], 700);
+    expect(stairsRunner.state.z).toBeLessThan(-46.0);
+    expect(stairsRunner.state.y).toBeGreaterThanOrEqual(7.15);
+
+    // 6. Callouts resolve accurately
+    expect(getDust2CalloutName(2.96, 1.625, -56.24)).toBe('CT SPAWN');
+    expect(getDust2CalloutName(DE_DUST2_BOMBSITES.A.center.x, DE_DUST2_BOMBSITES.A.center.y, DE_DUST2_BOMBSITES.A.center.z)).toBe('A SITE');
+    expect(getDust2CalloutName(DE_DUST2_NAV_GRAPH.long_4.pos.x, DE_DUST2_NAV_GRAPH.long_4.pos.y, DE_DUST2_NAV_GRAPH.long_4.pos.z)).toBe('A LONG');
+    expect(getDust2CalloutName(DE_DUST2_NAV_GRAPH.short_plat.pos.x, DE_DUST2_NAV_GRAPH.short_plat.pos.y, DE_DUST2_NAV_GRAPH.short_plat.pos.z)).toBe('A SHORT');
   });
 
   it('maintains continuous grounded contact while descending voxel ramps on DE_DUST2 with bidirectional stepOffsetY damping', () => {
     const grid = new SpatialGrid(DE_DUST2_BLOCKS, 6);
     const dt = 1 / 128;
 
-    // Descend A Ramp from top (13, 3.5, 13) South toward CT Spawn (13, 0, 27)
-    const descender = new KinematicPlayerController(13, 3.5, 13);
+    // Descend CT Ramp West from ramp_top toward CT Spawn
+    const start = DE_DUST2_NAV_GRAPH.ramp_top.pos;
+    const descender = new KinematicPlayerController(start.x, start.y, start.z);
     let airborneTicks = 0;
     let sawPositiveStepDownOffset = false;
 
-    for (let i = 0; i < 360; i++) {
+    for (let i = 0; i < 520; i++) {
       descender.update(
-        createIdleInput({ forward: true, yaw: Math.PI }),
+        createIdleInput({ forward: true, yaw: Math.PI * 0.5 }),
         dt,
         5.45,
         DE_DUST2_COLLIDERS,
@@ -194,19 +214,20 @@ describe('DE_DUST2 Real GLB Watertight Colliders & Tactical Navigation', () => {
       }
     }
 
-    expect(descender.state.z).toBeGreaterThan(22);
-    expect(descender.state.y).toBeLessThan(1.0);
+    expect(descender.state.x).toBeLessThan(14.5);
+    expect(descender.state.y).toBeLessThan(2.5);
     expect(airborneTicks).toBe(0);
     expect(sawPositiveStepDownOffset).toBe(true);
   });
 
-  it('supports grenade throws into Dust 2 Pit/A Long beyond x=-46.8 and deflects smoothly up low voxel ramp steps', () => {
+  it('supports grenade throws into Dust 2 Pit/A Long and deflects smoothly up low voxel ramp steps', () => {
     const grid = new SpatialGrid(DE_DUST2_BLOCKS, 6);
 
-    // Throw West from A Long (-45, 5.2, -10) toward Pit / T Spawn (-58, ...)
+    // Throw South from A Long barrels toward Long Pit
+    const start = DE_DUST2_NAV_GRAPH.barrels.pos;
     const traj = simulateGrenadeTrajectory(
-      { x: -45, y: 5.2, z: -10 },
-      { x: -12, y: 2.0, z: 0 },
+      { x: start.x, y: start.y + 1.6, z: start.z },
+      { x: 0, y: 2.0, z: 12.0 },
       1.2,
       DE_DUST2_BLOCKS,
       false,
@@ -214,7 +235,7 @@ describe('DE_DUST2 Real GLB Watertight Colliders & Tactical Navigation', () => {
       grid,
       DE_DUST2_BOUNDS
     );
-    expect(traj.finalPos.x).toBeLessThan(-50);
+    expect(traj.finalPos.z).toBeGreaterThan(start.z + 8);
 
     // Low 0.25m voxel ramp step should deflect grenade upward/forward rather than rebounding backwards
     const rampStep = {

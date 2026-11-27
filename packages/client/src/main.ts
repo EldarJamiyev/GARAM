@@ -1,12 +1,10 @@
 import * as THREE from 'three';
 import {
-  KinematicPlayerController, SpatialGrid, getMapDescriptor,
+  KinematicPlayerController, SpatialGrid, getMapDescriptor, KINEMATICS, getGroundSurfaceMaterial,
 } from '@garam/shared';
 import { SceneManager, probeSoftwareWebGL } from './render/SceneManager.js';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
 import { ProceduralAudio } from './audio/ProceduralAudio.js';
-import { buildDeDust2Map } from './maps/DeDust2Map.js';
-import { buildCsOfficeMap } from './maps/CsOfficeMap.js';
 import { InventoryManager } from './combat/InventoryManager.js';
 import { WeaponController } from './combat/WeaponController.js';
 import { EffectsManager } from './combat/EffectsManager.js';
@@ -22,14 +20,14 @@ import { CombatReportManager } from './ui/CombatReportManager.js';
 import { SpectatorManager } from './match/SpectatorManager.js';
 import { UtilityManager } from './utility/UtilityManager.js';
 import { RadarRenderer } from './ui/RadarRenderer.js';
-import { BotAISystem, DE_DUST2_BOT_MAP_CONFIG, CS_OFFICE_BOT_MAP_CONFIG } from './match/BotAISystem.js';
+import { BotAISystem } from './match/BotAISystem.js';
 import { settingsStore, GraphicsQuality, QualityTier, FpsLimit } from './core/SettingsStore.js';
 import { NetworkClient } from './net/NetworkClient.js';
 import { PerfMonitor } from './core/PerfMonitor.js';
 import {
   GameContext, buildUtilityCallbacks, buildBotAICallbacks, buildWeaponControllerCallbacks,
   buildRoundCallbacks, buildInputManagerCallbacks, buildBuyMenuCallbacks, buildLobbyCallbacks,
-  buildNetworkCallbacks, stepMatchFrame,
+  buildNetworkCallbacks, stepMatchFrame, buildArenaMap, getBotMapConfigForMap, initCS16Systems,
 } from './core/GameEventWire.js';
 
 const _playerFeet = new THREE.Vector3();
@@ -65,14 +63,14 @@ export class GaramGame {
 
     const mapDesc = getMapDescriptor(settingsStore.settings.mapId);
     this.sceneManager = new SceneManager(this.renderer);
-    if (mapDesc.id === 'cs_office') this.sceneManager.configureOfficeAtmosphere();
-    else this.sceneManager.configureDust2Atmosphere();
+    this.sceneManager.configureMapAtmosphere(mapDesc.id);
     this.renderer.setPixelRatio(this.sceneManager.isSoftwareGl ? 0.75 : Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = !this.sceneManager.isSoftwareGl;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const viewmodel = new WeaponViewmodel();
     viewmodel.setFaction(settingsStore.settings.faction);
+    viewmodel.setLeftHanded(!settingsStore.settings.rightHanded);
     viewmodel.setViewportAspect(window.innerWidth / Math.max(1, window.innerHeight));
     viewmodel.mesh.visible = false;
     this.sceneManager.viewmodelScene.add(viewmodel.mesh);
@@ -114,13 +112,11 @@ export class GaramGame {
     const spawnPos = { x: baseSpawn.x, y: baseSpawn.y, z: baseSpawn.z };
     const player = new KinematicPlayerController(spawnPos.x, spawnPos.y, spawnPos.z);
 
-    const mapData = mapDesc.id === 'cs_office'
-      ? buildCsOfficeMap(this.sceneManager.worldScene)
-      : buildDeDust2Map(this.sceneManager.worldScene, () => {
-          radar.bakeFromScene(this.renderer, this.sceneManager.worldScene);
-          this.sceneManager.invalidateShadows();
-        });
-    if (mapDesc.id === 'cs_office') radar.bakeFromScene(this.renderer, this.sceneManager.worldScene);
+    const mapData = buildArenaMap(mapDesc.id, this.sceneManager.worldScene, droppedWeapons, () => {
+      radar.bakeFromScene(this.renderer, this.sceneManager.worldScene);
+      this.sceneManager.invalidateShadows();
+    });
+    if (mapDesc.id !== 'de_dust2') radar.bakeFromScene(this.renderer, this.sceneManager.worldScene);
     const spatialGrid = new SpatialGrid(mapData.blocks, 6);
 
     let ctxRef!: GameContext;
@@ -159,8 +155,7 @@ export class GaramGame {
     };
     this.ctx = ctxRef;
 
-    const botMapCfg = mapDesc.id === 'cs_office' ? CS_OFFICE_BOT_MAP_CONFIG : DE_DUST2_BOT_MAP_CONFIG;
-    ctxRef.botAI = new BotAISystem(buildBotAICallbacks(ctxRef), settingsStore.settings.botDifficulty, botMapCfg);
+    ctxRef.botAI = new BotAISystem(buildBotAICallbacks(ctxRef), settingsStore.settings.botDifficulty, getBotMapConfigForMap(mapDesc.id));
     ctxRef.weaponController = new WeaponController(inventory, viewmodel, effects, audio, buildWeaponControllerCallbacks(ctxRef));
     ctxRef.roundManager = new RoundManager(this.sceneManager.worldScene, audio, buildRoundCallbacks(ctxRef), mapDesc.bombsites);
 
@@ -174,6 +169,7 @@ export class GaramGame {
     const networkClient = new NetworkClient(this.sceneManager.worldScene, hud, mapData.colliders, buildNetworkCallbacks(ctxRef), spatialGrid);
     networkClient.bindLocalPlayer(player);
     ctxRef.networkClient = networkClient;
+    initCS16Systems(ctxRef, mapDesc);
 
     ctxRef.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
     const initialYaw = mapDesc.initialYaw[settingsStore.settings.faction];
@@ -196,7 +192,7 @@ export class GaramGame {
     this.ctx.audio.cancelReloadAudio();
     this.ctx.viewmodel.isReloading = false;
     const active = this.ctx.inventory.getActiveWeapon();
-    if (this.ctx.weaponController && this.ctx.weaponController.zoomStage > 0 && active.id !== 'sovereign-awp') {
+    if (this.ctx.weaponController && this.ctx.weaponController.zoomStage > 0 && active.id !== 'sovereign-awp' && active.id !== 'schmidt-scout') {
       this.ctx.weaponController.zoomStage = 0;
       this.sceneManager.worldCamera.fov = settingsStore.settings.fov;
       this.sceneManager.worldCamera.updateProjectionMatrix();
@@ -205,6 +201,8 @@ export class GaramGame {
     }
     if (active.id === 'garam-karambit') this.ctx.audio.playKnifeDraw();
     this.ctx.viewmodel.setWeapon(active.id);
+    this.ctx.viewmodel.setSilencerAttached(this.ctx.inventory.isSilencerAttached(active.id));
+    if (active.id !== 'tactical-shield') this.ctx.viewmodel.setShieldRaised(false);
   }
 
   private onResize(): void {
@@ -259,7 +257,8 @@ export class GaramGame {
         } else {
           const wasGrounded = ctx.player.state.isGrounded;
           const prevVy = ctx.player.state.vy;
-          ctx.player.update(inputMgr.input, this.FIXED_DT, activeWp.movementSpeed, ctx.colliders, activeDesc.bounds, ctx.spatialGrid);
+          const moveSpeed = activeWp.id === 'tactical-shield' && ctx.viewmodel.isShieldRaised ? KINEMATICS.SPEED_SHIELD_UP : activeWp.movementSpeed;
+          ctx.player.update(inputMgr.input, this.FIXED_DT, moveSpeed, ctx.colliders, activeDesc.bounds, ctx.spatialGrid, activeDesc.ladders);
           if (!wasGrounded && ctx.player.state.isGrounded && prevVy < -2.2) ctx.viewmodel.notifyLanding(prevVy);
         }
         if (net.isConnected) {
@@ -276,10 +275,14 @@ export class GaramGame {
     _playerFeet.set(interp.x, interp.y, interp.z);
 
     const hozSpeed = ctx.player.getHorizontalSpeed();
-    if (!ctx.spectator.isSpectating && ctx.player.state.isGrounded && hozSpeed > 0.8 && !inputMgr.input.walk) {
-      this.distanceTraveled += hozSpeed * frameDelta;
+    const stepSpeed = ctx.player.isOnLadder ? Math.abs(ctx.player.state.vy) : hozSpeed;
+    if (!ctx.spectator.isSpectating && (ctx.player.state.isGrounded || ctx.player.isOnLadder) && stepSpeed > 0.8 && !inputMgr.input.walk) {
+      this.distanceTraveled += stepSpeed * frameDelta;
       if (this.distanceTraveled - this.lastStepDist > 2.2) {
-        ctx.audio.playFootstep('CONCRETE');
+        const stepSurface = ctx.player.isOnLadder
+          ? 'LADDER'
+          : getGroundSurfaceMaterial(ctx.player.state.x, ctx.player.state.y, ctx.player.state.z, ctx.blocks);
+        ctx.audio.playFootstep(stepSurface);
         ctx.botAI?.onSoundEvent({
           type: 'footstep', pos: _playerFeet, radius: 22,
           team: settingsStore.settings.faction, timestamp: Date.now(),

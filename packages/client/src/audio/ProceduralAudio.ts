@@ -1,7 +1,18 @@
 import * as THREE from 'three';
 import { MapBlockCollider, intersectRayAABB } from '@garam/shared';
+import { ProceduralAudioCS16 } from './ProceduralAudioCS16.js';
 
-export type SurfaceMaterialType = 'CONCRETE' | 'WOOD_THIN' | 'METAL_SHEET';
+export type SurfaceMaterialType =
+  | 'CONCRETE'
+  | 'DRYWALL'
+  | 'WOOD_THIN'
+  | 'METAL_SHEET'
+  | 'GLASS'
+  | 'SNOW'
+  | 'DIRT'
+  | 'VENT_DUCT'
+  | 'TILE'
+  | 'LADDER';
 
 const _listenerForward = new THREE.Vector3();
 const _occDir = new THREE.Vector3();
@@ -349,7 +360,13 @@ export class ProceduralAudio {
   }
 
   // --- Gunfire DSP ---
-  public playGunshot(weaponType = 'garam-47', worldPos?: THREE.Vector3, listenerPos?: THREE.Vector3, blocks: MapBlockCollider[] = []): void {
+  public playGunshot(
+    weaponType = 'garam-47',
+    worldPos?: THREE.Vector3,
+    listenerPos?: THREE.Vector3,
+    blocks: MapBlockCollider[] = [],
+    isSilenced = true
+  ): void {
     this.initContext();
     if (!this.ctx) return;
 
@@ -357,9 +374,24 @@ export class ProceduralAudio {
       ? this.createSpatialRoute(worldPos, listenerPos, blocks).input
       : this.masterGain!;
 
+    // When M4A1-S or USP-S has its suppressor detached, synthesize crisp unsilenced report
+    if (!isSilenced && (weaponType === 'vanguard-m4' || weaponType === 'usp-s') && this.sharedNoiseBuffer) {
+      if (ProceduralAudioCS16.playWeaponSynth(this.ctx, destinationNode, this.sharedNoiseBuffer, weaponType, false)) {
+        return;
+      }
+    }
+
     // Use studio-synthesized ElevenLabs MP3 sample when loaded (routed through spatial/occlusion chain)
     const sample = WEAPON_SAMPLE_MAP[weaponType];
     if (sample && this.playCachedBuffer(sample.url, sample.volume, destinationNode)) {
+      return;
+    }
+
+    // Synthesize dedicated CS 1.6 firearms (MP5, FAMAS, Galil, Scout, P90, M3, XM1014, Dual Elites)
+    if (
+      this.sharedNoiseBuffer &&
+      ProceduralAudioCS16.playWeaponSynth(this.ctx, destinationNode, this.sharedNoiseBuffer, weaponType, isSilenced)
+    ) {
       return;
     }
 
@@ -495,6 +527,11 @@ export class ProceduralAudio {
     const destinationNode = worldPos
       ? this.createSpatialRoute(worldPos, listenerPos, blocks).input
       : this.masterGain!;
+
+    if (this.sharedNoiseBuffer) {
+      ProceduralAudioCS16.playSurfaceFootstep(this.ctx, destinationNode, this.sharedNoiseBuffer, surface);
+      return;
+    }
 
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -1143,5 +1180,54 @@ export class ProceduralAudio {
     nGain.connect(this.masterGain!);
     noise.start(t, Math.random() * 1.5);
     noise.stop(t + 0.04);
+  }
+
+  public playGlassShatter(worldPos?: THREE.Vector3, listenerPos?: THREE.Vector3, blocks: MapBlockCollider[] = []): void {
+    this.initContext();
+    if (!this.ctx || !this.sharedNoiseBuffer) return;
+    const dest = worldPos ? this.createSpatialRoute(worldPos, listenerPos, blocks).input : this.masterGain!;
+    ProceduralAudioCS16.playGlassShatter(this.ctx, dest, this.sharedNoiseBuffer);
+  }
+
+  public playBulletWhiz(distMeters: number): void {
+    this.initContext();
+    if (!this.ctx || !this.sharedNoiseBuffer || !this.masterGain) return;
+    ProceduralAudioCS16.playBulletWhiz(this.ctx, this.masterGain, this.sharedNoiseBuffer, distMeters);
+  }
+
+  public playFlashTinnitus(durationSec: number): void {
+    this.initContext();
+    if (!this.ctx || !this.masterGain) return;
+    ProceduralAudioCS16.playFlashTinnitus(this.ctx, this.masterGain, durationSec);
+  }
+
+  public playSprayAerosol(): void {
+    this.initContext();
+    if (!this.ctx || !this.sharedNoiseBuffer || !this.masterGain) return;
+    ProceduralAudioCS16.playSprayAerosol(this.ctx, this.masterGain, this.sharedNoiseBuffer);
+  }
+
+  public playSilencerToggle(attach: boolean): void {
+    this.initContext();
+    if (!this.ctx || !this.masterGain) return;
+    ProceduralAudioCS16.playSilencerToggle(this.ctx, this.masterGain, attach);
+  }
+
+  public playNvgToggle(active: boolean): void {
+    this.initContext();
+    if (!this.ctx || !this.masterGain) return;
+    ProceduralAudioCS16.playNvgToggle(this.ctx, this.masterGain, active);
+  }
+
+  public playShieldRicochet(): void {
+    this.initContext();
+    if (!this.ctx || !this.masterGain) return;
+    ProceduralAudioCS16.playShieldRicochet(this.ctx, this.masterGain);
+  }
+
+  public playRadioClick(voiceText?: string, voicePitch = 1.0): void {
+    this.initContext();
+    if (!this.ctx || !this.sharedNoiseBuffer || !this.masterGain) return;
+    ProceduralAudioCS16.playRadioClick(this.ctx, this.masterGain, this.sharedNoiseBuffer, voiceText, voicePitch);
   }
 }
