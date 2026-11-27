@@ -333,7 +333,7 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.radar.clearSpotted();
       ctx.playerManager.reset(ctx.spawnPos);
       if (ctx.inputManager) {
-        ctx.inputManager.input.yaw = settingsStore.settings.faction === 'Syndicate' ? 0 : Math.PI;
+        ctx.inputManager.input.yaw = settingsStore.settings.faction === 'Syndicate' ? Math.PI : 0;
         ctx.inputManager.input.pitch = 0;
       }
       ctx.playerManager.respawnAllBots(ctx.bots);
@@ -563,7 +563,7 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     if (!ctx.hasMatchStarted.value) {
       ctx.hasMatchStarted.value = true;
       ctx.roundManager?.startMatch();
-      const initialYaw = settingsStore.settings.faction === 'Syndicate' ? 0 : Math.PI;
+      const initialYaw = settingsStore.settings.faction === 'Syndicate' ? Math.PI : 0;
       if (ctx.inputManager) {
         ctx.inputManager.input.yaw = initialYaw;
         ctx.inputManager.input.pitch = 0;
@@ -620,7 +620,7 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
         ctx.player.state.vx = 0;
         ctx.player.state.vy = 0;
         ctx.player.state.vz = 0;
-        const nextYaw = faction === 'Syndicate' ? 0 : Math.PI;
+        const nextYaw = faction === 'Syndicate' ? Math.PI : 0;
         if (ctx.inputManager) {
           ctx.inputManager.input.yaw = nextYaw;
           ctx.inputManager.input.pitch = 0;

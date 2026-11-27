@@ -1,7 +1,8 @@
 import { randomBytes } from 'crypto';
 import { WebSocket } from 'ws';
 import {
-  DE_CITADEL_BLOCKS,
+  CS_OFFICE_BLOCKS,
+  CS_OFFICE_COLLIDERS,
   SPAWN_POINTS,
   BOMBSITES,
   WEAPONS,
@@ -137,7 +138,7 @@ interface ServerBot {
 
 // Pre-allocated, frozen static map AABBs (zero per-input / per-tick allocations)
 const STATIC_COLLIDERS: readonly AABBCollider[] = Object.freeze(
-  DE_CITADEL_BLOCKS.map((b) =>
+  CS_OFFICE_BLOCKS.map((b) =>
     Object.freeze({
       minX: b.minX,
       maxX: b.maxX,
@@ -231,7 +232,7 @@ export class GameRoom {
     };
   }
 
-  private spatialGrid = new SpatialGrid(DE_CITADEL_BLOCKS, 10);
+  private spatialGrid = new SpatialGrid(CS_OFFICE_BLOCKS, 10);
 
   constructor() {
     this.initDefaultBots();
@@ -931,7 +932,7 @@ export class GameRoom {
       weapon.armorPenetration,
       weapon.penetrationPower,
       maxDistance,
-      DE_CITADEL_BLOCKS,
+      CS_OFFICE_BLOCKS,
       rewoundTargets,
       weapon.damageDropoffPer10m,
       this.spatialGrid,
@@ -1142,14 +1143,14 @@ export class GameRoom {
   }
 
   private updateProjectilesAndZones(now: number): void {
-    // 1. Step flying grenade projectiles against static DE_CITADEL_BLOCKS
+    // 1. Step flying grenade projectiles against static CS_OFFICE_BLOCKS
     for (let i = this.activeProjectiles.length - 1; i >= 0; i--) {
       const proj = this.activeProjectiles[i];
       const stepRes = stepGrenadePhysics(
         proj.pos,
         proj.vel,
         this.TICK_DT,
-        DE_CITADEL_BLOCKS,
+        CS_OFFICE_BLOCKS,
         0.08,
         0.45,
         15.5,
@@ -1253,7 +1254,7 @@ export class GameRoom {
   private detonateHE(proj: ServerProjectile): void {
     this.sessions.forEach((s) => {
       if (s.isDead) return;
-      const dmg = computeHEDamage(proj.pos, s.controller.state, s.armor, DE_CITADEL_BLOCKS, this.spatialGrid);
+      const dmg = computeHEDamage(proj.pos, s.controller.state, s.armor, CS_OFFICE_BLOCKS, this.spatialGrid);
       if (dmg.healthDamage > 0) {
         this.applyDamageToHuman(
           s,
@@ -1271,7 +1272,7 @@ export class GameRoom {
 
     for (const b of this.bots) {
       if (!b.active || b.isDead) continue;
-      const dmg = computeHEDamage(proj.pos, b.controller.state, b.armor, DE_CITADEL_BLOCKS, this.spatialGrid);
+      const dmg = computeHEDamage(proj.pos, b.controller.state, b.armor, CS_OFFICE_BLOCKS, this.spatialGrid);
       if (dmg.healthDamage > 0) {
         this.applyDamageToBot(
           b,
@@ -1724,7 +1725,7 @@ export class GameRoom {
       ];
 
       for (const pt of probePoints) {
-        if (hasLineOfSight(eyeA, pt, DE_CITADEL_BLOCKS, this.activeSmokes, this.spatialGrid)) {
+        if (hasLineOfSight(eyeA, pt, CS_OFFICE_BLOCKS, this.activeSmokes, this.spatialGrid)) {
           session.recentlyVisibleEnemies.set(p.id, now);
           return true;
         }

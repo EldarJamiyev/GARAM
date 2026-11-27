@@ -12,6 +12,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { NodeIO } from '@gltf-transform/core';
 import { dedup, prune, weld, join, flatten } from '@gltf-transform/functions';
+import { optimizeGlb } from './optimize-glb.mjs';
 
 const CS_OFFICE_UID = '4e36baec19194164acd47f7cc236d4e6';
 
@@ -94,7 +95,8 @@ function extractVoxelColliders(doc, cellXZ = 0.5, cellY = 0.5) {
 }
 
 async function main() {
-  const rawInput = process.argv[2] || '/tmp/sketchfab_raw/cs_office_raw.glb';
+  const tmpBase = path.resolve(process.cwd(), '.tmp_sketchfab');
+  const rawInput = process.argv[2] || path.join(tmpBase, 'cs_office_raw.glb');
   const finalOut = path.resolve(
     process.cwd(),
     process.argv[3] || 'packages/client/public/models/cs_office.glb'
@@ -163,14 +165,12 @@ async function main() {
   console.log('[CS_OFFICE] Merged metric stats:', JSON.stringify(mergedStats));
   console.log('[CS_OFFICE] Voxel collider summary:', JSON.stringify(voxelSummary));
 
-  const mergedTmp = '/tmp/sketchfab_raw/cs_office_merged.glb';
+  const mergedTmp = path.join(tmpBase, 'cs_office_merged.glb');
   fs.mkdirSync(path.dirname(mergedTmp), { recursive: true });
   await io.write(mergedTmp, doc);
 
-  // Compress embedded Corona Real-Light textures to <= 1024px JPEG/PNG (target <= 14 MB)
-  execFileSync('python3', ['scripts/optimize-glb.py', mergedTmp, finalOut, '1024', '512'], {
-    stdio: 'inherit',
-  });
+  // Compress embedded Corona Real-Light textures to <= 1024px JPEG/PNG (target <= 16 MB)
+  await optimizeGlb(mergedTmp, finalOut, 1024, 512);
 
   const finalMb = fs.statSync(finalOut).size / 1048576;
   console.log(`[CS_OFFICE] Built ${finalOut} (${finalMb.toFixed(2)} MB, ${mergedStats.meshCount} draw calls)`);

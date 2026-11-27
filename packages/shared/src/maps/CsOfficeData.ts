@@ -207,11 +207,11 @@ export const CS_OFFICE_BLOCKS: MapBlockCollider[] = [
   { id: 'conf_south_e', minX: 27.5, maxX: 38.0, minY: F, maxY: WALL_TOP, minZ: 13.4, maxZ: 14.0, material: 'DRYWALL', theme: 'drywall' },
 
   // G. T Back Office / Main Hall Divider (z in [25.0, 25.6])
-  //    Openings: x in [-16, -9] (West Back Office), x in [0, 7] (Center T Exit), x in [21, 28] (Kitchen T Exit)
-  { id: 't_div_w', minX: -24.0, maxX: -16.0, minY: F, maxY: WALL_TOP, minZ: 25.0, maxZ: 25.6, material: 'DRYWALL', theme: 'drywall' },
-  { id: 't_div_m', minX: -9.0, maxX: 0.0, minY: F, maxY: WALL_TOP, minZ: 25.0, maxZ: 25.6, material: 'DRYWALL', theme: 'drywall' },
-  { id: 't_div_e', minX: 7.0, maxX: 21.0, minY: F, maxY: WALL_TOP, minZ: 25.0, maxZ: 25.6, material: 'DRYWALL', theme: 'drywall' },
-  { id: 't_div_far_e', minX: 28.0, maxX: 38.0, minY: F, maxY: WALL_TOP, minZ: 25.0, maxZ: 25.6, material: 'DRYWALL', theme: 'drywall' },
+  //    Openings: x in [-16, -9] (West Back Office), x in [1.8, 5.2] (Center T Exit), x in [21, 28] (Kitchen T Exit)
+  { id: 't_div_w', minX: -24.0, maxX: -16.0, minY: F, maxY: WALL_TOP, minZ: 25.0, maxZ: 25.6, material: 'CONCRETE', theme: 'drywall' },
+  { id: 't_div_m', minX: -9.0, maxX: 1.8, minY: F, maxY: WALL_TOP, minZ: 25.0, maxZ: 25.6, material: 'CONCRETE', theme: 'drywall' },
+  { id: 't_div_e', minX: 5.2, maxX: 21.0, minY: F, maxY: WALL_TOP, minZ: 25.0, maxZ: 25.6, material: 'CONCRETE', theme: 'drywall' },
+  { id: 't_div_far_e', minX: 28.0, maxX: 38.0, minY: F, maxY: WALL_TOP, minZ: 25.0, maxZ: 25.6, material: 'CONCRETE', theme: 'drywall' },
 
   // =========================================================================
   // 8. TACTICAL OFFICE COVER PROPS (Desks, Paper Stacks, Filing Cabinets, Vending)
@@ -229,7 +229,7 @@ export const CS_OFFICE_BLOCKS: MapBlockCollider[] = [
 
   // Main Hall Central Office Island Desk, Structural Sightline Pillar & Soda Vending Machine
   { id: 'main_hall_island', minX: 1.0, maxX: 4.8, minY: F, maxY: F + 1.1, minZ: 8.5, maxZ: 10.6, material: 'WOOD_THIN', theme: 'wood' },
-  { id: 'main_hall_pillar', minX: 0.6, maxX: 4.8, minY: F, maxY: WALL_TOP, minZ: 9.2, maxZ: 10.0, material: 'CONCRETE', theme: 'drywall' },
+  { id: 'main_hall_pillar', minX: -0.2, maxX: 4.8, minY: F, maxY: WALL_TOP, minZ: 9.2, maxZ: 10.0, material: 'CONCRETE', theme: 'drywall' },
   { id: 'main_hall_vending', minX: -5.8, maxX: -4.0, minY: F, maxY: F + 2.1, minZ: 16.2, maxZ: 18.2, material: 'METAL_SHEET', theme: 'metal' },
 
   // Bombsite A (Projector / Conference Room) Conference Table & Metal Filing Cabinets

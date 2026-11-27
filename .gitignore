@@ -22,6 +22,8 @@ Desktop.ini
 playtest-*.png
 *.zip
 GARAM/
+.tmp_sketchfab/
+packages/client/public/models/cs_office_opt.glb
 
 # Environment and secrets
 .env

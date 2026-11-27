@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { fileURLToPath } from 'url';
 import * as THREE from 'three';
 import { NodeIO } from '@gltf-transform/core';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -7,7 +8,7 @@ import { OperatorArmIK, WORLD_WEAPON_CATALOG } from '../render/OperatorArmIK.js'
 import { buildProceduralCS2Weapon } from '../render/ProceduralWeaponBuilder.js';
 
 async function loadStrippedGlb(relPath: string, opts: Parameters<typeof AssetManager.normalizeGLB>[2]) {
-  const fullPath = decodeURIComponent(new URL(`../../public/models/${relPath}`, import.meta.url).pathname);
+  const fullPath = fileURLToPath(new URL(`../../public/models/${relPath}`, import.meta.url));
   const io = new NodeIO();
   const doc = await io.read(fullPath);
   for (const tex of doc.getRoot().listTextures()) tex.dispose();

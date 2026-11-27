@@ -48,9 +48,9 @@ export class SceneManager {
     this.worldScene.fog = new THREE.FogExp2(0xd6e1ec, 0.0032);
     this.worldCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.05, 600);
 
-    // 2. Viewmodel Scene & Camera (Dual-pass at CS2 Pro 62 deg FOV, near 0.005m)
+    // 2. Viewmodel Scene & Camera (Dual-pass at CS2 Pro 62 deg FOV, near 0.08m to clip arm base)
     this.viewmodelScene = new THREE.Scene();
-    this.viewmodelCamera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.005, 10);
+    this.viewmodelCamera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.08, 10);
 
     // 3. PMREM Image-Based Lighting (IBL)
     this.envRenderTarget = this.generateProceduralPMREM(renderer);

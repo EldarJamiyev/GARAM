@@ -101,7 +101,7 @@ export class WeaponViewmodel {
   private akFingerPose: Map<string, THREE.Quaternion> = new Map();
   private leftHandGripAnchors: Map<string, THREE.Object3D> = new Map();
   private leftHandLockWeight = 1.0;
-  private armsLoaded = false;
+  public armsLoaded = false;
   private activeOneShotTimer = 0;
   private wasReloading = false;
 
@@ -575,11 +575,6 @@ export class WeaponViewmodel {
             }
           }
         });
-
-        // Attach matte charcoal tactical rolled sleeves to upper arms so zero bare bicep stumps appear
-        if (this.isCS2ArmsRig) {
-          this.attachTacticalSleeves(armsModel);
-        }
 
         this.armsContainer.add(armsModel);
         this.armsLoaded = true;

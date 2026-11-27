@@ -1,10 +1,5 @@
 import * as THREE from 'three';
-import {
-  KinematicPlayerController,
-  SPAWN_POINTS,
-  SpatialGrid,
-  getCalloutName,
-} from '@garam/shared';
+import { KinematicPlayerController, SPAWN_POINTS, SpatialGrid, getCalloutName } from '@garam/shared';
 import { SceneManager } from './render/SceneManager.js';
 import { WeaponViewmodel } from './viewmodel/WeaponViewmodel.js';
 import { ProceduralAudio } from './audio/ProceduralAudio.js';
@@ -47,7 +42,7 @@ export class GaramGame {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly sceneManager: SceneManager;
   private readonly perfMonitor: PerfMonitor;
-  private readonly ctx: GameContext;
+  public readonly ctx: GameContext;
 
   private lastTime = performance.now();
   private accumulator = 0;
@@ -189,7 +184,7 @@ export class GaramGame {
     ctxRef.networkClient = networkClient;
 
     ctxRef.inputManager.setSensitivity(settingsStore.settings.mouseSensitivity);
-    const initialYaw = settingsStore.settings.faction === 'Syndicate' ? 0 : Math.PI;
+    const initialYaw = settingsStore.settings.faction === 'Syndicate' ? Math.PI : 0;
     ctxRef.inputManager.input.yaw = initialYaw;
     const cam = this.sceneManager.worldCamera;
     cam.position.set(spawnPos.x, spawnPos.y + 1.68, spawnPos.z);
@@ -201,6 +196,7 @@ export class GaramGame {
     this.boundResize = this.onResize.bind(this);
     this.boundLoop = this.loop.bind(this);
     window.addEventListener('resize', this.boundResize);
+    (window as unknown as { garamGame?: GaramGame }).garamGame = this;
     if (new URLSearchParams(window.location.search).get('autostart') === '1') lobbyCallbacks.onDeploy();
     requestAnimationFrame(this.boundLoop);
   }

@@ -310,9 +310,10 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
   async function loadCS2ArmsInNode(): Promise<any | null> {
     const { NodeIO } = await import('@gltf-transform/core');
     const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+    const { fileURLToPath } = await import('url');
 
-    const glbPath = decodeURIComponent(
-      new URL('../../public/models/cs2_fps_arms.glb', import.meta.url).pathname
+    const glbPath = fileURLToPath(
+      new URL('../../public/models/cs2_fps_arms.glb', import.meta.url)
     );
 
     // Strip embedded images in-memory so Three.js GLTFLoader parses cleanly in headless Node

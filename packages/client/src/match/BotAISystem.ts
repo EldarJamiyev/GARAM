@@ -179,6 +179,15 @@ const _hitNormal = new THREE.Vector3();
 const _hitPoint = new THREE.Vector3();
 const _otherPositionsScratch: Vec3[] = [];
 
+const MAX_FOV_YAW_RAD = (55 * Math.PI) / 180; // ±55° forward visual cone
+const MAX_FOV_PITCH_RAD = (38 * Math.PI) / 180; // 38° pitch cone
+const MIN_REACTION_FLOOR_MS: Record<BotDifficulty, number> = {
+  Recruit: 480,
+  Veteran: 310,
+  Elite: 220,
+  Sovereign: 175,
+};
+
 const VANGUARD_TACTICAL_HOLDS: readonly string[] = [
   'front_hall_mid',
   'sniper_mezz_center',
@@ -956,157 +965,186 @@ export class BotAISystem {
       const distToPlayer = botPos.distanceTo(playerFeetPos);
 
       if (bot.team !== playerTeam && playerHealth > 0 && distToPlayer <= 52 && state.blindTimer <= 0.15) {
-        if (doPerceptionTick) {
-          state.cachedPlayerLos = this.hasThreePointVisualLOS(
-            { x: _botEye.x, y: _botEye.y, z: _botEye.z },
-            { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
-            { x: playerEye.x, y: playerEye.y, z: playerEye.z },
-            blocks,
-            smokeOccluders,
-            spatialGrid
-          );
-        }
+        // 1. Hard unbypassable angular check (yaw ±55°, pitch ±38°) BEFORE LOS or reaction accumulation
+        const pDx = playerEye.x - _botEye.x;
+        const pDy = playerEye.y - _botEye.y;
+        const pDz = playerEye.z - _botEye.z;
+        const pHozDist = Math.hypot(pDx, pDz);
+        const angleToPlayer = Math.atan2(pDx, pDz);
+        const yawDeltaToPlayer = Math.abs(normalizeAngleRad(angleToPlayer - state.currentYaw));
+        const pitchToPlayer = Math.atan2(pDy, Math.max(0.001, pHozDist));
+        const pitchDeltaToPlayer = Math.abs(pitchToPlayer - state.currentPitch);
 
-        const wasMovingOrSurprised = currentHozSpeed > 1.2 || state.playerLostSec > 0.35;
-        const perception = BotBrain.evaluateVisualPerception(
-          state.currentYaw,
-          { x: _botEye.x, y: _botEye.y, z: _botEye.z },
-          { x: playerEye.x, y: playerEye.y, z: playerEye.z },
-          state.cachedPlayerLos,
-          perceptionCfg,
-          wasMovingOrSurprised
-        );
+        const isPlayerInCone = yawDeltaToPlayer <= MAX_FOV_YAW_RAD && pitchDeltaToPlayer <= MAX_FOV_PITCH_RAD;
 
-        if (perception.spotted) {
-          engagedPlayer = true;
-          this.callbacks.onEnemySpotted?.(bot);
-
-          if (!state.announcedPlayerContact) {
-            state.announcedPlayerContact = true;
-            this.callbacks.onBotRadioCallout?.(bot, 'Visual contact on hostile!');
-          }
-
-          state.playerLostSec = 0;
-          state.playerVisibleMs += clampedDt * 1000;
-          state.holdAngleTimer = 0;
-
-          // Select realistic chest/upper-torso/head target point (never 100% forehead lock)
-          const isPlayerCrouched = playerEye.y - playerFeetPos.y < 1.35;
-          const aimRoll = Math.abs(Math.sin(state.swayPhase * 3.1 + bIdx * 1.7 + state.burstShotIndex * 2.3));
-          const desiredAimPt = BotBrain.selectAimTargetPoint(
-            { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
-            { x: playerEye.x, y: playerEye.y, z: playerEye.z },
-            isPlayerCrouched,
-            state.archetype.skill,
-            state.burstShotIndex,
-            aimRoll
-          );
-
-          // Apply realistic human visual tracking inertia so fast-peeking players aren't glued on frame 0
-          if (!state.hasTrackedPlayer) {
-            const lagSec = config.trackingTauSec * 0.85;
-            state.trackedPlayerPos.set(
-              desiredAimPt.x - this.playerVelX * lagSec,
-              desiredAimPt.y,
-              desiredAimPt.z - this.playerVelZ * lagSec
+        if (!isPlayerInCone) {
+          state.playerVisibleMs = Math.max(0, state.playerVisibleMs - clampedDt * 1500);
+          state.playerLostSec += clampedDt;
+          state.cachedPlayerLos = false;
+        } else {
+          if (doPerceptionTick) {
+            state.cachedPlayerLos = this.hasThreePointVisualLOS(
+              { x: _botEye.x, y: _botEye.y, z: _botEye.z },
+              { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
+              { x: playerEye.x, y: playerEye.y, z: playerEye.z },
+              blocks,
+              smokeOccluders,
+              spatialGrid
             );
-            state.hasTrackedPlayer = true;
+          }
+
+          if (!state.cachedPlayerLos) {
+            state.playerVisibleMs = Math.max(0, state.playerVisibleMs - clampedDt * 1500);
+            state.playerLostSec += clampedDt;
           } else {
-            const trackBlend = 1 - Math.exp(-clampedDt / config.trackingTauSec);
-            state.trackedPlayerPos.x += (desiredAimPt.x - state.trackedPlayerPos.x) * trackBlend;
-            state.trackedPlayerPos.y += (desiredAimPt.y - state.trackedPlayerPos.y) * trackBlend;
-            state.trackedPlayerPos.z += (desiredAimPt.z - state.trackedPlayerPos.z) * trackBlend;
-          }
+            const wasMovingOrSurprised = currentHozSpeed > 1.2 || state.playerLostSec > 0.35;
+            const perception = BotBrain.evaluateVisualPerception(
+              state.currentYaw,
+              { x: _botEye.x, y: _botEye.y, z: _botEye.z },
+              { x: playerEye.x, y: playerEye.y, z: playerEye.z },
+              state.cachedPlayerLos,
+              perceptionCfg,
+              wasMovingOrSurprised
+            );
 
-          _aimVec.subVectors(state.trackedPlayerPos, _botEye);
-          const aimDist = _aimVec.length() || 1;
-          const desiredYaw = Math.atan2(_aimVec.x, _aimVec.z);
-          const desiredPitch = Math.asin(Math.max(-0.98, Math.min(0.98, _aimVec.y / aimDist)));
+            if (perception.spotted) {
+              engagedPlayer = true;
+              this.callbacks.onEnemySpotted?.(bot);
 
-          // Subtle natural human micro-sway scaled inversely with skill
-          const swayAmp = ((100 - state.archetype.skill) / 100) * 0.018;
-          const aimRes = BotBrain.stepHumanAim({
-            currentYaw: state.currentYaw,
-            currentPitch: state.currentPitch,
-            desiredYaw,
-            desiredPitch,
-            dt: clampedDt,
-            slewRateDegPerSec: state.archetype.slewRateDegPerSec,
-            swayYawRad: Math.sin(state.swayPhase * 4.3) * swayAmp,
-            swayPitchRad: Math.cos(state.swayPhase * 3.7) * swayAmp * 0.65,
-          });
-          state.currentYaw = aimRes.nextYaw;
-          state.currentPitch = aimRes.nextPitch;
-          state.targetYaw = desiredYaw;
-          bot.mesh.rotation.y = state.currentYaw;
+              if (!state.announcedPlayerContact) {
+                state.announcedPlayerContact = true;
+                this.callbacks.onBotRadioCallout?.(bot, 'Visual contact on hostile!');
+              }
 
-          // Tactical combat footwork: counter-strafe burst -> lateral strafe -> cover on reload/low HP
-          const nearbyCover = this.findNearbyCoverPos(
-            { x: botPos.x, y: botPos.y, z: botPos.z },
-            { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z }
-          );
-          const footwork = BotBrain.evaluateCombatFootwork({
-            botPos: { x: botPos.x, y: botPos.y, z: botPos.z },
-            enemyPos: { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
-            healthRatio: Math.max(0, bot.health / bot.maxHealth),
-            isReloading: state.isReloading,
-            isBlinded: state.blindTimer > 0.15,
-            skill: state.archetype.skill,
-            aggression: state.archetype.aggression,
-            phaseTimer: state.combatPhaseTimer,
-            currentPhase: state.combatPhase,
-            strafeSign: state.strafeSign,
-            nearbyCoverPos: nearbyCover,
-            dt: clampedDt,
-          });
-          state.combatPhase = footwork.nextPhase;
-          state.combatPhaseTimer = footwork.nextPhaseTimer;
-          state.strafeSign = footwork.nextStrafeSign;
-          state.isCrouching = footwork.shouldCrouch;
+              state.playerLostSec = 0;
+              state.playerVisibleMs += clampedDt * 1000;
+              state.holdAngleTimer = 0;
 
-          const moveRes = this.applyHorizontalMovement(
-            bot,
-            state,
-            footwork.moveDirX,
-            footwork.moveDirZ,
-            footwork.desiredSpeed,
-            clampedDt,
-            colliders
-          );
+              // Select realistic chest/upper-torso/head target point (never 100% forehead lock)
+              const isPlayerCrouched = playerEye.y - playerFeetPos.y < 1.35;
+              const aimRoll = Math.abs(Math.sin(state.swayPhase * 3.1 + bIdx * 1.7 + state.burstShotIndex * 2.3));
+              const desiredAimPt = BotBrain.selectAimTargetPoint(
+                { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
+                { x: playerEye.x, y: playerEye.y, z: playerEye.z },
+                isPlayerCrouched,
+                state.archetype.skill,
+                state.burstShotIndex,
+                aimRoll
+              );
 
-          // Tactical utility throw at mid-long range (when already aware)
-          const canUseUtil = config.canUseUtility && state.archetype.skill >= 75;
-          if (
-            canUseUtil &&
-            !state.hasThrownFlash &&
-            state.playerVisibleMs > perception.effectiveReactionMs * 0.8 &&
-            distToPlayer > 18 &&
-            distToPlayer < 34
-          ) {
-            state.hasThrownFlash = true;
-            this.callbacks.onBotThrowUtility?.(bot, 'flash', playerFeetPos.clone());
-            this.callbacks.onBotRadioCallout?.(bot, 'Deploying tactical flash!');
-          }
+              // Apply realistic human visual tracking inertia so fast-peeking players aren't glued on frame 0
+              if (!state.hasTrackedPlayer) {
+                const lagSec = config.trackingTauSec * 0.85;
+                state.trackedPlayerPos.set(
+                  desiredAimPt.x - this.playerVelX * lagSec,
+                  desiredAimPt.y,
+                  desiredAimPt.z - this.playerVelZ * lagSec
+                );
+                state.hasTrackedPlayer = true;
+              } else {
+                const trackBlend = 1 - Math.exp(-clampedDt / config.trackingTauSec);
+                state.trackedPlayerPos.x += (desiredAimPt.x - state.trackedPlayerPos.x) * trackBlend;
+                state.trackedPlayerPos.y += (desiredAimPt.y - state.trackedPlayerPos.y) * trackBlend;
+                state.trackedPlayerPos.z += (desiredAimPt.z - state.trackedPlayerPos.z) * trackBlend;
+              }
 
-          if (!state.isReloading && state.ammo <= 0) {
-            state.isReloading = true;
-            state.reloadTimeRemaining = botWeapon.reloadTime || 2.4;
-          }
+              _aimVec.subVectors(state.trackedPlayerPos, _botEye);
+              const aimDist = _aimVec.length() || 1;
+              const desiredYaw = Math.atan2(_aimVec.x, _aimVec.z);
+              const desiredPitch = Math.asin(Math.max(-0.98, Math.min(0.98, _aimVec.y / aimDist)));
 
-          // Strict anti-prefire fire gate: must have LOS + FOV + full reaction time + aligned crosshair + counter-strafed
-          const permittedToFire = BotBrain.canBotFire({
-            spotted: true,
-            isReloading: state.isReloading,
-            ammo: state.ammo,
-            blindTimerSec: state.blindTimer,
-            visibleDurationMs: state.playerVisibleMs,
-            effectiveReactionMs: perception.effectiveReactionMs,
-            aimErrorDeg: aimRes.totalErrorDeg,
-            maxFireErrorDeg: config.maxFireErrorDeg,
-            horizontalSpeed: moveRes.speed,
-            maxFireSpeed: config.maxFireSpeed,
-            targetDistance: distToPlayer,
-          });
+              // Subtle natural human micro-sway scaled inversely with skill
+              const swayAmp = ((100 - state.archetype.skill) / 100) * 0.018;
+              const aimRes = BotBrain.stepHumanAim({
+                currentYaw: state.currentYaw,
+                currentPitch: state.currentPitch,
+                desiredYaw,
+                desiredPitch,
+                dt: clampedDt,
+                slewRateDegPerSec: state.archetype.slewRateDegPerSec,
+                swayYawRad: Math.sin(state.swayPhase * 4.3) * swayAmp,
+                swayPitchRad: Math.cos(state.swayPhase * 3.7) * swayAmp * 0.65,
+              });
+              state.currentYaw = aimRes.nextYaw;
+              state.currentPitch = aimRes.nextPitch;
+              state.targetYaw = desiredYaw;
+              bot.mesh.rotation.y = state.currentYaw;
+
+              // Tactical combat footwork: counter-strafe burst -> lateral strafe -> cover on reload/low HP
+              const nearbyCover = this.findNearbyCoverPos(
+                { x: botPos.x, y: botPos.y, z: botPos.z },
+                { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z }
+              );
+              const footwork = BotBrain.evaluateCombatFootwork({
+                botPos: { x: botPos.x, y: botPos.y, z: botPos.z },
+                enemyPos: { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
+                healthRatio: Math.max(0, bot.health / bot.maxHealth),
+                isReloading: state.isReloading,
+                isBlinded: state.blindTimer > 0.15,
+                skill: state.archetype.skill,
+                aggression: state.archetype.aggression,
+                phaseTimer: state.combatPhaseTimer,
+                currentPhase: state.combatPhase,
+                strafeSign: state.strafeSign,
+                nearbyCoverPos: nearbyCover,
+                dt: clampedDt,
+              });
+              state.combatPhase = footwork.nextPhase;
+              state.combatPhaseTimer = footwork.nextPhaseTimer;
+              state.strafeSign = footwork.nextStrafeSign;
+              state.isCrouching = footwork.shouldCrouch;
+
+              const moveRes = this.applyHorizontalMovement(
+                bot,
+                state,
+                footwork.moveDirX,
+                footwork.moveDirZ,
+                footwork.desiredSpeed,
+                clampedDt,
+                colliders
+              );
+
+              // Tactical utility throw at mid-long range (when already aware)
+              const canUseUtil = config.canUseUtility && state.archetype.skill >= 75;
+              if (
+                canUseUtil &&
+                !state.hasThrownFlash &&
+                state.playerVisibleMs > perception.effectiveReactionMs * 0.8 &&
+                distToPlayer > 18 &&
+                distToPlayer < 34
+              ) {
+                state.hasThrownFlash = true;
+                this.callbacks.onBotThrowUtility?.(bot, 'flash', playerFeetPos.clone());
+                this.callbacks.onBotRadioCallout?.(bot, 'Deploying tactical flash!');
+              }
+
+              if (!state.isReloading && state.ammo <= 0) {
+                state.isReloading = true;
+                state.reloadTimeRemaining = botWeapon.reloadTime || 2.4;
+              }
+
+              // Enforce human-tier reaction floor + strict aim threshold (2.5° AWP, 6.5° rifles/SMGs)
+              const isAwp = state.weaponId === 'sovereign-awp' || state.weaponId === 'awp';
+              const fireThresholdDeg = isAwp ? 2.5 : Math.min(6.5, config.maxFireErrorDeg);
+              const effectiveReactionMs = Math.max(
+                MIN_REACTION_FLOOR_MS[this.difficulty],
+                perception.effectiveReactionMs
+              );
+
+              // Strict anti-prefire fire gate: must have LOS + FOV + full reaction time + aligned crosshair + counter-strafed
+              const permittedToFire = BotBrain.canBotFire({
+                spotted: true,
+                isReloading: state.isReloading,
+                ammo: state.ammo,
+                blindTimerSec: state.blindTimer,
+                visibleDurationMs: state.playerVisibleMs,
+                effectiveReactionMs,
+                aimErrorDeg: aimRes.totalErrorDeg,
+                maxFireErrorDeg: fireThresholdDeg,
+                horizontalSpeed: moveRes.speed,
+                maxFireSpeed: config.maxFireSpeed,
+                targetDistance: distToPlayer,
+              });
 
           if (permittedToFire && (now - bot.lastShotTime > config.burstCooldownMs || state.burstRemaining > 0)) {
             if (state.burstRemaining === 0) {
@@ -1224,6 +1262,8 @@ export class BotAISystem {
           continue;
         }
       }
+    }
+  }
 
       // Target not currently spotted: decay visual confirmation so re-peeks NEVER trigger instant prefires
       if (!engagedPlayer) {
@@ -1262,6 +1302,22 @@ export class BotAISystem {
             continue;
           }
 
+          // Hard unbypassable angular check (yaw ±55°, pitch ±38°) BEFORE LOS or reaction accumulation
+          const bDx = other.mesh.position.x - _botEye.x;
+          const bDy = (other.mesh.position.y + 1.68) - _botEye.y;
+          const bDz = other.mesh.position.z - _botEye.z;
+          const bHozDist = Math.hypot(bDx, bDz);
+          const angleToOther = Math.atan2(bDx, bDz);
+          const yawDeltaToOther = Math.abs(normalizeAngleRad(angleToOther - state.currentYaw));
+          const pitchToOther = Math.atan2(bDy, Math.max(0.001, bHozDist));
+          const pitchDeltaToOther = Math.abs(pitchToOther - state.currentPitch);
+
+          if (yawDeltaToOther > MAX_FOV_YAW_RAD || pitchDeltaToOther > MAX_FOV_PITCH_RAD) {
+            state.botVisibleMs.set(other.id, Math.max(0, (state.botVisibleMs.get(other.id) ?? 0) - clampedDt * 1500));
+            state.cachedBotLos.set(other.id, false);
+            continue;
+          }
+
           _targetEye.set(other.mesh.position.x, other.mesh.position.y + 1.68, other.mesh.position.z);
           let los = state.cachedBotLos.get(other.id) ?? false;
           if (doPerceptionTick) {
@@ -1274,6 +1330,11 @@ export class BotAISystem {
               spatialGrid
             );
             state.cachedBotLos.set(other.id, los);
+          }
+
+          if (!los) {
+            state.botVisibleMs.set(other.id, Math.max(0, (state.botVisibleMs.get(other.id) ?? 0) - clampedDt * 1500));
+            continue;
           }
 
           const p = BotBrain.evaluateVisualPerception(
@@ -1379,15 +1440,21 @@ export class BotAISystem {
         }
 
         const visibleBotMs = state.botVisibleMs.get(engagedBotTarget.id) ?? 0;
+        const isBotAwp = state.weaponId === 'sovereign-awp' || state.weaponId === 'awp';
+        const botFireThresholdDeg = isBotAwp ? 2.5 : Math.min(6.5, config.maxFireErrorDeg);
+        const botEffectiveReactionMs = Math.max(
+          MIN_REACTION_FLOOR_MS[this.difficulty],
+          engagedBotPerception.effectiveReactionMs
+        );
         const permittedToFire = BotBrain.canBotFire({
           spotted: true,
           isReloading: state.isReloading,
           ammo: state.ammo,
           blindTimerSec: state.blindTimer,
           visibleDurationMs: visibleBotMs,
-          effectiveReactionMs: engagedBotPerception.effectiveReactionMs,
+          effectiveReactionMs: botEffectiveReactionMs,
           aimErrorDeg: aimRes.totalErrorDeg,
-          maxFireErrorDeg: config.maxFireErrorDeg,
+          maxFireErrorDeg: botFireThresholdDeg,
           horizontalSpeed: moveRes.speed,
           maxFireSpeed: config.maxFireSpeed,
           targetDistance: engagedBotPerception.distance,

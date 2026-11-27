@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { optimizeGlb } from './optimize-glb.mjs';
 
 function resolveToken() {
   if (process.env.SKETCHFAB_API_TOKEN) return process.env.SKETCHFAB_API_TOKEN.trim();
@@ -44,14 +45,19 @@ async function main() {
     process.exit(1);
   }
   const headers = { Authorization: `Token ${token}` };
-  const tmpDir = '/tmp/sketchfab_raw';
+  const tmpDir = path.resolve(process.cwd(), '.tmp_sketchfab');
   const outDir = path.resolve(process.cwd(), 'packages/client/public/models');
   fs.mkdirSync(tmpDir, { recursive: true });
   fs.mkdirSync(outDir, { recursive: true });
+  const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
 
   for (const item of CATALOG) {
     const rawPath = path.join(tmpDir, item.out);
     const finalPath = path.join(outDir, item.out);
+    if (fs.existsSync(finalPath) && fs.statSync(finalPath).size > 1000) {
+      console.log(`[Sketchfab] ${item.label} already exists at ${finalPath}, skipping.`);
+      continue;
+    }
     console.log(`[Sketchfab] Fetching ${item.label} (${item.uid})...`);
     const metaRes = await fetch(`https://api.sketchfab.com/v3/models/${item.uid}/download`, {
       headers,
@@ -82,11 +88,7 @@ async function main() {
         { stdio: 'inherit' }
       );
     } else {
-      execFileSync(
-        'python3',
-        ['scripts/optimize-glb.py', rawPath, finalPath, String(item.maxAlbedo), String(item.maxData)],
-        { stdio: 'inherit' }
-      );
+      await optimizeGlb(rawPath, finalPath, item.maxAlbedo, item.maxData);
     }
   }
 }

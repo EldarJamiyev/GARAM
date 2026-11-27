@@ -437,7 +437,47 @@ async function tryAttachOptionalCsOfficeGlb(scene: THREE.Scene, proceduralGroup:
       envMapIntensity: 0.25,
     });
     if (!root) return;
-    // Preserve Corona Render Real-Light baked GI without double-darkening
+
+    root.name = 'cs_office_glb_world';
+
+    // 1. Remove distant skybox / background terrain nodes
+    const toRemove: THREE.Object3D[] = [];
+    root.traverse((c) => {
+      const n = (c.name || '').toUpperCase();
+      if (n.includes('BACK1') || n.includes('BACK2') || n.includes('TRANS6')) {
+        toRemove.push(c);
+      }
+    });
+    toRemove.forEach((c) => c.parent?.remove(c));
+    root.updateMatrixWorld(true);
+
+    // 2. Wrap and normalize into Three.js Y-up metric space (76m span, grounded at y = 0.0m)
+    const wrapper = new THREE.Group();
+    wrapper.name = 'cs_office_glb_world';
+    wrapper.add(root);
+
+    // Rotate Sketchfab Z-up to Three.js Y-up, aligning Courtyard at -Z and Back Office at +Z
+    root.rotation.x = -Math.PI / 2;
+    root.rotation.y = Math.PI;
+    root.updateMatrixWorld(true);
+
+    const initialBox = new THREE.Box3().setFromObject(wrapper);
+    const size = new THREE.Vector3();
+    initialBox.getSize(size);
+    const scale = 76.0 / Math.max(size.x, size.z);
+    root.scale.setScalar(scale);
+    root.updateMatrixWorld(true);
+
+    const scaledBox = new THREE.Box3().setFromObject(wrapper);
+    const center = new THREE.Vector3();
+    scaledBox.getCenter(center);
+
+    wrapper.position.x = -center.x;
+    wrapper.position.z = -center.z;
+    wrapper.position.y = -scaledBox.min.y;
+    wrapper.updateMatrixWorld(true);
+
+    // 3. Corona Real-Light calibration
     root.traverse((obj: THREE.Object3D) => {
       if ((obj as THREE.Mesh).isMesh) {
         const mesh = obj as THREE.Mesh;
@@ -460,8 +500,11 @@ async function tryAttachOptionalCsOfficeGlb(scene: THREE.Scene, proceduralGroup:
         }
       }
     });
+
+    // 4. Hide procedural fallback geometry now that real 3D mesh is mounted
     proceduralGroup.visible = false;
-    scene.add(root);
+    scene.add(wrapper);
+    (window as unknown as { csOfficeGlbLoaded?: boolean }).csOfficeGlbLoaded = true;
   } catch {
     // Stay seamlessly on Corona Real-Light architectural build
   }
