@@ -897,7 +897,8 @@ export class BotAISystem {
     playerTeam: 'Vanguard' | 'Syndicate' = 'Vanguard',
     isFreezeTime = false,
     spatialGrid?: SpatialGrid,
-    playerHasHelmet = true
+    playerHasHelmet = true,
+    cameraForward?: THREE.Vector3
   ): void {
     const clampedDt = Math.min(0.05, Math.max(0.0001, dt));
     const config = DIFFICULTY_PRESETS[this.difficulty];
@@ -920,7 +921,13 @@ export class BotAISystem {
 
     for (let bIdx = 0; bIdx < bots.length; bIdx++) {
       const bot = bots[bIdx];
-      const camDist = bot.mesh.position.distanceTo(playerEye);
+      const dxCam = bot.mesh.position.x - playerEye.x;
+      const dyCam = bot.mesh.position.y + 1.0 - playerEye.y;
+      const dzCam = bot.mesh.position.z - playerEye.z;
+      const camDist = Math.hypot(dxCam, dyCam - 1.0, dzCam);
+      const isBehindCamera = cameraForward
+        ? dxCam * cameraForward.x + dyCam * cameraForward.y + dzCam * cameraForward.z < -2.0
+        : false;
 
       if (bot.isDead) {
         bot.vx = 0;
@@ -933,6 +940,7 @@ export class BotAISystem {
           team: bot.team,
           name: bot.name,
           cameraDistance: camDist,
+          isBehindCamera,
         });
         continue;
       }
@@ -948,6 +956,7 @@ export class BotAISystem {
           team: bot.team,
           name: bot.name,
           cameraDistance: camDist,
+          isBehindCamera,
         });
         continue;
       }
@@ -1285,6 +1294,7 @@ export class BotAISystem {
             pitch: state.currentPitch,
             yawOffset: normalizeAngleRad(desiredYaw - state.currentYaw),
             cameraDistance: camDist,
+            isBehindCamera,
             velocity: { x: bot.vx, z: bot.vz },
           });
           continue;
@@ -1565,6 +1575,7 @@ export class BotAISystem {
           pitch: state.currentPitch,
           yawOffset: normalizeAngleRad(desiredYaw - state.currentYaw),
           cameraDistance: camDist,
+          isBehindCamera,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
@@ -1660,6 +1671,7 @@ export class BotAISystem {
           name: bot.name,
           isReloading: state.isReloading,
           cameraDistance: camDist,
+          isBehindCamera,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
@@ -1702,6 +1714,7 @@ export class BotAISystem {
           name: bot.name,
           isReloading: state.isReloading,
           cameraDistance: camDist,
+          isBehindCamera,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
@@ -1767,6 +1780,7 @@ export class BotAISystem {
             name: bot.name,
             isReloading: state.isReloading,
             cameraDistance: camDist,
+            isBehindCamera,
             velocity: { x: bot.vx, z: bot.vz },
           });
           continue;
@@ -1989,6 +2003,7 @@ export class BotAISystem {
         isReloading: state.isReloading,
         pitch: state.currentPitch,
         cameraDistance: camDist,
+        isBehindCamera,
         velocity: { x: bot.vx, z: bot.vz },
       });
     }

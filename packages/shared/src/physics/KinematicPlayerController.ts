@@ -361,6 +361,39 @@ export class KinematicPlayerController {
   }
 
   /**
+   * Hard-resets all kinematic state, interpolation history, crouch/landing offsets,
+   * and velocities synchronously so round transitions snap cleanly with zero camera swim or drop.
+   */
+  public hardReset(x: number, y: number, z: number, yaw = 0, pitch = 0): void {
+    this.state.x = x;
+    this.state.y = y;
+    this.state.z = z;
+    this.state.vx = 0;
+    this.state.vy = 0;
+    this.state.vz = 0;
+    this.state.yaw = yaw;
+    this.state.pitch = pitch;
+    this.state.isGrounded = true;
+    this.state.isCrouching = false;
+    this.state.isWalking = false;
+    this.state.currentEyeHeight = KINEMATICS.EYE_HEIGHT_STAND;
+
+    this.prevState.x = x;
+    this.prevState.y = y;
+    this.prevState.z = z;
+    this.prevState.currentEyeHeight = KINEMATICS.EYE_HEIGHT_STAND;
+
+    this.actualCrouching = false;
+    this.stepOffsetY = 0;
+    this.taggingFactor = 1.0;
+    this.landingSpeedFactor = 1.0;
+    this.landingCameraDip = 0;
+    this.crouchStamina = 1.0;
+    this.prevCrouchInput = false;
+    this.airEntryMaxSpeed = KINEMATICS.SPEED_RIFLE * 1.25;
+  }
+
+  /**
    * Applies bullet tagging deceleration to the player
    * @param tagPower fraction of max speed to retain (e.g. 0.55 for rifle hit, 0.65 for pistol hit)
    */

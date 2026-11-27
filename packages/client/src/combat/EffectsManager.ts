@@ -33,16 +33,19 @@ export class EffectsManager {
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
 
-  // Instanced Decals (48 concrete, 24 wood, 24 metal = exactly 3 draw calls total)
+  // Instanced Decals (48 concrete, 24 wood, 24 metal, 24 blood splatter = 4 draw calls total)
   private readonly MAX_CONCRETE_DECALS = 48;
   private readonly MAX_WOOD_DECALS = 24;
   private readonly MAX_METAL_DECALS = 24;
+  private readonly MAX_BLOOD_DECALS = 24;
   private concreteDecals: THREE.InstancedMesh;
   private woodDecals: THREE.InstancedMesh;
   private metalDecals: THREE.InstancedMesh;
+  private bloodDecals: THREE.InstancedMesh;
   private concreteIndex = 0;
   private woodIndex = 0;
   private metalIndex = 0;
+  private bloodIndex = 0;
 
   // Instanced Shell Casings (48 casings = exactly 1 draw call total)
   private readonly MAX_SHELLS = 48;
@@ -85,11 +88,12 @@ export class EffectsManager {
     this.scene = scene;
     this.camera = camera;
 
-    // 1. Procedural High-Contrast Bullet Impact Textures
+    // 1. Procedural High-Contrast Bullet Impact & CS2 Blood Splatter Textures
     const concreteTex = this.createImpactTexture('#141618', '#383b40');
     const woodTex = this.createImpactTexture('#281c12', '#4e3422');
     const metalTex = this.createImpactTexture('#0a0c0e', '#5a626b');
-    this.impactTextures.push(concreteTex, woodTex, metalTex);
+    const bloodTex = this.createBloodSplatterTexture();
+    this.impactTextures.push(concreteTex, woodTex, metalTex, bloodTex);
 
     const concreteMat = new THREE.MeshBasicMaterial({
       map: concreteTex,
@@ -118,8 +122,19 @@ export class EffectsManager {
       polygonOffsetUnits: -1.5,
     });
 
+    const bloodMat = new THREE.MeshBasicMaterial({
+      map: bloodTex,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1.8,
+      polygonOffsetUnits: -1.8,
+    });
+
     // 2. Initialize Instanced Decal Meshes
     const decalGeo = new THREE.PlaneGeometry(0.14, 0.14);
+    const bloodGeo = new THREE.PlaneGeometry(0.58, 0.58);
     _dummy.position.set(0, -500, 0);
     _dummy.scale.set(0, 0, 0);
     _dummy.updateMatrix();
@@ -147,6 +162,14 @@ export class EffectsManager {
     }
     this.metalDecals.instanceMatrix.needsUpdate = true;
     this.scene.add(this.metalDecals);
+
+    this.bloodDecals = new THREE.InstancedMesh(bloodGeo, bloodMat, this.MAX_BLOOD_DECALS);
+    this.bloodDecals.frustumCulled = false;
+    for (let i = 0; i < this.MAX_BLOOD_DECALS; i++) {
+      this.bloodDecals.setMatrixAt(i, _dummy.matrix);
+    }
+    this.bloodDecals.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.bloodDecals);
 
     // 3. Initialize Instanced Shell Casing Mesh & Typed Arrays
     const shellGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.024, 8);
@@ -315,6 +338,58 @@ export class EffectsManager {
     return tex;
   }
 
+  private createBloodSplatterTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, 128, 128);
+
+    const core = ctx.createRadialGradient(64, 64, 4, 64, 64, 34);
+    core.addColorStop(0.0, 'rgba(92, 6, 12, 0.94)');
+    core.addColorStop(0.55, 'rgba(132, 12, 20, 0.78)');
+    core.addColorStop(1.0, 'rgba(110, 8, 14, 0.0)');
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(64, 64, 34, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Organic CS2 directional spray droplets
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2 + (i % 3) * 0.21;
+      const dist = 16 + ((i * 19) % 38);
+      const rx = 3 + ((i * 7) % 8);
+      const ry = 2 + ((i * 5) % 5);
+      ctx.save();
+      ctx.translate(64 + Math.cos(a) * dist, 64 + Math.sin(a) * dist);
+      ctx.rotate(a);
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(112, 8, 14, 0.85)' : 'rgba(148, 16, 22, 0.72)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  public spawnBloodDecal(point: THREE.Vector3, normal: THREE.Vector3, isHeadshot = false): void {
+    _dummy.position.copy(point).addScaledVector(normal, 0.012);
+    const scale = (isHeadshot ? 1.32 : 0.92) + Math.random() * 0.28;
+    _dummy.scale.set(scale, scale, 1);
+    _lookTarget.copy(point).add(normal);
+    _dummy.lookAt(_lookTarget);
+    _dummy.rotateZ(Math.random() * Math.PI * 2);
+    _dummy.updateMatrix();
+
+    const idx = this.bloodIndex;
+    this.bloodIndex = (this.bloodIndex + 1) % this.MAX_BLOOD_DECALS;
+    this.bloodDecals.setMatrixAt(idx, _dummy.matrix);
+    this.bloodDecals.instanceMatrix.needsUpdate = true;
+  }
+
   public spawnBulletDecal(point: THREE.Vector3, normal: THREE.Vector3, materialType: string): void {
     _dummy.position.copy(point).addScaledVector(normal, 0.008);
     _dummy.scale.set(1, 1, 1);
@@ -481,19 +556,31 @@ export class EffectsManager {
     }
   }
 
-  public spawnShellCasing(origin: THREE.Vector3, forward: THREE.Vector3, right: THREE.Vector3): void {
+  public spawnShellCasing(
+    origin: THREE.Vector3,
+    forward: THREE.Vector3,
+    right: THREE.Vector3,
+    weaponId = 'garam-47'
+  ): void {
     const idx = this.shellIndex;
     this.shellIndex = (this.shellIndex + 1) % this.MAX_SHELLS;
 
-    const offset3 = idx * 3;
-    this.shellPos[offset3] = origin.x + right.x * 0.2 + forward.x * 0.25;
-    this.shellPos[offset3 + 1] = origin.y - 0.1;
-    this.shellPos[offset3 + 2] = origin.z + right.z * 0.2 + forward.z * 0.25;
+    // Weapon-calibrated right-side ejection port offsets in camera space
+    const isPistol = weaponId === 'desert-eagle' || weaponId === 'usp-s' || weaponId === 'glock-18';
+    const isSniper = weaponId === 'sovereign-awp';
+    const rightOff = isPistol ? 0.16 : isSniper ? 0.18 : 0.21;
+    const fwdOff = isPistol ? 0.24 : isSniper ? 0.22 : 0.30;
+    const yOff = isPistol ? -0.075 : -0.095;
 
-    const speed = 2.4 + Math.random() * 0.8;
-    this.shellVel[offset3] = right.x * speed - forward.x * 0.5;
-    this.shellVel[offset3 + 1] = 2.0 + Math.random() * 0.6;
-    this.shellVel[offset3 + 2] = right.z * speed - forward.z * 0.5;
+    const offset3 = idx * 3;
+    this.shellPos[offset3] = origin.x + right.x * rightOff + forward.x * fwdOff;
+    this.shellPos[offset3 + 1] = origin.y + yOff;
+    this.shellPos[offset3 + 2] = origin.z + right.z * rightOff + forward.z * fwdOff;
+
+    const speed = (isPistol ? 2.1 : 2.55) + Math.random() * 0.75;
+    this.shellVel[offset3] = right.x * speed - forward.x * 0.45;
+    this.shellVel[offset3 + 1] = 1.9 + Math.random() * 0.65;
+    this.shellVel[offset3 + 2] = right.z * speed - forward.z * 0.45;
 
     this.shellRot[offset3] = Math.random() * Math.PI * 2;
     this.shellRot[offset3 + 1] = Math.random() * Math.PI * 2;
@@ -706,6 +793,12 @@ export class EffectsManager {
     this.metalDecals.instanceMatrix.needsUpdate = true;
     this.metalIndex = 0;
 
+    for (let i = 0; i < this.MAX_BLOOD_DECALS; i++) {
+      this.bloodDecals.setMatrixAt(i, _dummy.matrix);
+    }
+    this.bloodDecals.instanceMatrix.needsUpdate = true;
+    this.bloodIndex = 0;
+
     for (let i = 0; i < this.MAX_SHELLS; i++) {
       this.shellActive[i] = false;
       this.shellInstancedMesh.setMatrixAt(i, _dummy.matrix);
@@ -736,11 +829,20 @@ export class EffectsManager {
 
   public dispose(): void {
     const decalGeo = this.concreteDecals.geometry;
-    this.scene.remove(this.concreteDecals, this.woodDecals, this.metalDecals, this.shellInstancedMesh, this.particleMesh);
+    this.scene.remove(
+      this.concreteDecals,
+      this.woodDecals,
+      this.metalDecals,
+      this.bloodDecals,
+      this.shellInstancedMesh,
+      this.particleMesh
+    );
     decalGeo.dispose();
+    this.bloodDecals.geometry.dispose();
     (this.concreteDecals.material as THREE.Material).dispose();
     (this.woodDecals.material as THREE.Material).dispose();
     (this.metalDecals.material as THREE.Material).dispose();
+    (this.bloodDecals.material as THREE.Material).dispose();
     for (const tex of this.impactTextures) {
       tex.dispose();
     }

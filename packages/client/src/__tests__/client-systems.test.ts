@@ -655,7 +655,392 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       expect(bots[1].health).toBe(100);
     });
   });
+
+  describe('Frame Pacing SettingsStore & Software WebGL Detection', () => {
+    it('defaults fpsLimit to VSYNC and persists VSYNC / 120 / 240 / UNLIMITED in localStorage', async () => {
+      const storeMap = new Map<string, string>();
+      const origLocalStorage = globalThis.localStorage;
+      (globalThis as unknown as { localStorage: Storage }).localStorage = {
+        getItem: (k: string) => storeMap.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          storeMap.set(k, v);
+        },
+        removeItem: (k: string) => {
+          storeMap.delete(k);
+        },
+        clear: () => storeMap.clear(),
+        key: (idx: number) => Array.from(storeMap.keys())[idx] ?? null,
+        get length() {
+          return storeMap.size;
+        },
+      };
+
+      try {
+        const { SettingsStore } = await import('../core/SettingsStore.js');
+        const store = SettingsStore.getInstance();
+        const prevLimit = store.settings.fpsLimit;
+
+        expect(['VSYNC', '120', '240', 'UNLIMITED']).toContain(prevLimit);
+
+        for (const mode of ['VSYNC', '120', '240', 'UNLIMITED'] as const) {
+          store.update('fpsLimit', mode);
+          const raw = storeMap.get('garam_tactical_settings_v2');
+          expect(raw).toBeTruthy();
+          expect(JSON.parse(raw!).fpsLimit).toBe(mode);
+        }
+
+        // Verify load() validates invalid fpsLimit and falls back safely to VSYNC
+        storeMap.set('garam_tactical_settings_v2', JSON.stringify({ fpsLimit: 'INVALID_HZ', graphicsQuality: 'POTATO' }));
+        const reloaded = (store as unknown as { load: () => { fpsLimit: string; graphicsQuality: string } }).load();
+        expect(reloaded.fpsLimit).toBe('VSYNC');
+        expect(reloaded.graphicsQuality).toBe('AUTO');
+
+        store.update('fpsLimit', prevLimit);
+      } finally {
+        (globalThis as unknown as { localStorage: Storage | undefined }).localStorage = origLocalStorage;
+      }
+    });
+
+    it('detects CPU software WebGL renderers without misclassifying hardware Mesa or discrete GPUs', async () => {
+      const { isSoftwareRendererString } = await import('../render/SceneManager.js');
+
+      expect(isSoftwareRendererString('Google SwiftShader')).toBe(true);
+      expect(isSoftwareRendererString('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)')).toBe(true);
+      expect(isSoftwareRendererString('Microsoft Basic Render Driver')).toBe(true);
+      expect(isSoftwareRendererString('llvmpipe (LLVM 15.0.7, 256 bits)')).toBe(true);
+      expect(isSoftwareRendererString('softpipe')).toBe(true);
+      expect(isSoftwareRendererString('Software Rasterizer')).toBe(true);
+
+      expect(isSoftwareRendererString('Mesa Intel(R) UHD Graphics 770 (ADL-S GT1)')).toBe(false);
+      expect(isSoftwareRendererString('ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 Direct3D11 vs_5_0 ps_5_0, D3D11)')).toBe(false);
+      expect(isSoftwareRendererString('AMD Radeon RX 7800 XT (radeonsi, navi32, LLVM 16.0.6, DRM 3.54)')).toBe(false);
+      expect(isSoftwareRendererString('Apple M3 Pro')).toBe(false);
+    });
+  });
+
+  describe('CS2 Round Transition Hard-Reset Regression (DE_DUST2 & CS_OFFICE)', () => {
+    it('hard-resets player kinematics, camera roll/height, and combat state across ROUND_END -> FREEZE_TIME -> ROUND_LIVE from mid-air and dead/spectating states', async () => {
+      const THREE = await import('three');
+      const { getMapDescriptor } = await import('@garam/shared');
+      const { buildRoundCallbacks } = await import('../core/GameEventWire.js');
+      const { PlayerManager } = await import('../combat/PlayerManager.js');
+      const { InventoryManager } = await import('../combat/InventoryManager.js');
+      const { RoundManager } = await import('../match/RoundManager.js');
+      const { settingsStore } = await import('../core/SettingsStore.js');
+
+      const origMap = settingsStore.settings.mapId;
+      const origFaction = settingsStore.settings.faction;
+
+      try {
+        const maps: Array<'de_dust2' | 'cs_office'> = ['de_dust2', 'cs_office'];
+        const scenarios: Array<'midair' | 'dead_spectating'> = ['midair', 'dead_spectating'];
+
+        for (const mapId of maps) {
+          for (const scenario of scenarios) {
+            settingsStore.settings.mapId = mapId;
+            settingsStore.settings.faction = scenario === 'midair' ? 'Vanguard' : 'Syndicate';
+            const desc = getMapDescriptor(mapId);
+            const expectedSpawn =
+              settingsStore.settings.faction === 'Syndicate'
+                ? desc.spawnPoints.OBSIDIAN_T
+                : desc.spawnPoints.VANGUARD_CT;
+            const expectedYaw = desc.initialYaw[settingsStore.settings.faction];
+
+            const player = new KinematicPlayerController(18, 9.5, -24);
+            player.state.vx = 5.4;
+            player.state.vy = 4.2;
+            player.state.vz = -4.9;
+            player.state.isGrounded = false;
+            player.state.isCrouching = true;
+            player.actualCrouching = true;
+            player.stepOffsetY = 0.42;
+            player.landingCameraDip = -0.18;
+            player.prevState.x = 12;
+            player.prevState.y = 7.0;
+
+            const camera = new THREE.PerspectiveCamera(90, 16 / 9, 0.1, 200);
+            camera.position.set(18, 12.2, -24);
+            camera.rotation.set(0.35, 1.9, 0.72, 'YXZ'); // simulated deathcam tilt + pitch
+
+            let spectatorStopped = false;
+            let weaponCombatReset = false;
+            let movementInputsReset = false;
+            let viewmodelMotionReset = false;
+            let hudKillsReset = false;
+            let syncedWeapon = false;
+
+            const inventory = new InventoryManager();
+            const economy = new EconomyManager();
+            const playerManager = new PlayerManager(
+              player,
+              inventory,
+              economy,
+              {} as never,
+              { stop: () => { spectatorStopped = true; } } as never,
+              { reset: () => {}, show: () => {} } as never,
+              {
+                addKillfeed: () => {},
+                recordRoundKill: () => {},
+                resetRoundKills: () => { hudKillsReset = true; },
+                setFactionTheme: () => {},
+                updateScores: () => {},
+                showCenterBanner: () => {},
+                updateRoundTimer: () => {},
+              } as never,
+              { playKillSound: () => {}, playImpact: () => {} } as never,
+              { spawnDeathParticleBurst: () => {} } as never,
+              { onSyncActiveWeapon: () => { syncedWeapon = true; } }
+            );
+
+            if (scenario === 'dead_spectating') {
+              playerManager.playerHealth = 0;
+            }
+
+            const mockAudio = {
+              playRoundEndHorn: () => {},
+              playBombExplosion: () => {},
+              playDefuseSuccess: () => {},
+              playRoundStart: () => {},
+              playBombPlantBeep: () => {},
+              playRadioChirp: () => {},
+            };
+            const ctx = {
+              worldCamera: camera,
+              spectator: { stop: () => { spectatorStopped = true; } },
+              weaponController: { resetRoundCombatState: () => { weaponCombatReset = true; } },
+              cameraPunchPitch: { value: 0.14 },
+              isFiring: { value: true },
+              pendingFireTrigger: { value: true },
+              isInteracting: { value: true },
+              inputManager: {
+                input: { yaw: 2.1, pitch: -0.4, forward: true, backward: false, left: true, right: false, jump: true, crouch: true, walk: false },
+                mouseDeltaX: 18,
+                mouseDeltaY: -12,
+                resetMovementInputs: () => { movementInputsReset = true; },
+              },
+              droppedWeapons: { clearAll: () => {} },
+              utilityManager: { resetRound: () => {} },
+              effects: { clearAll: () => {} },
+              radar: { clearSpotted: () => {} },
+              player,
+              playerManager,
+              inventory,
+              economy,
+              viewmodel: { resetMotionState: () => { viewmodelMotionReset = true; } },
+              hud: {
+                resetRoundKills: () => { hudKillsReset = true; },
+                setFactionTheme: () => {},
+                updateScores: () => {},
+                showCenterBanner: () => {},
+                updateRoundTimer: () => {},
+                addKillfeed: () => {},
+                updateInteractionBar: () => {},
+              },
+              combatReport: { resetRound: () => {}, show: () => {} },
+              audio: mockAudio,
+              bots: [],
+              spawnPos: { x: 0, y: 0, z: 0 },
+              syncActiveWeapon: () => { syncedWeapon = true; },
+            };
+
+            const roundCallbacks = buildRoundCallbacks(ctx as never);
+            const roundManager = new RoundManager(
+              new THREE.Scene(),
+              mockAudio as never,
+              roundCallbacks,
+              desc.bombsites
+            );
+            (ctx as unknown as { roundManager: InstanceType<typeof RoundManager> }).roundManager = roundManager;
+
+            // Simulate ROUND_END -> FREEZE_TIME -> ROUND_LIVE transition
+            const feetPos = new THREE.Vector3(18, 9.5, -24);
+            roundManager.phase = 'ROUND_END';
+            roundManager.phaseTimer = 0.05;
+            roundManager.update(0.1, feetPos, false, false, false, [], playerManager.playerHealth);
+            expect(roundManager.phase).toBe('FREEZE_TIME');
+
+            expect(spectatorStopped).toBe(true);
+            expect(weaponCombatReset).toBe(true);
+            expect(movementInputsReset).toBe(true);
+            expect(viewmodelMotionReset).toBe(true);
+            expect(hudKillsReset).toBe(true);
+            expect(syncedWeapon).toBe(true);
+
+            // Player state strictly grounded on spawn floor with zero velocity & zero interpolation residue
+            expect(playerManager.playerHealth).toBe(100);
+            expect(player.state.x).toBeCloseTo(expectedSpawn.x, 4);
+            expect(player.state.y).toBeCloseTo(expectedSpawn.y, 4);
+            expect(player.state.z).toBeCloseTo(expectedSpawn.z, 4);
+            expect(player.state.vx).toBe(0);
+            expect(player.state.vy).toBe(0);
+            expect(player.state.vz).toBe(0);
+            expect(player.state.isGrounded).toBe(true);
+            expect(player.state.isCrouching).toBe(false);
+            expect(player.actualCrouching).toBe(false);
+            expect(player.stepOffsetY).toBe(0);
+            expect(player.landingCameraDip).toBe(0);
+            expect(player.prevState.x).toBeCloseTo(player.state.x, 5);
+            expect(player.prevState.y).toBeCloseTo(player.state.y, 5);
+            expect(player.prevState.z).toBeCloseTo(player.state.z, 5);
+
+            // Camera snapped cleanly to standing eye height with zero deathcam roll
+            expect(camera.position.x).toBeCloseTo(expectedSpawn.x, 4);
+            expect(camera.position.y).toBeCloseTo(expectedSpawn.y + KINEMATICS.EYE_HEIGHT_STAND, 4);
+            expect(camera.position.z).toBeCloseTo(expectedSpawn.z, 4);
+            expect(camera.rotation.z).toBe(0);
+            expect(camera.rotation.x).toBe(0);
+            expect(camera.rotation.y).toBeCloseTo(expectedYaw, 4);
+            expect(ctx.cameraPunchPitch.value).toBe(0);
+            expect(ctx.isFiring.value).toBe(false);
+
+            // Advance through FREEZE_TIME -> ROUND_LIVE
+            roundManager.update(roundManager.phaseTimer + 0.1, feetPos, false, false, false, [], 100);
+            expect(roundManager.phase).toBe('ROUND_LIVE');
+          }
+        }
+      } finally {
+        settingsStore.settings.mapId = origMap;
+        settingsStore.settings.faction = origFaction;
+      }
+    });
+  });
+
+  describe('CS2 PBR Weapon Calibration & HUD Kill-Card Stack', () => {
+    it('calibrates metallic steel, crimson karambit bevels, AWP scope glass, AK wood, Deagle chrome, and polymer materials', async () => {
+      const THREE = await import('three');
+      const { calibrateWeaponPBRMaterials } = await import('../viewmodel/WeaponViewmodel.js');
+
+      const makeMesh = (meshName: string, matName: string) => {
+        const mat = new THREE.MeshStandardMaterial({ name: matName, metalness: 0.5, roughness: 0.5 });
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), mat);
+        mesh.name = meshName;
+        return { mesh, mat };
+      };
+
+      // Karambit: crimson metallic blade vs matte grip
+      const karGroup = new THREE.Group();
+      const karBlade = makeMesh('karambit_blade', 'blade_mat');
+      const karGrip = makeMesh('karambit_handle_grip', 'grip_mat');
+      karGroup.add(karBlade.mesh, karGrip.mesh);
+      expect(calibrateWeaponPBRMaterials(karGroup, 'garam-karambit')).toBe(2);
+      expect(karBlade.mat.metalness).toBeCloseTo(0.88, 2);
+      expect(karBlade.mat.roughness).toBeCloseTo(0.18, 2);
+      expect(karBlade.mat.envMapIntensity).toBeGreaterThanOrEqual(1.6);
+      expect(karGrip.mat.metalness).toBeLessThan(0.2);
+
+      // AWP: glossy scope lens vs matte polymer chassis
+      const awpGroup = new THREE.Group();
+      const awpLens = makeMesh('scope_glass', 'optic_lens');
+      const awpBody = makeMesh('awp_chassis', 'polymer_body');
+      awpGroup.add(awpLens.mesh, awpBody.mesh);
+      calibrateWeaponPBRMaterials(awpGroup, 'sovereign-awp');
+      expect(awpLens.mat.roughness).toBeCloseTo(0.06, 2);
+      expect(awpLens.mat.envMapIntensity).toBeCloseTo(2.0, 2);
+      expect(awpBody.mat.roughness).toBeCloseTo(0.62, 2);
+
+      // AK-47: warm satin wood vs brushed steel receiver
+      const akGroup = new THREE.Group();
+      const akWood = makeMesh('ak_wood_handguard', 'wood_mat');
+      const akSteel = makeMesh('ak_receiver', 'steel_mat');
+      akGroup.add(akWood.mesh, akSteel.mesh);
+      calibrateWeaponPBRMaterials(akGroup, 'garam-47');
+      expect(akWood.mat.metalness).toBeLessThan(0.1);
+      expect(akWood.mat.roughness).toBeCloseTo(0.52, 2);
+      expect(akSteel.mat.metalness).toBeGreaterThanOrEqual(0.72);
+
+      // Desert Eagle: high-metalness chrome slide
+      const deagleGroup = new THREE.Group();
+      const deagleSlide = makeMesh('deagle_slide', 'chrome_slide');
+      deagleGroup.add(deagleSlide.mesh);
+      calibrateWeaponPBRMaterials(deagleGroup, 'desert-eagle');
+      expect(deagleSlide.mat.metalness).toBeGreaterThanOrEqual(0.84);
+      expect(deagleSlide.mat.envMapIntensity).toBeCloseTo(1.55, 2);
+    });
+
+    it('tracks round kill cards (capped at 5 with headshot styling), resets on new round, and updates team alive counters', async () => {
+      const { HUDManager } = await import('../ui/HUDManager.js');
+
+      const makeEl = (id: string) => {
+        const classes = new Set<string>();
+        const children: unknown[] = [];
+        return {
+          id,
+          textContent: '',
+          innerHTML: '',
+          className: '',
+          dataset: {} as Record<string, string>,
+          style: {} as Record<string, string>,
+          offsetWidth: 0,
+          children,
+          classList: {
+            add: (c: string) => classes.add(c),
+            remove: (c: string) => classes.delete(c),
+            toggle: (c: string, force?: boolean) => (force ? classes.add(c) : classes.delete(c)),
+            contains: (c: string) => classes.has(c),
+          },
+          appendChild: (child: unknown) => {
+            children.push(child);
+            return child;
+          },
+        };
+      };
+
+      const elements = new Map<string, ReturnType<typeof makeEl>>([
+        ['alive-ct', makeEl('alive-ct')],
+        ['alive-t', makeEl('alive-t')],
+        ['cs2-kill-cards', makeEl('cs2-kill-cards')],
+        ['cs2-kill-flare', makeEl('cs2-kill-flare')],
+        ['cs2-faction-emblem', makeEl('cs2-faction-emblem')],
+      ]);
+
+      const origDoc = globalThis.document;
+      const origWin = globalThis.window;
+      (globalThis as unknown as { document: unknown }).document = {
+        getElementById: (id: string) => elements.get(id) ?? null,
+        querySelectorAll: () => [],
+        createElement: () => makeEl('card'),
+      };
+      (globalThis as unknown as { window: unknown }).window = {
+        setTimeout: () => 1,
+        clearTimeout: () => {},
+      };
+
+      try {
+        const hud = new HUDManager();
+        hud.updateAliveCounts(4, 3);
+        expect(elements.get('alive-ct')!.textContent).toBe('4');
+        expect(elements.get('alive-t')!.textContent).toBe('3');
+
+        hud.setFactionTheme('Syndicate');
+        expect(elements.get('cs2-faction-emblem')!.dataset.faction).toBe('syndicate');
+
+        hud.recordRoundKill(false);
+        hud.recordRoundKill(true);
+        hud.recordRoundKill(true);
+        expect(hud.roundKillCount).toBe(3);
+        const cards = elements.get('cs2-kill-cards')!.children as Array<{ className: string }>;
+        expect(cards.length).toBe(3);
+        expect(cards[0].className).toBe('cs2-kill-card');
+        expect(cards[1].className).toBe('cs2-kill-card headshot');
+        expect(elements.get('cs2-kill-flare')!.classList.contains('active')).toBe(true);
+
+        hud.recordRoundKill(false);
+        hud.recordRoundKill(false);
+        hud.recordRoundKill(true); // 6th kill caps roundKillCount at 5
+        expect(hud.roundKillCount).toBe(5);
+
+        hud.resetRoundKills();
+        expect(hud.roundKillCount).toBe(0);
+        expect(elements.get('cs2-kill-cards')!.innerHTML).toBe('');
+        expect(elements.get('cs2-kill-flare')!.classList.contains('active')).toBe(false);
+      } finally {
+        (globalThis as unknown as { document: unknown }).document = origDoc;
+        (globalThis as unknown as { window: unknown }).window = origWin;
+      }
+    });
+  });
 });
+
 
 
 

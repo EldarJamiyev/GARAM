@@ -12,6 +12,7 @@ export interface ModelNormalizationOptions {
   envMapIntensity?: number;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  frustumCulled?: boolean;
 }
 
 export interface NormalizedModelUserData {
@@ -161,7 +162,10 @@ export class AssetManager {
           const mesh = child as THREE.Mesh;
           mesh.castShadow = castShadow;
           mesh.receiveShadow = receiveShadow;
-          mesh.frustumCulled = false;
+          if (mesh.geometry && !mesh.geometry.boundingSphere) {
+            mesh.geometry.computeBoundingSphere();
+          }
+          mesh.frustumCulled = options.frustumCulled ?? false;
 
           if (mesh.material) {
             const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];

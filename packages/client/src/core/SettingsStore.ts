@@ -4,6 +4,7 @@ export type GameMode = 'offline' | 'multiplayer';
 export type ActiveMapId = 'de_dust2' | 'cs_office';
 export type GraphicsQuality = 'AUTO' | 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH';
 export type QualityTier = 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH';
+export type FpsLimit = 'VSYNC' | '120' | '240' | 'UNLIMITED';
 
 export interface CrosshairConfig {
   thickness: number;
@@ -21,6 +22,7 @@ export interface UserSettings {
   mapId: ActiveMapId;
   botDifficulty: BotDifficulty;
   graphicsQuality: GraphicsQuality;
+  fpsLimit: FpsLimit;
   mouseSensitivity: number;
   scopedSensitivityMultiplier: number;
   masterVolume: number;
@@ -38,6 +40,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   mapId: 'de_dust2',
   botDifficulty: 'Veteran',
   graphicsQuality: 'AUTO',
+  fpsLimit: 'VSYNC',
   mouseSensitivity: 2.2,
   scopedSensitivityMultiplier: 0.8,
   masterVolume: 0.85,
@@ -65,6 +68,12 @@ const VALID_GRAPHICS_QUALITIES: ReadonlySet<GraphicsQuality> = new Set([
   'LOW',
   'MEDIUM',
   'HIGH',
+]);
+const VALID_FPS_LIMITS: ReadonlySet<FpsLimit> = new Set([
+  'VSYNC',
+  '120',
+  '240',
+  'UNLIMITED',
 ]);
 
 export class SettingsStore {
@@ -95,10 +104,14 @@ export class SettingsStore {
             rawQuality && VALID_GRAPHICS_QUALITIES.has(rawQuality) && rawQuality !== 'POTATO'
               ? rawQuality
               : 'AUTO';
+          const rawFpsLimit = parsed.fpsLimit;
+          const fpsLimit: FpsLimit =
+            rawFpsLimit && VALID_FPS_LIMITS.has(rawFpsLimit) ? rawFpsLimit : 'VSYNC';
           return {
             ...DEFAULT_SETTINGS,
             ...parsed,
             graphicsQuality,
+            fpsLimit,
             crosshair: { ...DEFAULT_SETTINGS.crosshair, ...(parsed.crosshair ?? {}) },
           };
         }

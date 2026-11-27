@@ -8,6 +8,7 @@ import {
   AABBCollider,
   SpatialGrid,
   KinematicPlayerController,
+  KINEMATICS,
   getMapDescriptor,
   MapId,
 } from '@garam/shared';
@@ -17,6 +18,7 @@ import {
   CrosshairConfig,
   PlayerFaction,
   GraphicsQuality,
+  FpsLimit,
   ActiveMapId,
 } from './SettingsStore.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
@@ -82,6 +84,7 @@ export interface GameContext {
   cameraPunchPitch: { value: number };
   syncActiveWeapon: () => void;
   applyGraphicsQuality?: (quality: GraphicsQuality) => void;
+  applyFpsLimit?: (limit: FpsLimit) => void;
   // Late-initialized controllers populated during GaramGame constructor
   weaponController?: WeaponController;
   roundManager?: RoundManager;
@@ -136,6 +139,7 @@ export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
           if (ctx.renderer) {
             ctx.radar.bakeFromScene(ctx.renderer, ctx.worldScene);
           }
+          ctx.sceneManager?.invalidateShadows();
         });
 
   ctx.blocks = mapData.blocks;
@@ -155,6 +159,7 @@ export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
   if (ctx.renderer) {
     ctx.radar.bakeFromScene(ctx.renderer, ctx.worldScene);
   }
+  ctx.sceneManager?.invalidateShadows();
 
   const scoreboardTitle = document.querySelector('#scoreboard-modal h2');
   if (scoreboardTitle) {
@@ -169,13 +174,25 @@ export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
   ctx.spawnPos.z = factionSpawn.z;
 
   const initialYaw = desc.initialYaw[faction];
-  ctx.playerManager.reset(ctx.spawnPos);
+  ctx.weaponController?.resetRoundCombatState();
+  ctx.cameraPunchPitch.value = 0;
+  ctx.isFiring.value = false;
+  ctx.pendingFireTrigger.value = false;
+  ctx.isInteracting.value = false;
+  ctx.inputManager?.resetMovementInputs();
+  ctx.playerManager.reset(ctx.spawnPos, initialYaw);
   if (ctx.inputManager) {
     ctx.inputManager.input.yaw = initialYaw;
     ctx.inputManager.input.pitch = 0;
+    ctx.inputManager.mouseDeltaX = 0;
+    ctx.inputManager.mouseDeltaY = 0;
   }
-  ctx.worldCamera.position.set(ctx.spawnPos.x, ctx.spawnPos.y + 1.68, ctx.spawnPos.z);
+  ctx.worldCamera.position.set(ctx.spawnPos.x, ctx.spawnPos.y + KINEMATICS.EYE_HEIGHT_STAND, ctx.spawnPos.z);
   ctx.worldCamera.rotation.set(0, initialYaw, 0, 'YXZ');
+  ctx.worldCamera.updateMatrixWorld(true);
+  ctx.viewmodel.resetMotionState();
+  ctx.hud.resetRoundKills();
+  ctx.hud.setFactionTheme(faction);
 }
 
 export function ensureCustomizer(ctx: GameContext): Promise<CustomizerUI> {
@@ -432,17 +449,39 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.spawnPos.x = factionSpawn.x;
       ctx.spawnPos.y = factionSpawn.y;
       ctx.spawnPos.z = factionSpawn.z;
+      const initialYaw = desc.initialYaw[faction];
 
+      // Instant CS2 hard-cut round reset: stop deathcam, zero camera roll/punch/zoom, lock kinematics to spawn floor
       ctx.spectator.stop();
+      ctx.weaponController?.resetRoundCombatState();
+      ctx.cameraPunchPitch.value = 0;
+      ctx.isFiring.value = false;
+      ctx.pendingFireTrigger.value = false;
+      ctx.isInteracting.value = false;
+      ctx.inputManager?.resetMovementInputs();
+
       ctx.droppedWeapons.clearAll();
       ctx.utilityManager.resetRound();
       ctx.effects.clearAll();
       ctx.radar.clearSpotted();
-      ctx.playerManager.reset(ctx.spawnPos);
+      ctx.playerManager.reset(ctx.spawnPos, initialYaw);
       if (ctx.inputManager) {
-        ctx.inputManager.input.yaw = desc.initialYaw[faction];
+        ctx.inputManager.input.yaw = initialYaw;
         ctx.inputManager.input.pitch = 0;
+        ctx.inputManager.mouseDeltaX = 0;
+        ctx.inputManager.mouseDeltaY = 0;
       }
+      ctx.worldCamera.position.set(
+        ctx.spawnPos.x,
+        ctx.spawnPos.y + KINEMATICS.EYE_HEIGHT_STAND,
+        ctx.spawnPos.z
+      );
+      ctx.worldCamera.rotation.set(0, initialYaw, 0, 'YXZ');
+      ctx.worldCamera.updateMatrixWorld(true);
+      ctx.viewmodel.resetMotionState();
+      ctx.hud.resetRoundKills();
+      ctx.hud.setFactionTheme(faction);
+
       ctx.playerManager.respawnAllBots(ctx.bots);
       for (let s = 1; s <= 3; s++) {
         const state = ctx.inventory.slots[s as SlotNumber];
@@ -511,6 +550,7 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
         ctx.spectator.cycleTeammate(1, ctx.bots);
         return;
       }
+      if (ctx.roundManager?.phase === 'FREEZE_TIME') return;
       const active = ctx.inventory.getActiveWeapon();
       if (active.category === 'grenade') {
         ctx.playerManager.throwUtilityGrenade('long', ctx.worldCamera);
@@ -530,6 +570,10 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
         return;
       }
       const active = ctx.inventory.getActiveWeapon();
+      if (ctx.roundManager?.phase === 'FREEZE_TIME') {
+        // Allow AWP scope check in freeze time, but block knife stab & grenade throws
+        if (active.id !== 'sovereign-awp') return;
+      }
       if (active.category === 'grenade') {
         ctx.playerManager.throwUtilityGrenade('short', ctx.worldCamera);
         return;
@@ -608,10 +652,12 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
       void ensureCustomizer(ctx).then((cust) => cust.toggle(willOpen));
     },
     onInteractDown: () => {
-      ctx.isInteracting.value = true;
-      if (ctx.networkClient?.isConnected) {
-        const action = settingsStore.settings.faction === 'Syndicate' ? 'plant' : 'defuse';
-        ctx.networkClient.sendPlantDefuse(action);
+      if (ctx.roundManager?.phase !== 'FREEZE_TIME') {
+        ctx.isInteracting.value = true;
+        if (ctx.networkClient?.isConnected) {
+          const action = settingsStore.settings.faction === 'Syndicate' ? 'plant' : 'defuse';
+          ctx.networkClient.sendPlantDefuse(action);
+        }
       }
       ctx.worldCamera.getWorldDirection(_forward);
       ctx.droppedWeapons.tryLootAimingAt(ctx.worldCamera.position, _forward, (dropped: DroppedWeaponEntity) => {
@@ -723,6 +769,7 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     },
     onFactionChanged: (faction: PlayerFaction) => {
       ctx.viewmodel.setFaction(faction);
+      ctx.hud.setFactionTheme(faction);
       const desc = getMapDescriptor(settingsStore.settings.mapId);
       const nextSpawn =
         faction === 'Syndicate' ? desc.spawnPoints.OBSIDIAN_T : desc.spawnPoints.VANGUARD_CT;
@@ -730,18 +777,13 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
       ctx.spawnPos.y = nextSpawn.y;
       ctx.spawnPos.z = nextSpawn.z;
       if (!ctx.hasMatchStarted.value) {
-        ctx.player.state.x = nextSpawn.x;
-        ctx.player.state.y = nextSpawn.y;
-        ctx.player.state.z = nextSpawn.z;
-        ctx.player.state.vx = 0;
-        ctx.player.state.vy = 0;
-        ctx.player.state.vz = 0;
         const nextYaw = desc.initialYaw[faction];
+        ctx.player.hardReset(nextSpawn.x, nextSpawn.y, nextSpawn.z, nextYaw, 0);
         if (ctx.inputManager) {
           ctx.inputManager.input.yaw = nextYaw;
           ctx.inputManager.input.pitch = 0;
         }
-        ctx.worldCamera.position.set(nextSpawn.x, nextSpawn.y + 1.68, nextSpawn.z);
+        ctx.worldCamera.position.set(nextSpawn.x, nextSpawn.y + KINEMATICS.EYE_HEIGHT_STAND, nextSpawn.z);
         ctx.worldCamera.rotation.set(0, nextYaw, 0, 'YXZ');
       }
     },
@@ -752,6 +794,10 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     onQualityChanged: (quality: GraphicsQuality) => {
       ctx.applyGraphicsQuality?.(quality);
       ctx.hud.addKillfeed(`Graphics Quality: ${quality}`);
+    },
+    onFpsLimitChanged: (limit: FpsLimit) => {
+      ctx.applyFpsLimit?.(limit);
+      ctx.hud.addKillfeed(`Frame Pacing: ${limit}`);
     },
   };
 }
@@ -769,6 +815,7 @@ export interface FrameStepState {
 }
 
 const _camEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _camForward = new THREE.Vector3();
 
 export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   const { frameDelta, hozSpeed, isFreezeTime, playerFeet, currentZone } = s;
@@ -820,6 +867,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   const smokeOccluders = ctx.utilityManager.getActiveSmokeOccluders();
 
   if (!cust?.freezeBots) {
+    worldCamera.getWorldDirection(_camForward);
     botAI.update(
       ctx.bots,
       frameDelta,
@@ -835,7 +883,8 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
       settingsStore.settings.faction,
       isFreezeTime,
       ctx.spatialGrid,
-      ctx.economy.hasHelmet
+      ctx.economy.hasHelmet,
+      _camForward
     );
   }
 
@@ -909,6 +958,17 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
     wc.aimPunchPitch,
     settingsStore.settings.followRecoil
   );
+  const localFaction = settingsStore.settings.faction;
+  let ctAlive = localFaction === 'Vanguard' && ctx.playerManager.playerHealth > 0 ? 1 : 0;
+  let tAlive = localFaction === 'Syndicate' && ctx.playerManager.playerHealth > 0 ? 1 : 0;
+  for (let i = 0; i < ctx.bots.length; i++) {
+    const b = ctx.bots[i];
+    if (!b.isDead) {
+      if (b.team === 'Vanguard') ctAlive++;
+      else tAlive++;
+    }
+  }
+  ctx.hud.updateAliveCounts(ctAlive, tAlive);
   ctx.hud.updateCallout(currentZone);
 }
 

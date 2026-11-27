@@ -67,13 +67,8 @@ export class PlayerManager {
     this.callbacks = callbacks;
   }
 
-  public reset(spawnPos: { x: number; y: number; z: number }): void {
-    this.player.state.x = spawnPos.x;
-    this.player.state.y = spawnPos.y;
-    this.player.state.z = spawnPos.z;
-    this.player.state.vx = 0;
-    this.player.state.vy = 0;
-    this.player.state.vz = 0;
+  public reset(spawnPos: { x: number; y: number; z: number }, initialYaw = 0): void {
+    this.player.hardReset(spawnPos.x, spawnPos.y, spawnPos.z, initialYaw, 0);
     this.playerHealth = 100;
     this.economy.armor = 100;
   }
@@ -208,6 +203,9 @@ export class PlayerManager {
       bot.isDead = false;
       bot.health = bot.maxHealth;
       bot.armor = 100;
+      bot.vx = 0;
+      bot.vz = 0;
+      bot.lastShotTime = 0;
       bot.mesh.visible = true;
       if (bot.patrolWaypoints.length > 0) {
         bot.waypointIndex = 0;
@@ -266,7 +264,8 @@ export class PlayerManager {
       this._dropDir
     );
     const text = CombatReportManager.formatKillfeedEntry(killerName, victimBot.name, weaponName, headshot);
-    this.hud.addKillfeed(text);
+    this.hud.addKillfeed(text, true);
+    this.hud.recordRoundKill(headshot);
     this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, bots);
   }
 

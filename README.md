@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-160%20Passing-00FF88?style=for-the-badge" alt="160 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-168%20Passing-00FF88?style=for-the-badge" alt="168 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -25,9 +25,10 @@
   2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin, deterministic PRNG spread (`BallisticsSpread`), per-weapon fire cooldowns, 180ms weapon-deploy lockouts, and bomb plant/defuse ownership mutexes are strictly enforced server-side. Includes atomic IP connection caps, smooth token-bucket rate limiting, trusted proxy hop parsing, strict production `Origin` validation, 2KB payload caps, full-RTT `ping_challenge`/`pong_challenge` verification, and recursive prototype-pollution defenses.
   3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All primary rifles and pistols (`garam-47`, `vanguard-m4`, `m4a4`, `sovereign-awp`, `desert-eagle`, `usp-s`, `glock-18`) enforce `sprayPattern[0] = [0.0, 0.0]` with full magazine-length recoil arrays. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy, and scoped Sovereign AWP shots support high-penetration collateral hits (`penetrationPower >= 250`).
   4. **Human-Perception Tactical Bot AI (Zero Prefires & Counter-Strafe Footwork):** Collision-free tactical waypoint & nav-graph patrolling across both `DE_DUST2 (A-SITE)` and `CS_OFFICE (2-SITE)` (spawned facing down active choke corridors along `wp0 → wp1`), forward-FOV visual perception, peripheral/distance/surprise reaction latencies, strict crosshair-alignment firing gates (shots fire strictly along actual slewed yaw/pitch with realistic moving-target tracking lag), counter-strafed burst-and-strafe combat footwork, cover retreats on reload/low HP, tactical choke angle-holding with corner-slicing crosshair placement, deadlock-free corridor passing, flashbang blindness & smooth anti-flash turns, live mid-match difficulty re-scaling, and smoke-occluded `hasLineOfSight`.
-  5. **Dual-Pass PBR Rendering, Physical Finger Gripping & Zero-Overlap HUD (`60°–66°` FOV):** Depth-isolated viewmodel rendering (`60°` desktop FOV, gently clamped up to `66°` on narrow/portrait screens, `0.05m` near plane) with unified CS2 Rigify first-person arms (`cs2_fps_arms.glb`), biomechanical curled finger phalanges (closed fist gripping the **Crimson Karambit** handle/ring + two-handed pistol and forend rifle grips), faction-tinted tactical gloves (**Vanguard CT** navy-slate vs. **Syndicate T** crimson-obsidian with natural bare forearm skin), automated dual-viewport (`1440×900` & `430×932`) skinned-vertex posture verification across `Idle`, `Fire`, `Reload`, `Draw`, and `Inspect` (`0` visible bicep cutoffs, elbows off bottom edge, rifle buttstocks tucked into the shoulder pocket, `0` crosshair occlusion), full 9-weapon CS2 arsenal (`garam-47`, `vanguard-m4`, `m4a4`, `mp9`, `sovereign-awp`, `desert-eagle`, `usp-s`, `glock-18`, `garam-karambit`), rigged 3P skeletal operators (`operator_vanguard.glb`, `operator_syndicate.glb`) with depth-tested dark-pill nameplates, live top-down orthographic radar baking, zero-overlap responsive HUD/Lobby (`#killfeed`, `#slot-bar`, mid-width/mobile layouts, `[?] CONTROLS` modal), and non-sticky `AUTO` graphics governance.
+  5. **CS2 (Source 2) Dual-Pass PBR Rendering, Physical Finger Gripping, Minimalist HUD & Instant Round Reset (`60°–66°` FOV):** Depth-isolated viewmodel rendering (`60°` desktop FOV, gently clamped up to `66°` on narrow/portrait screens, `0.05m` near plane) with dedicated `RoomEnvironment` PMREM studio reflections, 3-point key/fill/rim directional viewmodel lighting, calibrated per-weapon PBR materials (brushed steel receivers, satin AK wood, AWP scope glass, Deagle chrome, crimson Karambit bevels), bright Mediterranean `DE_DUST2` daylight atmosphere, unified CS2 Rigify first-person arms (`cs2_fps_arms.glb`) with biomechanical curled fingers, hand-bounce muzzle light + suppressed gas puffs + wall blood splatter decals + clamped mouse-look sway/bob/landing dip, full 9-weapon CS2 arsenal (`garam-47`, `vanguard-m4`, `m4a4`, `mp9`, `sovereign-awp`, `desert-eagle`, `usp-s`, `glock-18`, `garam-karambit`), rigged 3P skeletal operators (`operator_vanguard.glb`, `operator_syndicate.glb`), live top-down orthographic radar baking, authentic CS2 HUD (top `ALIVE | TIMER+SCORE | ALIVE` header, radar-anchored callout tag, bottom translucent scrims with HP/armor bars, center faction emblem with animated round kill-card fan + light-beam flare, crimson local-kill feed highlight, razor-sharp 1px AWP reticle), synchronous hard-cut `ROUND_END → FREEZE_TIME → ROUND_LIVE` resets with zero deathcam roll or mid-air carryover, and compact overflow-free Lobby with inline software-WebGL detection.
   6. **Shared `MapRegistry` & Adaptive Clock-Skew Immune 64-Tick Netcode:** Both client and authoritative 64-tick `GameRoom.ts` resolve map colliders, spawn points, buy zones, bombsites, and bot patrol routes through a single shared `MapRegistry` (`mapId` handshake on `join`/`welcome`), eliminating online server-client map desync alongside 64-slot ring-buffer `O(1)` half-RTT hitbox rewind, Int16-clamped Binary Protocol v2 (`36 + 29*N` bytes), and 2×128Hz batched binary inputs (`0x03`, 41 bytes).
   7. **Authoritative Utility Physics & MR12 Halftime Rules:** Shared `UtilitySimulation` steps server-side bouncing grenade arcs with sloped voxel ramp-lip deflection, active `MapBounds`, LOS-occluded HE blast waves, and smoke-extinguishable 40 DPS Molotov zones alongside automatic MR12 Round 13 halftime side-swap and `$800` pistol-round resets.
+  8. **Zero-Quality-Loss WebGL2 Optimization & `UNLIMITED FPS` Pacing:** Static map/light matrix freezing (`matrixAutoUpdate = false`), freeze-time/throttled shadow updates (`invalidateShadows`/`updateShadows`), frustum-culled and behind-camera LOD-skipped 3P `OperatorRig` updates, blur-free HUD compositing, `TypedArray` zero-allocation `[F3]` frame-time telemetry, smart software-WebGL detection banner without overwriting saved GPU presets, and selectable Lobby frame pacing (`VSYNC`, `120 FPS`, `240 FPS`, `UNLIMITED FPS` via reusable `MessageChannel`).
 
 ---
 
@@ -121,15 +122,15 @@ Players can switch maps live in the Lobby (`MAP` selector) or synchronize automa
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (160 Passing Tests Across 20 Suites)
+### Test Suite Coverage (168 Passing Tests Across 20 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
 ```
 ```text
- ✓ packages/client/src/__tests__/client-systems.test.ts       (13 tests)
- ✓ packages/client/src/__tests__/viewmodel-rig.test.ts        (10 tests)
- ✓ packages/client/src/__tests__/operator-rig.test.ts         (1 test)
+ ✓ packages/client/src/__tests__/client-systems.test.ts       (18 tests)
+ ✓ packages/client/src/__tests__/viewmodel-rig.test.ts        (12 tests)
+ ✓ packages/client/src/__tests__/operator-rig.test.ts         (2 tests)
  ✓ packages/server/src/__tests__/gameroom.integration.test.ts (9 tests)
  ✓ packages/server/src/__tests__/pvs.test.ts                  (1 test)
  ✓ packages/server/src/__tests__/registry.test.ts             (6 tests)
@@ -149,7 +150,7 @@ npm test
  ✓ packages/shared/src/__tests__/docs-sync.test.ts            (3 tests)
 
  Test Files  20 passed (20)
-      Tests  160 passed (160)
+      Tests  168 passed (168)
 ```
 
 ---

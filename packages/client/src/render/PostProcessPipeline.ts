@@ -74,6 +74,8 @@ export class PostProcessPipeline {
   }
 
   private postEnabled = true;
+  private lastWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+  private lastHeight = typeof window !== 'undefined' ? window.innerHeight : 0;
 
   public setQualityTier(tier: 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH'): void {
     if (this.isSoftwareGl || !this.composer) {
@@ -94,6 +96,10 @@ export class PostProcessPipeline {
   }
 
   public setSize(width: number, height: number): void {
+    if (width <= 0 || height <= 0) return;
+    if (width === this.lastWidth && height === this.lastHeight) return;
+    this.lastWidth = width;
+    this.lastHeight = height;
     if (this.composer) {
       this.composer.setSize(width, height);
     }

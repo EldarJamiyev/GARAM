@@ -117,6 +117,87 @@ export function applyFactionGloveTint(
   return tintedCount;
 }
 
+/**
+ * Calibrates CS2 (Source 2) physically-based material properties per weapon class while
+ * preserving original albedo maps and textures so receivers, brushed steel, wood furniture,
+ * polymer grips, AWP scope glass, and Karambit bevels respond authentically to RoomEnvironment IBL.
+ */
+export function calibrateWeaponPBRMaterials(model: THREE.Object3D, weaponId: string): number {
+  let calibrated = 0;
+  const isWoodRifle = weaponId === 'garam-47';
+  const isPolymerPrimary =
+    weaponId === 'vanguard-m4' ||
+    weaponId === 'm4a4' ||
+    weaponId === 'mp9' ||
+    weaponId === 'glock-18' ||
+    weaponId === 'usp-s';
+  const isChromePistol = weaponId === 'desert-eagle';
+  const isAwp = weaponId === 'sovereign-awp';
+  const isKarambit = weaponId === 'garam-karambit';
+
+  model.traverse((child) => {
+    if (!(child as THREE.Mesh).isMesh) return;
+    const mesh = child as THREE.Mesh;
+    const meshName = (mesh.name || '').toLowerCase();
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
+    for (const m of mats) {
+      if (!m || !(m as THREE.MeshStandardMaterial).isMeshStandardMaterial) continue;
+      const std = m as THREE.MeshStandardMaterial;
+      const tag = `${(std.name || '').toLowerCase()} ${meshName}`;
+
+      if (isKarambit) {
+        if (/handle|grip|wrap|polymer|scale/i.test(tag)) {
+          std.metalness = 0.12;
+          std.roughness = 0.58;
+          std.envMapIntensity = 0.72;
+        } else {
+          std.color.setHex(0xd61e32);
+          std.metalness = 0.88;
+          std.roughness = 0.18;
+          std.envMapIntensity = 1.65;
+          std.emissive.setHex(0x240409);
+        }
+      } else if (/lens|glass|optic_glass|scope_glass|reticle/i.test(tag)) {
+        std.metalness = 0.15;
+        std.roughness = 0.06;
+        std.envMapIntensity = 2.0;
+      } else if (isWoodRifle && /wood|stock|handguard|forend|furniture|butt/i.test(tag)) {
+        std.metalness = 0.04;
+        std.roughness = 0.52;
+        std.envMapIntensity = 0.55;
+      } else if (
+        (isPolymerPrimary || isAwp) &&
+        /polymer|plastic|grip|rubber|stock|body|chassis|handguard|forend|rail|silencer_wrap|mag|clip/i.test(tag)
+      ) {
+        std.metalness = 0.08;
+        std.roughness = 0.62;
+        std.envMapIntensity = 0.65;
+      } else if (isChromePistol) {
+        if (/grip|rubber|panel/i.test(tag)) {
+          std.metalness = 0.08;
+          std.roughness = 0.64;
+          std.envMapIntensity = 0.6;
+        } else {
+          std.metalness = Math.max(0.84, Math.min(0.95, std.metalness || 0.88));
+          std.roughness = THREE.MathUtils.clamp(std.roughness || 0.24, 0.18, 0.34);
+          std.envMapIntensity = 1.55;
+        }
+      } else {
+        // Default steel receiver / barrel / slide / suppressor tube
+        std.metalness = Math.max(0.72, Math.min(0.92, std.metalness || 0.78));
+        std.roughness = THREE.MathUtils.clamp(std.roughness || 0.32, 0.22, 0.42);
+        std.envMapIntensity = 1.35;
+      }
+
+      std.needsUpdate = true;
+      calibrated++;
+    }
+  });
+
+  return calibrated;
+}
+
 const _fingerQ = new THREE.Quaternion();
 const _restV1 = new THREE.Vector3();
 const _restV2 = new THREE.Vector3();
@@ -641,7 +722,12 @@ export class WeaponViewmodel {
   private gunsmokeMesh: THREE.Mesh;
   private gunsmokeMat: THREE.MeshBasicMaterial;
   private smokeTimer = 0;
+  private smokeDuration = 0.52;
+  private smokeIsSuppressed = false;
   private flashTimer = 0;
+  private flashDuration = 0.048;
+  private flashMaxIntensity = 4.5;
+  private flashIsSuppressed = false;
   private currentWeaponId = 'garam-47';
 
   // Cached Weapon Groups & Animated Parts (supports both procedural Meshes and GLB Bones)
@@ -711,6 +797,13 @@ export class WeaponViewmodel {
 
   private recoilZ = 0;
   private recoilPitch = 0;
+  private swayPosX = 0;
+  private swayPosY = 0;
+  private swayRotY = 0;
+  private swayRotZ = 0;
+  private bobPhase = 0;
+  private landingDipY = 0;
+  private landingDipVel = 0;
   public isScoped = false;
   public currentFaction: 'Vanguard' | 'Syndicate' = 'Vanguard';
   private viewportAspect =
@@ -737,8 +830,8 @@ export class WeaponViewmodel {
     this.armsContainer.visible = false;
     this.mesh.add(this.armsContainer);
 
-    // 3. Muzzle Flash Point Light, Volumetric Radial Fireball & Rising Gunsmoke Wisp
-    this.muzzleFlashLight = new THREE.PointLight(0xffb844, 0, 14);
+    // 3. Muzzle Flash Hand-Bounce PointLight (1.4m radius), Volumetric Radial Fireball & Gunsmoke Wisp
+    this.muzzleFlashLight = new THREE.PointLight(0xffae42, 0, 1.4);
     this.muzzleFlashLight.position.set(0, 0.02, -0.54);
     this.mesh.add(this.muzzleFlashLight);
 
@@ -1149,7 +1242,7 @@ export class WeaponViewmodel {
           this.armsActions.set(clip.name, action);
         }
 
-        // Enhance CS2 tactical glove & bare tattooed arm PBR sheen (zero colliding sleeve cylinders)
+        // Calibrate CS2 tactical gloves vs. matte bare skin PBR response (preserving faction tinting)
         armsModel.traverse((child) => {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
@@ -1157,11 +1250,18 @@ export class WeaponViewmodel {
             for (const m of mats) {
               if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
                 const std = m as THREE.MeshStandardMaterial;
+                const matName = (std.name || '').toLowerCase();
                 // FrontSide prevents hollow interior backface artifacts on bare CS2 arms
                 std.side = this.isCS2ArmsRig ? THREE.FrontSide : THREE.DoubleSide;
-                std.roughness = Math.max(0.58, std.roughness);
-                std.metalness = Math.min(0.24, std.metalness);
-                std.envMapIntensity = 1.35;
+                if (matName.includes('armst') || matName.includes('skin') || matName.includes('tattoo')) {
+                  std.roughness = 0.78;
+                  std.metalness = 0.0;
+                  std.envMapIntensity = 0.30;
+                } else {
+                  std.roughness = 0.72;
+                  std.metalness = Math.min(0.14, std.metalness);
+                  std.envMapIntensity = 0.45;
+                }
                 std.needsUpdate = true;
               }
             }
@@ -1305,24 +1405,9 @@ export class WeaponViewmodel {
             this.leftHandGripAnchors.set(weaponId, gripAnchor);
           }
 
+          calibrateWeaponPBRMaterials(loadedModel, weaponId);
+
           if (weaponId === 'garam-karambit') {
-            // Apply rich crimson-anodized metallic sheen and PMREM reflections to Karambit blade
-            loadedModel.traverse((child) => {
-              if ((child as THREE.Mesh).isMesh) {
-                const mesh = child as THREE.Mesh;
-                const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-                for (const m of mats) {
-                  if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
-                    const std = m as THREE.MeshStandardMaterial;
-                    std.color.setHex(0xd61e32);
-                    std.metalness = 0.68;
-                    std.roughness = 0.24;
-                    std.envMapIntensity = 2.2;
-                    std.emissive.setHex(0x28040a);
-                  }
-                }
-              }
-            });
             // Dedicated spin group around actual retention ring pivot for draw/inspect ring-twirl
             const pivot = cfg.ringPivotLocal ?? [0, 0.0251, 0.0835];
             const ringSpinGroup = new THREE.Group();
@@ -1718,30 +1803,84 @@ export class WeaponViewmodel {
     this.playWeaponAnimation('fire', fireSpeed);
     this.syncMuzzleTipPosition();
 
-    // Volumetric radial fireball muzzle flash (suppressed compact puff on M4A1-S & USP-S)
+    // Authentic CS2 Muzzle VFX: suppressed weapons emit zero orange fireball (only tight grey gas puff + dim bounce)
     const isSuppressed = this.currentWeaponId === 'vanguard-m4' || this.currentWeaponId === 'usp-s';
-    const baseScale = isSuppressed
-      ? 0.34
-      : this.currentWeaponId === 'sovereign-awp'
-        ? 1.45
-        : this.currentWeaponId === 'mp9' || this.currentWeaponId === 'glock-18'
-          ? 0.75
-          : 1.0;
-    const jitter = 0.85 + Math.random() * 0.42;
+    this.flashIsSuppressed = isSuppressed;
+    this.flashDuration = 0.048;
+    this.flashTimer = this.flashDuration;
 
-    this.flashTimer = isSuppressed ? 0.035 : 0.055;
-    this.muzzleFlashLight.intensity = isSuppressed ? 2.0 : 6.8;
-    this.muzzleFlashMesh.visible = true;
-    this.muzzleFlashMesh.rotation.z = Math.random() * Math.PI * 2;
-    this.muzzleFlashMesh.scale.setScalar(baseScale * jitter);
+    if (isSuppressed) {
+      this.flashMaxIntensity = 0.3;
+      this.muzzleFlashLight.intensity = 0.3;
+      this.muzzleFlashMesh.visible = false;
 
-    // Spawn rising barrel gunsmoke wisp
-    this.smokeTimer = 0.65;
-    this.gunsmokeMesh.visible = true;
-    this.gunsmokeMesh.position.copy(this.muzzleFlashMesh.position);
-    this.gunsmokeMesh.rotation.z = Math.random() * Math.PI * 2;
-    this.gunsmokeMesh.scale.setScalar(0.55);
-    this.gunsmokeMat.opacity = isSuppressed ? 0.42 : 0.32;
+      // Tight cool-grey 0.08m suppressor gas puff fading cleanly in 90ms
+      this.smokeIsSuppressed = true;
+      this.smokeDuration = 0.09;
+      this.smokeTimer = 0.09;
+      this.gunsmokeMesh.visible = true;
+      this.gunsmokeMesh.position.copy(this.muzzleFlashMesh.position);
+      this.gunsmokeMesh.rotation.z = Math.random() * Math.PI * 2;
+      this.gunsmokeMesh.scale.setScalar(0.44);
+      this.gunsmokeMat.opacity = 0.46;
+    } else {
+      const baseScale =
+        this.currentWeaponId === 'sovereign-awp'
+          ? 1.38
+          : this.currentWeaponId === 'desert-eagle'
+            ? 1.12
+            : this.currentWeaponId === 'mp9' || this.currentWeaponId === 'glock-18'
+              ? 0.68
+              : 0.96;
+      const jitter = 0.86 + Math.random() * 0.34;
+
+      this.flashMaxIntensity = 4.5;
+      this.muzzleFlashLight.intensity = 4.5;
+      this.muzzleFlashMesh.visible = true;
+      this.muzzleFlashMesh.rotation.z = Math.random() * Math.PI * 2;
+      this.muzzleFlashMesh.scale.setScalar(baseScale * jitter);
+
+      // Rising barrel gunsmoke wisp after unsuppressed shot
+      this.smokeIsSuppressed = false;
+      this.smokeDuration = 0.52;
+      this.smokeTimer = 0.52;
+      this.gunsmokeMesh.visible = true;
+      this.gunsmokeMesh.position.copy(this.muzzleFlashMesh.position);
+      this.gunsmokeMesh.rotation.z = Math.random() * Math.PI * 2;
+      this.gunsmokeMesh.scale.setScalar(0.5);
+      this.gunsmokeMat.opacity = 0.28;
+    }
+  }
+
+  public notifyLanding(impactSpeed: number): void {
+    const impulse = THREE.MathUtils.clamp(Math.abs(impactSpeed) * 0.0032, 0.006, 0.024);
+    this.landingDipVel = Math.min(this.landingDipVel, -impulse * 16);
+  }
+
+  public resetMotionState(): void {
+    this.recoilZ = 0;
+    this.recoilPitch = 0;
+    this.slideKick = 0;
+    this.boltKick = 0;
+    this.swayPosX = 0;
+    this.swayPosY = 0;
+    this.swayRotY = 0;
+    this.swayRotZ = 0;
+    this.bobPhase = 0;
+    this.landingDipY = 0;
+    this.landingDipVel = 0;
+    this.flashTimer = 0;
+    this.smokeTimer = 0;
+    this.muzzleFlashLight.intensity = 0;
+    this.muzzleFlashMesh.visible = false;
+    this.gunsmokeMesh.visible = false;
+    this.isInspecting = false;
+    this.inspectTime = 0;
+    this.isSlashing = false;
+    this.isStabbing = false;
+    this.isReloading = false;
+    this.reloadProgress = 0;
+    this.velPos.set(0, 0, 0);
   }
 
   public triggerInspect(): void {
@@ -1786,31 +1925,40 @@ export class WeaponViewmodel {
   ): void {
     const safeDt = Math.max(0.0001, Math.min(dt, 0.05));
 
-    // Muzzle flash decay
+    // Muzzle flash bounce light (48ms) & crisp unsuppressed star flash (35ms)
     if (this.flashTimer > 0) {
       this.flashTimer -= safeDt;
       this.syncMuzzleTipPosition();
-      const ratio = Math.max(0, this.flashTimer / 0.055);
-      this.muzzleFlashLight.intensity =
-        (this.currentWeaponId === 'vanguard-m4' ? 2.0 : 6.8) * ratio;
-      if (this.muzzleFlashMat) {
-        this.muzzleFlashMat.opacity = Math.min(0.96, ratio * 1.4);
+      const lightRatio = Math.max(0, this.flashTimer / Math.max(0.001, this.flashDuration));
+      this.muzzleFlashLight.intensity = this.flashMaxIntensity * lightRatio;
+      const elapsedFlash = this.flashDuration - this.flashTimer;
+      const showStar = !this.flashIsSuppressed && this.flashTimer > 0 && elapsedFlash <= 0.035;
+      if (this.muzzleFlashMat && showStar) {
+        const starRatio = Math.max(0, 1.0 - elapsedFlash / 0.035);
+        this.muzzleFlashMat.opacity = Math.min(0.96, starRatio * 1.35);
       }
-      this.muzzleFlashMesh.visible = this.flashTimer > 0;
+      this.muzzleFlashMesh.visible = showStar;
     } else {
       this.muzzleFlashLight.intensity = 0.0;
       this.muzzleFlashMesh.visible = false;
     }
 
-    // Rising gunsmoke wisp drift & fade
+    // Gunsmoke wisp / tight suppressor gas puff drift & fade
     if (this.smokeTimer > 0) {
       this.smokeTimer -= safeDt;
-      const life = Math.max(0, this.smokeTimer / 0.65);
-      this.gunsmokeMesh.position.y += safeDt * 0.22;
-      this.gunsmokeMesh.position.x += safeDt * 0.035;
-      this.gunsmokeMesh.scale.addScalar(safeDt * 1.15);
-      this.gunsmokeMesh.rotation.z += safeDt * 0.65;
-      this.gunsmokeMat.opacity = life * 0.34;
+      const life = Math.max(0, this.smokeTimer / Math.max(0.001, this.smokeDuration));
+      if (this.smokeIsSuppressed) {
+        this.gunsmokeMesh.position.z -= safeDt * 0.42;
+        this.gunsmokeMesh.position.y += safeDt * 0.06;
+        this.gunsmokeMesh.scale.addScalar(safeDt * 1.45);
+        this.gunsmokeMat.opacity = life * 0.44;
+      } else {
+        this.gunsmokeMesh.position.y += safeDt * 0.22;
+        this.gunsmokeMesh.position.x += safeDt * 0.035;
+        this.gunsmokeMesh.scale.addScalar(safeDt * 1.1);
+        this.gunsmokeMesh.rotation.z += safeDt * 0.65;
+        this.gunsmokeMat.opacity = life * 0.30;
+      }
       this.gunsmokeMesh.visible = this.smokeTimer > 0;
     } else {
       this.gunsmokeMesh.visible = false;
@@ -2159,19 +2307,44 @@ export class WeaponViewmodel {
     const k = 150;
     const c = 18;
 
-    const swayX = -mouseDeltaX * 0.0008;
-    const swayY = mouseDeltaY * 0.0008;
+    // Clamped CS2 mouse-look inertia sway (±0.012m XY, ±0.025 rad roll/yaw)
+    const swayAlpha = 1 - Math.exp(-16 * safeDt);
+    const targetSwayPosX = THREE.MathUtils.clamp(-mouseDeltaX * 0.00028, -0.012, 0.012);
+    const targetSwayPosY = THREE.MathUtils.clamp(mouseDeltaY * 0.00028, -0.012, 0.012);
+    const targetSwayRotY = THREE.MathUtils.clamp(-mouseDeltaX * 0.0006, -0.025, 0.025);
+    const targetSwayRotZ = THREE.MathUtils.clamp(-mouseDeltaX * 0.0005, -0.025, 0.025);
+    this.swayPosX += (targetSwayPosX - this.swayPosX) * swayAlpha;
+    this.swayPosY += (targetSwayPosY - this.swayPosY) * swayAlpha;
+    this.swayRotY += (targetSwayRotY - this.swayRotY) * swayAlpha;
+    this.swayRotZ += (targetSwayRotZ - this.swayRotZ) * swayAlpha;
 
+    // CS2 Figure-8 running walk bob (near-zero when crouched/slow-walking <= 2.6 m/s)
+    const bobSpeedScale =
+      playerSpeed > 2.6
+        ? Math.min(1.0, (playerSpeed - 1.8) / 3.6)
+        : (Math.min(playerSpeed, 2.6) / 5.45) * 0.16;
+    if (playerSpeed > 0.15) {
+      this.bobPhase += safeDt * (6.2 + playerSpeed * 0.65);
+    }
+    const fig8X = Math.cos(this.bobPhase) * 0.0045 * bobSpeedScale;
+    const fig8Y = Math.abs(Math.sin(this.bobPhase)) * -0.006 * bobSpeedScale;
+
+    // Critically damped landing dip recovery
+    const dipForce = -140 * this.landingDipY - 22 * this.landingDipVel;
+    this.landingDipVel += dipForce * safeDt;
+    this.landingDipY = THREE.MathUtils.clamp(this.landingDipY + this.landingDipVel * safeDt, -0.028, 0.006);
+
+    const swayPitch = THREE.MathUtils.clamp(mouseDeltaY * 0.00055, -0.025, 0.025);
     const recoilScale = usesUnifiedArms ? 0.62 : 1.0;
-    this.targetRot.y = Math.max(-0.16, Math.min(0.16, swayX)) + meleeYaw + inspectYaw;
+    this.targetRot.y = this.swayRotY + meleeYaw + inspectYaw;
     this.targetRot.x =
-      Math.max(-0.16, Math.min(0.16, swayY)) +
+      swayPitch +
       this.recoilPitch * recoilScale +
       drawPitch +
       reloadPitch +
       meleePitch +
       inspectPitch;
-    this.targetRot.z = strafeRoll + reloadRoll + inspectRoll;
+    this.targetRot.z = THREE.MathUtils.clamp(strafeRoll, -0.025, 0.025) + this.swayRotZ + reloadRoll + inspectRoll;
 
     // Decay recoil kicks
     this.recoilPitch += (0 - this.recoilPitch) * (1 - Math.exp(-22 * safeDt));
@@ -2182,8 +2355,8 @@ export class WeaponViewmodel {
     const basePosY = usesUnifiedArms ? 0.0 : -0.13;
     const basePosZ = usesUnifiedArms ? 0.0 : -0.32;
 
-    this.targetPos.x = basePosX;
-    this.targetPos.y = basePosY + walkBob + reloadY + drawY;
+    this.targetPos.x = basePosX + this.swayPosX + fig8X;
+    this.targetPos.y = basePosY + this.swayPosY + fig8Y + walkBob * 0.35 + this.landingDipY + reloadY + drawY;
     this.targetPos.z = basePosZ + this.recoilZ * recoilScale + meleeZ;
 
     const subSteps = Math.max(1, Math.ceil(safeDt / (1 / 120)));

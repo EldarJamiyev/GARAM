@@ -435,6 +435,7 @@ async function tryAttachOptionalCsOfficeGlb(scene: THREE.Scene, proceduralGroup:
       castShadow: false,
       receiveShadow: true,
       envMapIntensity: 0.25,
+      frustumCulled: true,
     });
     if (!root) return;
     // Preserve Corona Render Real-Light baked GI without double-darkening
@@ -443,6 +444,7 @@ async function tryAttachOptionalCsOfficeGlb(scene: THREE.Scene, proceduralGroup:
         const mesh = obj as THREE.Mesh;
         mesh.castShadow = false;
         mesh.receiveShadow = true;
+        mesh.frustumCulled = true;
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const m of mats) {
           const std = m as THREE.MeshStandardMaterial;
@@ -467,6 +469,11 @@ async function tryAttachOptionalCsOfficeGlb(scene: THREE.Scene, proceduralGroup:
     root.userData.isMapRoot = true;
     proceduralGroup.visible = false;
     scene.add(root);
+    root.updateMatrixWorld(true);
+    root.traverse((obj) => {
+      obj.matrixAutoUpdate = false;
+    });
+    root.matrixAutoUpdate = false;
   } catch {
     // Stay seamlessly on Corona Real-Light architectural build
   }
@@ -840,6 +847,19 @@ export function buildCsOfficeMap(scene: THREE.Scene): MapBuildResult {
     pt.position.set(lx, ly, lz);
     proceduralRoot.add(pt);
   }
+
+  proceduralRoot.updateMatrixWorld(true);
+  proceduralRoot.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) {
+      const m = obj as THREE.Mesh;
+      if (m.geometry && !m.geometry.boundingSphere) {
+        m.geometry.computeBoundingSphere();
+      }
+      m.frustumCulled = true;
+    }
+    obj.matrixAutoUpdate = false;
+  });
+  proceduralRoot.matrixAutoUpdate = false;
 
   // Trigger optional Sketchfab GLB auto-upgrade if present in asset-manifest.json
   void tryAttachOptionalCsOfficeGlb(scene, proceduralRoot);

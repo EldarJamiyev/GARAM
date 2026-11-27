@@ -1,11 +1,37 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { AssetManager } from './AssetManager.js';
 import { PostProcessPipeline } from './PostProcessPipeline.js';
 import { ViewmodelLighting } from './ViewmodelLighting.js';
 import { computeViewmodelFov, VIEWMODEL_NEAR_PLANE } from '../viewmodel/ViewmodelRig.js';
 
-import { QualityTier } from '../core/SettingsStore.js';
+import { QualityTier, FpsLimit } from '../core/SettingsStore.js';
+
+const SOFTWARE_RENDERER_RE = /swiftshader|microsoft basic render|basic render|llvmpipe|softpipe|software/i;
+
+export function isSoftwareRendererString(rendererStr: string): boolean {
+  return SOFTWARE_RENDERER_RE.test(rendererStr);
+}
+
+export function probeSoftwareWebGL(): boolean {
+  if (typeof document === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as WebGLRenderingContext | null;
+    if (!gl) return false;
+    const dbgInfo = gl.getExtension('WEBGL_debug_renderer_info');
+    const rendererStr = dbgInfo
+      ? String(gl.getParameter(dbgInfo.UNMASKED_RENDERER_WEBGL) || '')
+      : String(gl.getParameter(gl.RENDERER) || '');
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return isSoftwareRendererString(rendererStr);
+  } catch {
+    return false;
+  }
+}
 
 export class SceneManager {
   public worldScene: THREE.Scene;
@@ -20,23 +46,36 @@ export class SceneManager {
   public postProcess: PostProcessPipeline;
   public viewmodelLighting: ViewmodelLighting;
   private envRenderTarget: THREE.WebGLRenderTarget | null = null;
+  private vmEnvRenderTarget: THREE.WebGLRenderTarget | null = null;
   private renderer: THREE.WebGLRenderer;
   public isSoftwareGl = false;
   public activeQualityTier: QualityTier = 'HIGH';
   public currentDpr = 1;
+  public fpsLimit: FpsLimit = 'VSYNC';
+  private shadowDirty = true;
+  private shadowAccum = 0;
+  private msgChannel: MessageChannel | null = null;
+  private pendingFrameCb: ((now: number) => void) | null = null;
+  private pacingTargetCb: ((now: number) => void) | null = null;
+  private pacingTimerId: number | null = null;
+  private lastPacedFrameMs = 0;
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
-    // Detect software WebGL (SwiftShader / llvmpipe) to prevent shadow-pass stalls
+    // Detect software WebGL (SwiftShader / Microsoft Basic Render / llvmpipe) to prevent shadow-pass stalls
     const gl = renderer.getContext();
     const dbgInfo = gl.getExtension('WEBGL_debug_renderer_info');
     const rendererStr = dbgInfo
       ? String(gl.getParameter(dbgInfo.UNMASKED_RENDERER_WEBGL) || '')
       : String(gl.getParameter(gl.RENDERER) || '');
-    this.isSoftwareGl = /swiftshader|llvmpipe|software|mesa/i.test(rendererStr);
+    this.isSoftwareGl = isSoftwareRendererString(rendererStr);
+
+    renderer.info.autoReset = true;
+    renderer.shadowMap.autoUpdate = false;
 
     if (this.isSoftwareGl) {
-      renderer.setPixelRatio(1);
+      this.currentDpr = 0.75;
+      renderer.setPixelRatio(0.75);
       renderer.shadowMap.enabled = false;
     }
 
@@ -59,11 +98,12 @@ export class SceneManager {
     );
     this.updateViewmodelProjection(window.innerWidth, window.innerHeight);
 
-    // 3. PMREM Image-Based Lighting (IBL)
+    // 3. PMREM Image-Based Lighting (IBL) — Dedicated RoomEnvironment studio HDR for crisp CS2 viewmodel PBR
     this.envRenderTarget = this.generateProceduralPMREM(renderer);
     this.envMap = this.envRenderTarget.texture;
     this.worldScene.environment = this.envMap;
-    this.viewmodelScene.environment = this.envMap;
+    this.vmEnvRenderTarget = this.generateViewmodelRoomPMREM(renderer);
+    this.viewmodelScene.environment = this.vmEnvRenderTarget.texture;
     if (!this.isSoftwareGl) {
       this.loadHdrEnvironment(renderer);
     }
@@ -96,17 +136,21 @@ export class SceneManager {
     fillLight.position.set(-42, 24, -38);
     this.worldScene.add(fillLight);
 
-    // Viewmodel crisp 3-point studio lighting rig (Warm Sun Key + Cool Sky Rim + Balanced Hemisphere)
-    const vmHemi = new THREE.HemisphereLight(0xdbe8f8, 0x4a4035, 0.65);
+    // Freeze static world light matrices (eliminates per-frame light matrix multiplications)
+    this.hemiLight.updateMatrixWorld(true);
+    this.hemiLight.matrixAutoUpdate = false;
+    this.sunLight.target.updateMatrixWorld(true);
+    this.sunLight.target.matrixAutoUpdate = false;
+    this.sunLight.updateMatrixWorld(true);
+    this.sunLight.matrixAutoUpdate = false;
+    fillLight.updateMatrixWorld(true);
+    fillLight.matrixAutoUpdate = false;
+
+    // Subtle balanced hemisphere ambient on viewmodelScene (3-point directional rig owned by ViewmodelLighting)
+    const vmHemi = new THREE.HemisphereLight(0xe4eefc, 0x6a5844, 0.58);
     this.viewmodelScene.add(vmHemi);
-
-    const vmKey = new THREE.DirectionalLight(0xfff4e0, 2.1);
-    vmKey.position.set(3.0, 5.0, 4.0);
-    this.viewmodelScene.add(vmKey);
-
-    const vmRim = new THREE.DirectionalLight(0x8ebeff, 0.75);
-    vmRim.position.set(-4.0, 2.0, -2.0);
-    this.viewmodelScene.add(vmRim);
+    vmHemi.updateMatrixWorld(true);
+    vmHemi.matrixAutoUpdate = false;
 
     // 5. Atmospheric Rayleigh/Mie Sky Dome with soft bloomed solar aureole
     this.skyMesh = this.buildAtmosphericSky();
@@ -171,6 +215,15 @@ export class SceneManager {
     return envTarget;
   }
 
+  private generateViewmodelRoomPMREM(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarget {
+    const pmremGen = new THREE.PMREMGenerator(renderer);
+    const roomEnv = new RoomEnvironment();
+    const vmEnvTarget = pmremGen.fromScene(roomEnv, 0.04);
+    roomEnv.dispose();
+    pmremGen.dispose();
+    return vmEnvTarget;
+  }
+
   private loadHdrEnvironment(renderer: THREE.WebGLRenderer): void {
     new RGBELoader().load(
       '/textures/skybox/kloofendal_1k.hdr',
@@ -189,7 +242,6 @@ export class SceneManager {
         this.envRenderTarget = envTarget;
         this.envMap = envTarget.texture;
         this.worldScene.environment = this.envMap;
-        this.viewmodelScene.environment = this.envMap;
       },
       undefined,
       () => {
@@ -218,11 +270,11 @@ export class SceneManager {
         vec3 dir = normalize(vWorldPosition);
         float y = dir.y;
 
-        // Rayleigh vertical sky gradient (deep cerulean zenith -> sunlit Mediterranean horizon)
-        vec3 zenithColor = vec3(0.11, 0.32, 0.62);
-        vec3 midSkyColor = vec3(0.32, 0.56, 0.80);
-        vec3 horizonColor = vec3(0.86, 0.80, 0.71);
-        vec3 groundColor = vec3(0.34, 0.29, 0.23);
+        // Bright Source 2 Mediterranean daylight sky gradient (crisp azure zenith -> warm sunlit horizon)
+        vec3 zenithColor = vec3(0.16, 0.42, 0.76);
+        vec3 midSkyColor = vec3(0.42, 0.68, 0.90);
+        vec3 horizonColor = vec3(0.92, 0.87, 0.79);
+        vec3 groundColor = vec3(0.46, 0.39, 0.31);
 
         vec3 sky = mix(horizonColor, midSkyColor, smoothstep(0.0, 0.26, max(y, 0.0)));
         sky = mix(sky, zenithColor, smoothstep(0.20, 0.86, max(y, 0.0)));
@@ -386,21 +438,22 @@ export class SceneManager {
   }
 
   /**
-   * Configures warm late-afternoon Mediterranean lighting & hides procedural skyline
-   * because de_dust2.glb supplies its own Blender desert hills and skyline backdrop.
+   * Configures bright, warm Counter-Strike 2 (Source 2) Mediterranean daylight for Dust 2
+   * with rich sandstone bounce GI and crisp atmospheric clarity.
    */
   public configureDust2Atmosphere(): void {
     this.horizonMesh.visible = false;
-    this.worldScene.fog = new THREE.FogExp2(0xe6d8c3, 0.0018);
-    this.hemiLight.color.setHex(0xc8dcf4);
-    this.hemiLight.groundColor.setHex(0x8a7254);
-    this.hemiLight.intensity = 0.88;
+    this.worldScene.fog = new THREE.FogExp2(0xeadcc8, 0.0011);
+    this.hemiLight.color.setHex(0xb8d8f8);
+    this.hemiLight.groundColor.setHex(0xc4a278);
+    this.hemiLight.intensity = 1.05;
 
-    this.sunLight.color.setHex(0xffe6c8);
-    this.sunLight.intensity = 2.15;
-    this.sunLight.position.set(52, 56, 42);
+    this.sunLight.color.setHex(0xfff0d4);
+    this.sunLight.intensity = 2.65;
+    this.sunLight.position.set(54, 62, 40);
     this.sunLight.target.position.set(-22, 3.5, 6);
-    this.sunLight.target.updateMatrixWorld();
+    this.sunLight.target.updateMatrixWorld(true);
+    this.sunLight.updateMatrixWorld(true);
 
     const d = 64;
     this.sunLight.shadow.camera.left = -d;
@@ -408,6 +461,8 @@ export class SceneManager {
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
     this.sunLight.shadow.camera.updateProjectionMatrix();
+    this.viewmodelLighting.setMapStyle('de_dust2');
+    this.invalidateShadows();
   }
 
   /**
@@ -415,16 +470,17 @@ export class SceneManager {
    */
   public configureOfficeAtmosphere(): void {
     this.horizonMesh.visible = true;
-    this.worldScene.fog = new THREE.FogExp2(0xd6e1ec, 0.0032);
-    this.hemiLight.color.setHex(0xc2d8f0);
-    this.hemiLight.groundColor.setHex(0x707882);
-    this.hemiLight.intensity = 0.92;
+    this.worldScene.fog = new THREE.FogExp2(0xd6e1ec, 0.0028);
+    this.hemiLight.color.setHex(0xc6dcf4);
+    this.hemiLight.groundColor.setHex(0x7c8590);
+    this.hemiLight.intensity = 0.96;
 
-    this.sunLight.color.setHex(0xfff6ea);
-    this.sunLight.intensity = 1.95;
+    this.sunLight.color.setHex(0xfff8ee);
+    this.sunLight.intensity = 2.15;
     this.sunLight.position.set(42, 58, -38);
     this.sunLight.target.position.set(0, 1.4, 0);
-    this.sunLight.target.updateMatrixWorld();
+    this.sunLight.target.updateMatrixWorld(true);
+    this.sunLight.updateMatrixWorld(true);
 
     const d = 56;
     this.sunLight.shadow.camera.left = -d;
@@ -432,6 +488,8 @@ export class SceneManager {
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
     this.sunLight.shadow.camera.updateProjectionMatrix();
+    this.viewmodelLighting.setMapStyle('cs_office');
+    this.invalidateShadows();
   }
 
   public update(dt: number, cameraPos: THREE.Vector3, currentZone?: string): void {
@@ -441,6 +499,36 @@ export class SceneManager {
     }
     if (currentZone) {
       this.viewmodelLighting.update(dt, currentZone);
+    }
+  }
+
+  public invalidateShadows(): void {
+    this.shadowDirty = true;
+    if (this.renderer.shadowMap.enabled) {
+      this.renderer.shadowMap.needsUpdate = true;
+    }
+  }
+
+  public updateShadows(dt: number, isStaticFrame: boolean): void {
+    this.renderer.shadowMap.autoUpdate = false;
+    if (!this.renderer.shadowMap.enabled) return;
+
+    if (this.shadowDirty) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowDirty = false;
+      this.shadowAccum = 0;
+      return;
+    }
+
+    if (isStaticFrame) {
+      return;
+    }
+
+    this.shadowAccum += dt;
+    const interval = this.activeQualityTier === 'HIGH' ? 1 / 60 : 1 / 30;
+    if (this.shadowAccum >= interval) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowAccum %= interval;
     }
   }
 
@@ -460,7 +548,7 @@ export class SceneManager {
         shadowSize = 512;
         break;
       case 'LOW':
-        dpr = 1.0;
+        dpr = this.isSoftwareGl ? 0.75 : 1.0;
         shadowsEnabled = !this.isSoftwareGl;
         shadowSize = 1024;
         break;
@@ -477,9 +565,15 @@ export class SceneManager {
         break;
     }
 
+    if (this.isSoftwareGl) {
+      dpr = Math.min(nativeDpr, 0.75);
+      shadowsEnabled = false;
+    }
+
     this.currentDpr = dpr;
     this.renderer.setPixelRatio(dpr);
     this.renderer.shadowMap.enabled = shadowsEnabled;
+    this.renderer.shadowMap.autoUpdate = false;
     this.sunLight.castShadow = shadowsEnabled;
     if (shadowsEnabled && this.sunLight.shadow.mapSize.width !== shadowSize) {
       this.sunLight.shadow.mapSize.set(shadowSize, shadowSize);
@@ -488,6 +582,7 @@ export class SceneManager {
         this.sunLight.shadow.map = null;
       }
     }
+    this.invalidateShadows();
     this.postProcess.setQualityTier(effectiveTier);
   }
 
@@ -514,38 +609,138 @@ export class SceneManager {
     );
   }
 
-  public scheduleNextFrame(cb: (now: number) => void): void {
-    if (!this.isSoftwareGl) {
+  public setFpsLimit(limit: FpsLimit): void {
+    this.fpsLimit = limit;
+    this.lastPacedFrameMs = typeof performance !== 'undefined' ? performance.now() : 0;
+  }
+
+  private ensureMessageChannel(): MessageChannel | null {
+    if (this.msgChannel) return this.msgChannel;
+    if (typeof MessageChannel === 'undefined') return null;
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => {
+      const cb = this.pendingFrameCb;
+      this.pendingFrameCb = null;
+      if (cb) cb(performance.now());
+    };
+    this.msgChannel = ch;
+    return ch;
+  }
+
+  private readonly boundPacedTick = (): void => {
+    const cb = this.pacingTargetCb;
+    if (!cb) return;
+    if (typeof document !== 'undefined' && document.hidden) {
       requestAnimationFrame(cb);
       return;
     }
-    const gl = this.renderer.getContext() as WebGL2RenderingContext;
-    if (typeof gl.fenceSync === 'function') {
-      const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
-      gl.flush();
-      let polls = 0;
-      const poll = () => {
-        polls += 1;
-        const state = sync ? gl.getSyncParameter(sync, gl.SYNC_STATUS) : gl.SIGNALED;
-        if (state === gl.UNSIGNALED && polls < 24) {
-          window.setTimeout(poll, 8);
-        } else {
-          if (sync) gl.deleteSync(sync);
-          window.setTimeout(() => cb(performance.now()), 50);
-        }
-      };
-      window.setTimeout(poll, 8);
-    } else {
-      window.setTimeout(() => cb(performance.now()), 50);
+    if (this.fpsLimit === 'VSYNC') {
+      requestAnimationFrame(cb);
+      return;
     }
+    if (this.fpsLimit === 'UNLIMITED') {
+      const ch = this.ensureMessageChannel();
+      if (ch) {
+        this.pendingFrameCb = cb;
+        ch.port2.postMessage(null);
+        return;
+      }
+      requestAnimationFrame(cb);
+      return;
+    }
+    const targetMs = this.fpsLimit === '120' ? 1000 / 120 : 1000 / 240;
+    const now = performance.now();
+    const remaining = targetMs - (now - this.lastPacedFrameMs);
+    if (remaining <= 0) {
+      this.lastPacedFrameMs = now;
+      const ch = this.ensureMessageChannel();
+      if (ch) {
+        this.pendingFrameCb = cb;
+        ch.port2.postMessage(null);
+        return;
+      }
+      requestAnimationFrame(cb);
+      return;
+    }
+    if (remaining > 4.5) {
+      this.pacingTimerId = window.setTimeout(this.boundPacedTick, Math.max(1, Math.floor(remaining - 4)));
+      return;
+    }
+    const ch = this.ensureMessageChannel();
+    if (ch) {
+      this.pendingFrameCb = this.boundPacedTick;
+      ch.port2.postMessage(null);
+      return;
+    }
+    requestAnimationFrame(cb);
+  };
+
+  public scheduleNextFrame(cb: (now: number) => void, isLobbyIdle = false): void {
+    if (this.isSoftwareGl) {
+      const gl = this.renderer.getContext() as WebGL2RenderingContext;
+      if (typeof gl.fenceSync === 'function') {
+        const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        gl.flush();
+        let polls = 0;
+        const poll = () => {
+          polls += 1;
+          const state = sync ? gl.getSyncParameter(sync, gl.SYNC_STATUS) : gl.SIGNALED;
+          if (state === gl.UNSIGNALED && polls < 24) {
+            window.setTimeout(poll, 8);
+          } else {
+            if (sync) gl.deleteSync(sync);
+            window.setTimeout(() => cb(performance.now()), 50);
+          }
+        };
+        window.setTimeout(poll, 8);
+      } else {
+        window.setTimeout(() => cb(performance.now()), 50);
+      }
+      return;
+    }
+
+    if (isLobbyIdle || this.fpsLimit === 'VSYNC' || (typeof document !== 'undefined' && document.hidden)) {
+      requestAnimationFrame(cb);
+      return;
+    }
+
+    if (this.fpsLimit === 'UNLIMITED') {
+      const ch = this.ensureMessageChannel();
+      if (ch) {
+        this.pendingFrameCb = cb;
+        ch.port2.postMessage(null);
+        return;
+      }
+      requestAnimationFrame(cb);
+      return;
+    }
+
+    this.pacingTargetCb = cb;
+    this.boundPacedTick();
   }
 
   public dispose(): void {
+    this.pendingFrameCb = null;
+    this.pacingTargetCb = null;
+    if (this.pacingTimerId !== null) {
+      window.clearTimeout(this.pacingTimerId);
+      this.pacingTimerId = null;
+    }
+    if (this.msgChannel) {
+      this.msgChannel.port1.onmessage = null;
+      this.msgChannel.port1.close();
+      this.msgChannel.port2.close();
+      this.msgChannel = null;
+    }
     if (this.envRenderTarget) {
       this.envRenderTarget.dispose();
       this.envRenderTarget = null;
     } else if (this.envMap) {
       this.envMap.dispose();
+    }
+    if (this.vmEnvRenderTarget) {
+      this.vmEnvRenderTarget.dispose();
+      this.vmEnvRenderTarget = null;
     }
     this.worldScene.environment = null;
     this.viewmodelScene.environment = null;

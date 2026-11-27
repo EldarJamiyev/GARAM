@@ -62,13 +62,17 @@
     /* Tactical CS2 Sniper Scope Overlay */
     #sniper-scope {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      inset: 0;
       display: none;
       pointer-events: none;
-      background: radial-gradient(circle at center, transparent 320px, rgba(5, 7, 10, 0.98) 325px);
+      background: radial-gradient(
+        circle at center,
+        transparent 38vmin,
+        rgba(4, 6, 10, 0.22) 41vmin,
+        rgba(4, 6, 9, 0.96) 43.2vmin,
+        #030406 44vmin
+      );
+      z-index: 42;
     }
     .scope-reticle-h {
       position: absolute;
@@ -76,7 +80,7 @@
       left: 0;
       right: 0;
       height: 1px;
-      background: rgba(10, 10, 10, 0.9);
+      background: rgba(8, 10, 12, 0.94);
     }
     .scope-reticle-v {
       position: absolute;
@@ -84,125 +88,209 @@
       top: 0;
       bottom: 0;
       width: 1px;
-      background: rgba(10, 10, 10, 0.9);
+      background: rgba(8, 10, 12, 0.94);
     }
     .scope-center-dot {
       position: absolute;
       top: 50%;
       left: 50%;
-      width: 4px;
-      height: 4px;
-      background: #ff1e38;
+      width: 2px;
+      height: 2px;
+      background: #050608;
       transform: translate(-50%, -50%);
-      border-radius: 50%;
-      box-shadow: 0 0 4px #ff1e38;
     }
     .scope-mil-h {
       position: absolute;
       top: 50%;
       left: 50%;
-      width: 240px;
-      height: 16px;
+      width: 180px;
+      height: 10px;
       transform: translate(-50%, -50%);
-      border-left: 2px solid rgba(0, 0, 0, 0.6);
-      border-right: 2px solid rgba(0, 0, 0, 0.6);
+      border-left: 1px solid rgba(8, 10, 12, 0.75);
+      border-right: 1px solid rgba(8, 10, 12, 0.75);
       pointer-events: none;
     }
     .scope-mil-v {
       position: absolute;
       top: 50%;
       left: 50%;
-      width: 16px;
-      height: 240px;
+      width: 10px;
+      height: 180px;
       transform: translate(-50%, -50%);
-      border-top: 2px solid rgba(0, 0, 0, 0.6);
-      border-bottom: 2px solid rgba(0, 0, 0, 0.6);
+      border-top: 1px solid rgba(8, 10, 12, 0.75);
+      border-bottom: 1px solid rgba(8, 10, 12, 0.75);
       pointer-events: none;
     }
 
-    /* Fixed CS2 Tournament 3-Column Round Header */
+    /* CS2 Source 2 Top-Center Compact Match Header (ALIVE | TIMER+SCORE | ALIVE) */
     #round-header {
       position: absolute;
-      top: 14px;
+      top: 10px;
       left: 50%;
       transform: translateX(-50%);
       display: grid;
-      grid-template-columns: minmax(110px, 160px) minmax(80px, 100px) minmax(110px, 160px);
-      align-items: center;
-      background: rgba(12, 15, 20, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 6px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.65);
+      grid-template-columns: 62px 116px 62px;
+      align-items: stretch;
+      background: rgba(12, 16, 22, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-top: 2px solid rgba(255, 255, 255, 0.22);
+      border-radius: 3px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
       overflow: hidden;
       white-space: nowrap;
-      max-width: 340px;
+      font-variant-numeric: tabular-nums;
       z-index: 40;
     }
-    .header-team {
+    .header-alive {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      padding: 6px 14px;
-      font-weight: 800;
-      font-size: 12px;
-      letter-spacing: 1.5px;
-      white-space: nowrap;
+      justify-content: center;
+      padding: 4px 6px;
+      line-height: 1;
     }
-    .header-team.vanguard {
-      justify-content: space-between;
-      background: linear-gradient(90deg, rgba(59, 158, 255, 0.28), transparent);
-      color: #3b9eff;
+    .header-alive.ct {
+      background: linear-gradient(180deg, rgba(104, 168, 232, 0.24), rgba(104, 168, 232, 0.04));
       border-right: 1px solid rgba(255, 255, 255, 0.08);
+      color: #68a8e8;
     }
-    .header-team.syndicate {
-      justify-content: space-between;
-      background: linear-gradient(270deg, rgba(255, 170, 0, 0.28), transparent);
-      color: #ffaa00;
+    .header-alive.t {
+      background: linear-gradient(180deg, rgba(232, 184, 90, 0.24), rgba(232, 184, 90, 0.04));
       border-left: 1px solid rgba(255, 255, 255, 0.08);
+      color: #e8b85a;
     }
-    .header-score {
-      font-size: 22px;
+    .alive-num {
+      font-size: 20px;
       font-weight: 900;
-      color: #fff;
+      letter-spacing: 0.4px;
+    }
+    .alive-sub {
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      opacity: 0.82;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+    .header-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 8px 3px;
+      background: rgba(8, 11, 16, 0.78);
     }
     .header-timer {
       text-align: center;
-      font-size: 18px;
-      font-weight: 800;
+      font-size: 16px;
+      font-weight: 900;
       letter-spacing: 1px;
-      color: #fff;
+      color: #f8fafc;
+      line-height: 1.05;
     }
-
-    /* Killfeed (Anchored Top-Right Below Header — Zero Overlap At Any Viewport Width) */
-    #killfeed {
-      position: absolute;
-      top: 64px;
-      right: 16px;
-      max-width: min(300px, 44vw);
+    .header-scores {
       display: flex;
-      flex-direction: column;
-      gap: 5px;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 2px;
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .header-score-ct { color: #68a8e8; }
+    .header-score-sep { color: rgba(255, 255, 255, 0.28); font-size: 10px; }
+    .header-score-t { color: #e8b85a; }
+
+    /* CS2 Location Callout Tag (Anchored Cleanly Beneath Radar) */
+    #hud-callout {
+      position: absolute;
+      top: 208px;
+      left: 18px;
+      width: 185px;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.8px;
+      color: #e2e8f0;
+      background: linear-gradient(90deg, rgba(10, 14, 20, 0.12), rgba(10, 14, 20, 0.72) 20%, rgba(10, 14, 20, 0.72) 80%, rgba(10, 14, 20, 0.12));
+      padding: 3px 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      text-transform: uppercase;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
       pointer-events: none;
       z-index: 45;
-    }
-    .kill-entry {
-      background: rgba(14, 18, 24, 0.92);
-      border-left: 3px solid #ff334b;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 700;
-      color: #e4e9f0;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
-      animation: fadeKill 5s forwards;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+    /* CS2 Tactical Center-Top Toast (Bomb Planted / Pickup Notices) */
+    #cs2-tactical-toast {
+      display: none;
+      opacity: 0;
+      position: absolute;
+      top: 76px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 7px 18px;
+      background: rgba(12, 16, 22, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-left: 3px solid #e8b85a;
+      border-radius: 3px;
+      color: #f8fafc;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 50;
+      white-space: nowrap;
+    }
+
+    /* CS2 Sleek Killfeed (Top-Right) */
+    #killfeed {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      max-width: min(320px, 40vw);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      pointer-events: none;
+      z-index: 45;
+    }
+    .kill-entry {
+      background: rgba(10, 14, 20, 0.76);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 4px 10px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      color: #e5edf5;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+      animation: fadeKill 5s forwards;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .kill-entry.local-kill {
+      background: rgba(18, 12, 16, 0.86);
+      border: 1.5px solid #e11d48;
+      box-shadow: 0 0 12px rgba(225, 29, 72, 0.42);
+      color: #ffffff;
+    }
     @keyframes fadeKill {
-      0% { opacity: 0; transform: translateX(20px); }
+      0% { opacity: 0; transform: translateX(16px); }
       8% { opacity: 1; transform: translateX(0); }
-      80% { opacity: 1; }
-      100% { opacity: 0; transform: translateY(-10px); }
+      82% { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-6px); }
     }
 
     /* Floating 3D Damage Numbers */
@@ -225,52 +313,119 @@
       100% { opacity: 0; transform: translate(-50%, -120%) scale(0.9); }
     }
 
-    /* Tactical HUD Bottom - Slim Translucent 46px */
+    /* CS2 Source 2 Minimalist Bottom HUD */
     #hud-bottom {
       position: absolute;
       bottom: 14px;
-      left: 24px;
-      right: 24px;
-      height: 46px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      left: 22px;
+      right: 22px;
+      height: 54px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: end;
+      gap: 12px;
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
       pointer-events: none;
       z-index: 40;
     }
-    .hud-block {
+    .hud-left-cluster {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      min-width: 0;
+    }
+    .hud-right-cluster {
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: 0;
+    }
+    .hud-scrim {
       height: 46px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      background: rgba(10, 14, 20, 0.58);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      gap: 14px;
       padding: 0 16px;
-      border-radius: 4px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      border-radius: 3px;
       position: relative;
     }
-    .hud-label {
-      font-size: 10px;
-      letter-spacing: 1.2px;
-      color: #8e959e;
-      text-transform: uppercase;
-      white-space: nowrap;
+    .hud-scrim-left {
+      background: linear-gradient(90deg, rgba(10, 14, 20, 0.78) 0%, rgba(10, 14, 20, 0.52) 78%, rgba(10, 14, 20, 0) 100%);
+      border-left: 2px solid rgba(255, 255, 255, 0.22);
+    }
+    .hud-scrim-right {
+      background: linear-gradient(270deg, rgba(10, 14, 20, 0.78) 0%, rgba(10, 14, 20, 0.52) 78%, rgba(10, 14, 20, 0) 100%);
+      border-right: 2px solid rgba(255, 255, 255, 0.22);
+      min-width: 205px;
+      justify-content: flex-end;
+    }
+    .hud-stat-cell {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
+      min-width: 68px;
+    }
+    .hud-stat-top {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .hud-icon {
+      font-size: 13px;
+      font-weight: 900;
+      opacity: 0.86;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+    }
+    .hud-icon.hp-icon { color: #f8fafc; }
+    .hud-icon.armor-icon { color: #68a8e8; }
+    .hud-bar-track {
+      width: 64px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .hud-bar-fill {
+      height: 100%;
+      width: 100%;
+      transition: width 0.12s ease-out, background 0.15s ease;
+    }
+    #hud-hp-fill { background: #f1f5f9; }
+    #hud-armor-fill { background: #68a8e8; }
+
+    .hud-cash-pill {
+      display: flex;
+      align-items: center;
+      height: 32px;
+      padding: 0 10px;
+      background: rgba(10, 14, 20, 0.62);
+      border-left: 2px solid #22c55e;
+      border-radius: 2px;
+      margin-bottom: 6px;
     }
     .hud-val {
-      font-size: 24px;
+      font-size: 26px;
       font-weight: 900;
-      letter-spacing: 1px;
-      color: #fff;
+      letter-spacing: 0.5px;
+      color: #f8fafc;
       line-height: 1;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
     }
-    .hud-val.hp { color: #ff334b; }
-    .hud-val.armor { color: #3b9eff; }
-    .hud-val.ammo { color: #ffb833; }
-    .hud-val.cash { color: #00ff88; }
+    .hud-val.hp { color: #f8fafc; }
+    .hud-val.armor { color: #dbeafe; }
+    .hud-val.ammo { color: #f8fafc; }
+    .hud-val.cash { font-size: 16px; color: #4ade80; letter-spacing: 0.6px; }
+    .hud-label {
+      font-size: 10px;
+      letter-spacing: 1.4px;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      white-space: nowrap;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+    }
     .hud-val.speed {
       font-size: 11px;
       font-family: 'Consolas', 'Courier New', monospace;
@@ -283,12 +438,108 @@
       border-radius: 3px;
       white-space: nowrap;
     }
+    /* Telemetry velocity readout hidden in default CS2 HUD; shown when [F3] PerfMonitor is open */
+    #hud-velocity-block {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      height: 32px;
+      padding: 0 10px;
+      background: rgba(10, 14, 20, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+      margin-bottom: 6px;
+    }
+    body.perf-open #hud-velocity-block {
+      display: flex;
+    }
+
+    /* CS2 Bottom-Center Faction Emblem + Animated Round Kill-Card Fan + Light-Beam Flare */
+    #cs2-center-badge {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 96px;
+      height: 54px;
+      pointer-events: none;
+    }
+    #cs2-kill-flare {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      width: 28px;
+      height: 110px;
+      transform: translateX(-50%) scaleY(0.15);
+      transform-origin: bottom center;
+      opacity: 0;
+      border-radius: 14px 14px 4px 4px;
+      pointer-events: none;
+    }
+    #cs2-kill-flare.active {
+      animation: cs2KillBeam 0.62s ease-out forwards;
+    }
+    @keyframes cs2KillBeam {
+      0% { opacity: 0.95; transform: translateX(-50%) scaleY(0.25) scaleX(0.8); }
+      30% { opacity: 0.85; transform: translateX(-50%) scaleY(1.0) scaleX(1.1); }
+      100% { opacity: 0; transform: translateX(-50%) scaleY(1.18) scaleX(0.45); }
+    }
+    #cs2-kill-cards {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 4px;
+      height: 22px;
+      margin-bottom: 4px;
+    }
+    .cs2-kill-card {
+      width: 14px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 900;
+      color: #f8fafc;
+      background: linear-gradient(180deg, rgba(248, 250, 252, 0.28), rgba(15, 23, 42, 0.88));
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      border-radius: 2px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+      animation: cs2CardPop 0.24s cubic-bezier(0.22, 1.25, 0.36, 1) forwards;
+    }
+    .cs2-kill-card.headshot {
+      color: #fef08a;
+      background: linear-gradient(180deg, rgba(225, 29, 72, 0.88), rgba(127, 29, 29, 0.94));
+      border-color: #fbbf24;
+      box-shadow: 0 0 10px rgba(225, 29, 72, 0.65);
+    }
+    @keyframes cs2CardPop {
+      0% { opacity: 0; transform: translateY(10px) scale(0.55); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    #cs2-faction-emblem {
+      width: 34px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      color: #68a8e8;
+      background: rgba(10, 14, 20, 0.72);
+      border: 1px solid rgba(104, 168, 232, 0.72);
+      border-bottom: 2px solid currentColor;
+      border-radius: 3px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    }
 
     /* Weapon Slot Selector Bar (Middle-Right Margin — Clear of Viewmodel & Killfeed) */
     #slot-bar {
       position: absolute;
-      right: 14px;
-      bottom: 224px;
+      right: 16px;
+      bottom: 84px;
       display: flex;
       flex-direction: column;
       gap: 3px;
@@ -297,42 +548,39 @@
       z-index: 45;
     }
     .slot-item {
-      padding: 3px 9px;
-      background: rgba(14, 18, 24, 0.58);
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-right: 3px solid rgba(255, 255, 255, 0.2);
-      border-radius: 3px;
-      font-size: 10px;
+      padding: 2px 8px;
+      background: rgba(10, 14, 20, 0.58);
+      border-right: 2px solid rgba(255, 255, 255, 0.18);
+      border-radius: 2px;
+      font-size: 9px;
       letter-spacing: 0.9px;
-      color: #8b95a2;
+      color: rgba(203, 213, 225, 0.72);
       transition: all 0.15s ease;
       text-align: right;
     }
     .slot-item.active {
-      background: rgba(59, 158, 255, 0.32);
-      border-color: #3b9eff;
-      border-right: 3px solid #3b9eff;
-      color: #fff;
+      background: linear-gradient(270deg, rgba(255, 255, 255, 0.22), rgba(10, 14, 20, 0.4));
+      border-right: 3px solid #f8fafc;
+      color: #ffffff;
       font-weight: 800;
-      box-shadow: 0 0 10px rgba(59, 158, 255, 0.3);
     }
 
     /* Reload Progress Bar */
     #reload-indicator {
       display: none;
-      margin-top: 6px;
-      width: 100%;
-      height: 4px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 2px;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.14);
+      border-radius: 0 0 3px 3px;
       overflow: hidden;
     }
     #reload-fill {
       width: 0%;
       height: 100%;
-      background: #ffb833;
+      background: #e8b85a;
       transition: width 0.05s linear;
     }
 
@@ -461,24 +709,34 @@
       z-index: 200;
     }
     .title-banner {
-      font-size: 64px;
+      font-size: 46px;
       font-weight: 900;
       letter-spacing: 8px;
       color: #fff;
       text-transform: uppercase;
-      margin-bottom: 6px;
-      text-shadow: 0 0 25px rgba(255, 51, 75, 0.7);
+      margin-bottom: 2px;
+      line-height: 1.05;
+      text-shadow: 0 0 22px rgba(255, 51, 75, 0.65);
     }
     .subtitle {
-      font-size: 14px;
-      letter-spacing: 3px;
+      font-size: 12px;
+      letter-spacing: 2.8px;
       color: #a0aab5;
       text-transform: uppercase;
       text-align: center;
-      margin-bottom: 24px;
+      margin-bottom: 8px;
+    }
+    .lobby-section-label {
+      font-size: 10px;
+      letter-spacing: 1.8px;
+      color: #8892a0;
+      margin-top: 2px;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
     }
     .start-prompt {
-      padding: 14px 32px;
+      padding: 11px 26px;
       background: #ff2a44;
       border: 1px solid #ff596f;
       color: #fff;
@@ -489,35 +747,37 @@
       cursor: pointer;
       transition: all 0.2s ease;
     }
-    .start-prompt:hover { background: #e01b33; transform: scale(1.02); }
+    .start-prompt:hover { background: #e01b33; transform: scale(1.015); }
     .lobby-panel {
       display: flex;
       flex-direction: column;
       align-items: center;
-      background: rgba(10, 14, 20, 0.92);
+      background: rgba(10, 14, 20, 0.93);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 8px;
-      padding: 28px 40px;
+      padding: 16px 30px;
       box-shadow: 0 0 50px rgba(0, 0, 0, 0.85);
-      max-width: 680px;
+      max-width: 660px;
       width: 92%;
+      max-height: calc(100vh - 24px);
+      overflow-y: auto;
     }
     .lobby-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      margin: 10px 0 16px;
+      gap: 6px;
+      margin: 4px 0 8px;
       width: 100%;
       justify-content: center;
     }
     .lobby-btn {
-      padding: 8px 16px;
+      padding: 6px 13px;
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid rgba(255, 255, 255, 0.15);
       color: #c4cdd5;
       font-size: 11px;
       font-weight: 700;
-      letter-spacing: 1.5px;
+      letter-spacing: 1.3px;
       border-radius: 4px;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -547,12 +807,12 @@
     }
     .lobby-slider-row {
       display: grid;
-      grid-template-columns: minmax(140px, 245px) minmax(110px, 1fr) 48px;
+      grid-template-columns: minmax(140px, 235px) minmax(110px, 1fr) 46px;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       width: 100%;
-      margin: 6px 0;
-      font-size: 12px;
+      margin: 3px 0;
+      font-size: 11px;
       color: #9ba3af;
       letter-spacing: 1px;
     }
@@ -562,18 +822,36 @@
       cursor: pointer;
     }
     .controls-help {
-      margin-top: 22px;
+      margin-top: 10px;
       font-size: 11px;
       color: #7b8590;
-      line-height: 1.9;
+      line-height: 1.45;
       text-align: center;
+    }
+
+    /* Compact Inline Software WebGL Banner (Flex Flow Inside Lobby Panel — Zero Logo Overlap) */
+    #software-webgl-banner {
+      display: none;
+      align-self: center;
+      margin: 0 0 8px;
+      padding: 4px 12px;
+      background: rgba(38, 22, 12, 0.92);
+      border: 1px solid rgba(245, 158, 11, 0.55);
+      border-radius: 4px;
+      color: #fbbf24;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-align: center;
+      max-width: 100%;
+      pointer-events: none;
     }
 
     #hud-weapon-name {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 220px;
+      max-width: 165px;
     }
 
     #tactical-radar {
@@ -583,36 +861,30 @@
       width: 185px;
       height: 185px;
       border-radius: 50%;
-      border: 2px solid rgba(59, 158, 255, 0.45);
-      box-shadow: 0 0 20px rgba(0, 0, 0, 0.75), inset 0 0 15px rgba(0, 0, 0, 0.8);
-      background: rgba(6, 10, 16, 0.92);
+      border: 2px solid rgba(104, 168, 232, 0.45);
+      box-shadow: 0 0 18px rgba(0, 0, 0, 0.72), inset 0 0 14px rgba(0, 0, 0, 0.78);
+      background: rgba(6, 10, 16, 0.88);
       z-index: 40;
       pointer-events: none;
     }
 
-    /* Mid-Width Split-Pane / Embedded Preview Accommodations (Prevents Bottom HUD Right Clipping) */
+    /* Mid-Width Split-Pane / Embedded Preview Accommodations */
     @media (max-width: 1240px) {
       #hud-bottom {
         left: 14px;
         right: 14px;
         gap: 8px;
       }
-      #hud-velocity-block {
-        display: none;
-      }
-      body.perf-open #hud-velocity-block {
-        display: flex;
-      }
-      .hud-block {
+      .hud-scrim {
         padding: 0 12px;
-        gap: 8px;
+        gap: 10px;
       }
       .hud-val {
-        font-size: 20px;
+        font-size: 22px;
         white-space: nowrap;
       }
       #hud-weapon-name {
-        max-width: 148px;
+        max-width: 128px;
       }
     }
 
@@ -620,123 +892,93 @@
     @media (max-width: 900px) {
       #round-header {
         top: 8px;
-        max-width: calc(100vw - 16px);
-        grid-template-columns: minmax(96px, 128px) 64px minmax(96px, 128px);
+        grid-template-columns: 50px 96px 50px;
       }
-      .header-team {
-        padding: 4px 8px;
-        font-size: 10px;
-        letter-spacing: 0.8px;
-      }
-      .header-score {
-        font-size: 16px;
-      }
-      .header-timer {
-        font-size: 14px;
-        letter-spacing: 0.5px;
-      }
-      #hud-callout {
-        top: 42px !important;
-        font-size: 9px !important;
-        padding: 2px 8px !important;
-        letter-spacing: 1.2px !important;
-      }
+      .alive-num { font-size: 16px; }
+      .header-timer { font-size: 14px; }
+      .header-scores { font-size: 11px; gap: 6px; }
       #tactical-radar {
-        top: 58px;
+        top: 14px;
         left: 10px;
         width: 112px;
         height: 112px;
       }
-      #hud-velocity-block {
-        display: none;
-      }
-      body.perf-open #hud-velocity-block {
-        display: flex;
+      #hud-callout {
+        top: 130px;
+        left: 10px;
+        width: 112px;
+        font-size: 8px;
+        letter-spacing: 1px;
+        padding: 2px 4px;
       }
       #hud-bottom {
         bottom: 8px;
         left: 8px;
         right: 8px;
-        height: 42px;
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
+        height: 44px;
         gap: 6px;
       }
-      #hud-bottom > div {
-        gap: 5px !important;
+      .hud-scrim {
+        height: 40px;
+        padding: 0 8px;
+        gap: 8px;
+      }
+      .hud-scrim-right {
         min-width: 0;
       }
-      .hud-block {
-        height: 42px;
-        padding: 4px 8px;
-        min-width: 0 !important;
-        flex-direction: column;
-        justify-content: center;
-        align-items: flex-start;
-        gap: 2px;
+      .hud-stat-cell {
+        min-width: 44px;
       }
-      #hud-bottom > div:last-child .hud-block {
-        align-items: flex-end;
-      }
-      .hud-label {
-        font-size: 8px;
-        letter-spacing: 0.5px;
-        margin-right: 0 !important;
+      .hud-bar-track {
+        width: 42px;
       }
       .hud-val {
-        font-size: 16px;
-        letter-spacing: 0.2px;
-        white-space: nowrap;
+        font-size: 17px;
       }
-      .hud-val.ammo span {
-        font-size: 11px !important;
+      .hud-val.cash {
+        font-size: 12px;
       }
-      .hud-val.speed {
-        font-size: 10px;
-        padding: 2px 5px;
+      .hud-cash-pill {
+        height: 26px;
+        padding: 0 6px;
+        margin-bottom: 4px;
       }
       #hud-weapon-name {
-        max-width: 84px;
+        max-width: 76px;
+        font-size: 9px;
       }
       #killfeed {
         top: 56px;
         right: 8px;
-        max-width: 56vw;
+        max-width: 52vw;
       }
       #slot-bar {
-        bottom: 156px;
+        bottom: 66px;
         right: 8px;
         gap: 2px;
-        opacity: 0.72;
+        opacity: 0.78;
       }
       .slot-item {
         padding: 2px 6px;
-        font-size: 9px;
-        letter-spacing: 0.4px;
+        font-size: 8px;
       }
     }
     @media (max-width: 540px) {
       .lobby-panel {
-        padding: 18px 14px;
+        padding: 14px 14px;
         width: 95%;
-        max-height: 94vh;
-        overflow-y: auto;
       }
       .title-banner {
-        font-size: 46px;
-        letter-spacing: 6px;
+        font-size: 38px;
+        letter-spacing: 5px;
       }
       .subtitle {
-        font-size: 11px;
-        letter-spacing: 2px;
-        margin-bottom: 14px;
-      }
-      .lobby-row {
-        gap: 6px;
+        font-size: 10px;
+        letter-spacing: 1.8px;
+        margin-bottom: 6px;
       }
       .lobby-btn {
-        padding: 6px 10px;
+        padding: 5px 9px;
         font-size: 10px;
         letter-spacing: 1px;
       }
@@ -761,21 +1003,31 @@
       <div class="scope-mil-v"></div>
     </div>
 
-    <!-- Structured 3-Column Round Header -->
+    <!-- CS2 Compact Match Header (CT Alive | Timer + Score | T Alive) -->
     <div id="round-header">
-      <div class="header-team vanguard">
-        <span>VANGUARD</span>
-        <span class="header-score" id="score-ct">0</span>
+      <div class="header-alive ct">
+        <span class="alive-num" id="alive-ct">5</span>
+        <span class="alive-sub">ALIVE</span>
       </div>
-      <div class="header-timer" id="round-timer">01:55</div>
-      <div class="header-team syndicate">
-        <span class="header-score" id="score-t">0</span>
-        <span>SYNDICATE</span>
+      <div class="header-center">
+        <div class="header-timer" id="round-timer">01:55</div>
+        <div class="header-scores">
+          <span class="header-score-ct" id="score-ct">0</span>
+          <span class="header-score-sep">:</span>
+          <span class="header-score-t" id="score-t">0</span>
+        </div>
+      </div>
+      <div class="header-alive t">
+        <span class="alive-num" id="alive-t">5</span>
+        <span class="alive-sub">ALIVE</span>
       </div>
     </div>
 
-    <!-- Live Tactical Map Callout Indicator -->
-    <div id="hud-callout" style="position: absolute; top: 68px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 800; letter-spacing: 2px; color: #a4b3c6; background: rgba(10, 14, 20, 0.75); padding: 4px 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); text-transform: uppercase; pointer-events: none; z-index: 50;">DE_DUST2</div>
+    <!-- Live Tactical Map Callout Tag (Beneath Radar) -->
+    <div id="hud-callout">DE_DUST2</div>
+
+    <!-- CS2 Tactical Toast (Bomb Planted / Pickup) -->
+    <div id="cs2-tactical-toast"></div>
 
     <!-- Killfeed -->
     <div id="killfeed"></div>
@@ -789,32 +1041,46 @@
       <div class="crosshair-dot"></div>
     </div>
 
-    <!-- Tactical HUD Bottom (Slim Translucent 46px) -->
+    <!-- CS2 Minimalist Bottom Scrim HUD -->
     <div id="hud-bottom">
-      <div style="display: flex; gap: 10px; align-items: center;">
-        <div class="hud-block">
-          <div class="hud-label">+ HEALTH</div>
-          <div class="hud-val hp" id="hud-hp">100</div>
+      <div class="hud-left-cluster">
+        <div class="hud-scrim hud-scrim-left">
+          <div class="hud-stat-cell">
+            <div class="hud-stat-top">
+              <span class="hud-icon hp-icon">+</span>
+              <span class="hud-val hp" id="hud-hp">100</span>
+            </div>
+            <div class="hud-bar-track"><div class="hud-bar-fill" id="hud-hp-fill"></div></div>
+          </div>
+          <div class="hud-stat-cell">
+            <div class="hud-stat-top">
+              <span class="hud-icon armor-icon">&#x25C6;</span>
+              <span class="hud-val armor" id="hud-armor">100</span>
+            </div>
+            <div class="hud-bar-track"><div class="hud-bar-fill" id="hud-armor-fill"></div></div>
+          </div>
         </div>
-        <div class="hud-block">
-          <div class="hud-label">&#x25C6; ARMOR</div>
-          <div class="hud-val armor" id="hud-armor">100</div>
+        <div class="hud-cash-pill">
+          <span class="hud-val cash" id="hud-cash">$800</span>
         </div>
-        <div class="hud-block" id="hud-velocity-block">
-          <div class="hud-label">VELOCITY</div>
+        <div id="hud-velocity-block">
+          <div class="hud-label">VEL</div>
           <div class="hud-val speed" id="hud-speed">0.0 m/s • PINPOINT</div>
         </div>
       </div>
 
-      <div style="display: flex; gap: 10px; align-items: center;">
-        <div class="hud-block">
-          <div class="hud-label">$ CASH</div>
-          <div class="hud-val cash" id="hud-cash">$800</div>
-        </div>
-        <div class="hud-block" style="min-width: 175px; justify-content: flex-end;">
-          <div class="hud-label" id="hud-weapon-name" style="margin-right: 6px;">GARAM-47</div>
-          <div class="hud-val ammo"><span id="hud-ammo-cur">30</span> <span style="font-size: 15px; color: #8e959e; font-weight: 700;">/ <span id="hud-ammo-res">90</span></span></div>
-          <div id="reload-indicator" style="position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255, 255, 255, 0.1); border-radius: 0 0 4px 4px; overflow: hidden; display: none;"><div id="reload-fill" style="width: 0%; height: 100%; background: #ffb833; transition: width 0.05s linear;"></div></div>
+      <!-- CS2 Bottom-Center Faction Emblem + Animated Kill-Card Stack -->
+      <div id="cs2-center-badge">
+        <div id="cs2-kill-flare"></div>
+        <div id="cs2-kill-cards"></div>
+        <div id="cs2-faction-emblem" data-faction="vanguard">&#x2726;</div>
+      </div>
+
+      <div class="hud-right-cluster">
+        <div class="hud-scrim hud-scrim-right">
+          <div class="hud-label" id="hud-weapon-name">GARAM-47</div>
+          <div class="hud-val ammo"><span id="hud-ammo-cur">30</span> <span style="font-size: 14px; color: #94a3b8; font-weight: 700;">/ <span id="hud-ammo-res">90</span></span></div>
+          <div id="reload-indicator"><div id="reload-fill"></div></div>
         </div>
       </div>
     </div>
@@ -964,27 +1230,28 @@
 
   <!-- Sleek Tactical Pre-Match Lobby & Pause Menu -->
   <div id="blocker">
-    <div class="lobby-panel" style="padding: 20px 34px;">
-      <div class="title-banner" style="font-size: 54px; margin-bottom: 2px;">GARAM</div>
-      <div class="subtitle" style="margin-bottom: 16px;">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
+    <div class="lobby-panel">
+      <div class="title-banner">GARAM</div>
+      <div class="subtitle">TACTICAL 5V5 COMPETITIVE SHOOTER</div>
+      <div id="software-webgl-banner">Software WebGL detected — install GPU drivers for 60+ FPS</div>
 
       <!-- Map Selection -->
-      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">TACTICAL ARENA (MAP)</div>
-      <div class="lobby-row" id="map-selector" style="margin: 6px 0 12px;">
+      <div class="lobby-section-label">TACTICAL ARENA (MAP)</div>
+      <div class="lobby-row" id="map-selector">
         <button class="lobby-btn active" data-map="de_dust2">DE_DUST2 (A-SITE)</button>
         <button class="lobby-btn" data-map="cs_office">CS_OFFICE (2-SITE)</button>
       </div>
 
       <!-- Faction Selection -->
-      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">STARTING FACTION</div>
-      <div class="lobby-row" id="faction-selector" style="margin: 6px 0 12px;">
+      <div class="lobby-section-label">STARTING FACTION</div>
+      <div class="lobby-row" id="faction-selector">
         <button class="lobby-btn vanguard-btn active" data-faction="Vanguard">VANGUARD (DEFENDERS)</button>
         <button class="lobby-btn syndicate-btn" data-faction="Syndicate">SYNDICATE (ATTACKERS)</button>
       </div>
 
       <!-- AI Difficulty -->
-      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">AI DIFFICULTY TIER</div>
-      <div class="lobby-row" id="diff-selector" style="margin: 6px 0 12px;">
+      <div class="lobby-section-label">AI DIFFICULTY TIER</div>
+      <div class="lobby-row" id="diff-selector">
         <button class="lobby-btn" data-diff="Recruit">RECRUIT</button>
         <button class="lobby-btn active" data-diff="Veteran">VETERAN</button>
         <button class="lobby-btn" data-diff="Elite">ELITE</button>
@@ -992,15 +1259,15 @@
       </div>
 
       <!-- Game Mode -->
-      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">GAME MODE</div>
-      <div class="lobby-row" id="mode-selector" style="margin: 6px 0 12px;">
+      <div class="lobby-section-label">GAME MODE</div>
+      <div class="lobby-row" id="mode-selector">
         <button class="lobby-btn active" data-mode="offline">OFFLINE 5V5 PRACTICE</button>
         <button class="lobby-btn" data-mode="multiplayer">ONLINE MULTIPLAYER (64-TICK)</button>
       </div>
 
       <!-- Graphics Quality Preset -->
-      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin-bottom: 2px; text-transform: uppercase;">GRAPHICS QUALITY</div>
-      <div class="lobby-row" id="quality-selector" style="margin: 6px 0 12px;">
+      <div class="lobby-section-label">GRAPHICS QUALITY</div>
+      <div class="lobby-row" id="quality-selector">
         <button class="lobby-btn active" data-quality="AUTO">AUTO</button>
         <button class="lobby-btn" data-quality="POTATO">POTATO</button>
         <button class="lobby-btn" data-quality="LOW">LOW</button>
@@ -1008,9 +1275,18 @@
         <button class="lobby-btn" data-quality="HIGH">HIGH</button>
       </div>
 
+      <!-- Frame Pacing Preset -->
+      <div class="lobby-section-label">FRAME PACING</div>
+      <div class="lobby-row" id="fps-selector">
+        <button class="lobby-btn active" data-fps="VSYNC">VSYNC</button>
+        <button class="lobby-btn" data-fps="120">120 FPS</button>
+        <button class="lobby-btn" data-fps="240">240 FPS</button>
+        <button class="lobby-btn" data-fps="UNLIMITED">UNLIMITED FPS</button>
+      </div>
+
       <!-- Multiplayer Config Panel (Shown when Multiplayer selected) -->
-      <div id="multiplayer-config-panel" style="display: none; background: rgba(14, 18, 24, 0.7); border: 1px solid rgba(59, 158, 255, 0.3); border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; width: 100%;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <div id="multiplayer-config-panel" style="display: none; background: rgba(14, 18, 24, 0.7); border: 1px solid rgba(59, 158, 255, 0.3); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; width: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
           <span style="font-size: 11px; letter-spacing: 2px; color: #3b9eff; font-weight: 800;">64-TICK SERVER CONNECTION</span>
           <span id="server-status-badge" style="font-size: 11px; font-weight: 800; color: #00ff88; letter-spacing: 1px;">● SERVER READY</span>
         </div>
@@ -1021,7 +1297,7 @@
       </div>
 
       <!-- Tactical Settings -->
-      <div style="font-size: 11px; letter-spacing: 2px; color: #8892a0; margin: 2px 0 2px; text-transform: uppercase;">TACTICAL SETTINGS</div>
+      <div class="lobby-section-label">TACTICAL SETTINGS</div>
       <div class="lobby-slider-row">
         <span>MASTER VOLUME</span>
         <input type="range" class="lobby-slider" id="vol-slider" min="0" max="100" step="1" value="85">
@@ -1044,8 +1320,8 @@
       </div>
 
       <!-- First-Load Asset Progress Bar -->
-      <div id="asset-progress-container" style="width: 100%; margin-top: 8px;">
-        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #8892a0; margin-bottom: 4px;">
+      <div id="asset-progress-container" style="width: 100%; margin-top: 6px;">
+        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #8892a0; margin-bottom: 3px;">
           <span id="asset-progress-label">STREAMING DE_DUST2 (A-SITE) 3D ARENA...</span>
           <span id="asset-progress-pct" style="color: #00ff88;">100%</span>
         </div>
@@ -1054,13 +1330,13 @@
         </div>
       </div>
 
-      <div style="display: flex; gap: 12px; width: 100%; margin-top: 10px;">
+      <div style="display: flex; gap: 10px; width: 100%; margin-top: 8px;">
         <button class="start-prompt" id="spawn-btn" data-start="true" style="flex: 2;">DEPLOY OPERATOR</button>
         <button class="lobby-btn" id="open-customizer-btn" style="flex: 1; background: rgba(59, 158, 255, 0.2); border-color: #3b9eff; color: #fff; font-size: 12px;">[F2] SANDBOX</button>
       </div>
 
       <!-- Top 5 Core Controls Inline + [?] CONTROLS Modal Trigger -->
-      <div class="controls-help" style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; line-height: 1.4;">
+      <div class="controls-help" style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
         <span>[WASD] Move &nbsp;•&nbsp; [MOUSE 1/2] Fire / Scope &nbsp;•&nbsp; [B] Buy Menu &nbsp;•&nbsp; [HOLD E] Plant / Defuse &nbsp;•&nbsp; [TAB] Scoreboard</span>
         <button type="button" class="lobby-btn" id="open-controls-btn" style="padding: 4px 10px; font-size: 10px; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.25); color: #fff;">[?] CONTROLS</button>
       </div>

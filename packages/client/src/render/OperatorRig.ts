@@ -23,6 +23,8 @@ export interface OperatorVisualState {
   velocity?: { x: number; z: number };
   /** Distance from active camera in meters for 3-tier OperatorRig LOD */
   cameraDistance?: number;
+  /** True when the operator sits behind the active camera frustum */
+  isBehindCamera?: boolean;
 }
 
 interface SkeletalBoneBinding {
@@ -423,6 +425,19 @@ export class OperatorRig {
     armLowerTwistR.sort(sortByLocalY);
 
     const spineAnchor = spine2?.bone ?? spine1?.bone ?? agentModel;
+    agentModel.traverse((node) => {
+      if ((node as THREE.Mesh).isMesh) {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.geometry.boundingSphere) {
+          mesh.geometry.computeBoundingSphere();
+        }
+        if (mesh.geometry.boundingSphere && !mesh.geometry.userData._operatorSphereExpanded) {
+          mesh.geometry.boundingSphere.radius *= 1.6;
+          mesh.geometry.userData._operatorSphereExpanded = true;
+        }
+        mesh.frustumCulled = true;
+      }
+    });
     this.proceduralGroup.visible = false;
     this.root.add(agentModel);
 
@@ -726,9 +741,10 @@ export class OperatorRig {
     this.contactShadow.visible = true;
     if (this.glbRig) this.glbRig.armIK.chestWeaponMount.visible = true;
 
-    // 3-Tier Distance LOD for Cross-Device High-FPS
+    // 3-Tier Distance LOD & Behind-Camera Culling for Cross-Device High-FPS
     const camDist = state.cameraDistance ?? 10;
-    const lodLevel: 0 | 1 | 2 = camDist < 18 ? 0 : camDist < 38 ? 1 : 2;
+    const isBehind = !!state.isBehindCamera;
+    const lodLevel: 0 | 1 | 2 = isBehind || camDist >= 38 ? 2 : camDist >= 18 ? 1 : 0;
     this.lodTickCounter++;
 
     // Smooth locomotion & stance blends
@@ -802,8 +818,8 @@ export class OperatorRig {
     }
 
     if (this.glbRig) {
-      // LOD1 skips every odd non-firing frame for 2x distant-bot CPU savings
-      if (lodLevel === 0 || this.fireRecoilTimer > 0 || (this.lodTickCounter & 1) === 0) {
+      // Skip skeletal IK & pose updates behind camera; LOD1 skips every odd non-firing frame
+      if (!isBehind && (lodLevel === 0 || this.fireRecoilTimer > 0 || (this.lodTickCounter & 1) === 0)) {
         this.applySkeletalPose(legSwing, state.isMoving && state.speed > 0.15, aimPitch, this.upperBodyYaw, flinchOffset, lodLevel);
       }
     } else {
@@ -815,14 +831,14 @@ export class OperatorRig {
       this.weaponMesh.rotation.x = aimPitch * 0.45;
     }
 
-    this.updateBillboard(state.healthRatio, state.team, state.name);
+    this.updateBillboard(state.healthRatio, state.team, state.name, isBehind);
   }
 
-  private updateBillboard(hpRatio: number, team: 'Vanguard' | 'Syndicate', name: string): void {
+  private updateBillboard(hpRatio: number, team: 'Vanguard' | 'Syndicate', name: string, isBehind = false): void {
     const localTeam = settingsStore.settings.faction;
     const isAlly = team === localTeam;
 
-    if (!isAlly) {
+    if (!isAlly || isBehind) {
       this.uiBillboard.visible = false;
       return;
     }

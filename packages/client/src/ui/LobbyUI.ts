@@ -5,6 +5,7 @@ import {
   GameMode,
   ActiveMapId,
   GraphicsQuality,
+  FpsLimit,
 } from '../core/SettingsStore.js';
 import { AssetManager } from '../render/AssetManager.js';
 
@@ -19,6 +20,7 @@ export interface LobbyUICallbacks {
   onFactionChanged?: (faction: PlayerFaction) => void;
   onMapChanged?: (mapId: ActiveMapId) => void;
   onQualityChanged?: (quality: GraphicsQuality) => void;
+  onFpsLimitChanged?: (limit: FpsLimit) => void;
 }
 
 export class LobbyUI {
@@ -147,6 +149,23 @@ export class LobbyUI {
         if (q) {
           settingsStore.update('graphicsQuality', q);
           this.callbacks.onQualityChanged?.(q);
+        }
+      });
+    });
+
+    // 3c. Frame Pacing Selector
+    const fpsBtns = document.querySelectorAll('#fps-selector .lobby-btn');
+    fpsBtns.forEach((btn) => {
+      const btnFps = btn.getAttribute('data-fps') as FpsLimit | null;
+      btn.classList.toggle('active', btnFps === settingsStore.settings.fpsLimit);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fpsBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const limit = btn.getAttribute('data-fps') as FpsLimit | null;
+        if (limit) {
+          settingsStore.update('fpsLimit', limit);
+          this.callbacks.onFpsLimitChanged?.(limit);
         }
       });
     });

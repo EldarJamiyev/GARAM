@@ -27,7 +27,9 @@ function escapeHtml(str: string): string {
 export class HUDManager {
   // Cached static DOM elements
   private hpEl = document.getElementById('hud-hp');
+  private hpFillEl = document.getElementById('hud-hp-fill');
   private armorEl = document.getElementById('hud-armor');
+  private armorFillEl = document.getElementById('hud-armor-fill');
   private speedEl = document.getElementById('hud-speed');
   private cashEl = document.getElementById('hud-cash');
   private weaponNameEl = document.getElementById('hud-weapon-name');
@@ -37,11 +39,17 @@ export class HUDManager {
   private reloadFill = document.getElementById('reload-fill');
   private scoreCtEl = document.getElementById('score-ct');
   private scoreTEl = document.getElementById('score-t');
+  private aliveCtEl = document.getElementById('alive-ct');
+  private aliveTEl = document.getElementById('alive-t');
   private roundTimerEl = document.getElementById('round-timer');
   private killfeedEl = document.getElementById('killfeed');
   private sniperScopeEl = document.getElementById('sniper-scope');
   private calloutEl = document.getElementById('hud-callout');
   private scoreboardTbody = document.getElementById('score-tbody');
+  private killCardsEl = document.getElementById('cs2-kill-cards');
+  private killFlareEl = document.getElementById('cs2-kill-flare');
+  private factionEmblemEl = document.getElementById('cs2-faction-emblem');
+  private tacticalToastEl = document.getElementById('cs2-tactical-toast');
   private slotEls: (HTMLElement | null)[] = [
     null,
     document.getElementById('slot-1'),
@@ -87,11 +95,17 @@ export class HUDManager {
   private lastScopeVisible: boolean | null = null;
   private lastTimerText = '';
   private lastTimerColor = '';
+  private wasBombArmed = false;
   private lastCtScore = -1;
   private lastTScore = -1;
+  private lastCtAlive = -1;
+  private lastTAlive = -1;
   private lastInteractionVisible = false;
   private lastInteractionPct = -1;
   private lastInteractionLabel = '';
+  public roundKillCount = 0;
+  private toastTimeout: number | null = null;
+  private flareTimeout: number | null = null;
 
   constructor() {}
 
@@ -125,11 +139,22 @@ export class HUDManager {
 
     if (roundedHp !== this.lastHp) {
       this.lastHp = roundedHp;
-      if (this.hpEl) this.hpEl.textContent = roundedHp.toString();
+      const clampedHp = Math.max(0, Math.min(100, roundedHp));
+      const isLowHp = clampedHp <= 25;
+      if (this.hpEl) {
+        this.hpEl.textContent = roundedHp.toString();
+        this.hpEl.style.color = isLowHp ? '#ff3b4a' : '#f8fafc';
+      }
+      if (this.hpFillEl) {
+        this.hpFillEl.style.width = `${clampedHp}%`;
+        this.hpFillEl.style.background = isLowHp ? '#ff3b4a' : '#f1f5f9';
+      }
     }
     if (roundedArmor !== this.lastArmor) {
       this.lastArmor = roundedArmor;
+      const clampedArmor = Math.max(0, Math.min(100, roundedArmor));
       if (this.armorEl) this.armorEl.textContent = roundedArmor.toString();
+      if (this.armorFillEl) this.armorFillEl.style.width = `${clampedArmor}%`;
     }
     if (roundedCash !== this.lastCash) {
       this.lastCash = roundedCash;
@@ -244,18 +269,23 @@ export class HUDManager {
   }
 
   public updateRoundTimer(secondsRemaining: number, isBombArmed: boolean): void {
+    if (isBombArmed && !this.wasBombArmed) {
+      this.showTacticalToast('The bomb has been planted — 40 seconds till detonation', 4000);
+    }
+    this.wasBombArmed = isBombArmed;
+
     if (!this.roundTimerEl) return;
     const clamped = Math.max(0, Math.floor(secondsRemaining));
     let text: string;
     let color: string;
     if (isBombArmed) {
-      text = `BOMB 00:${clamped.toString().padStart(2, '0')}`;
-      color = '#ff2233';
+      text = `00:${clamped.toString().padStart(2, '0')}`;
+      color = '#ff3b4a';
     } else {
       const mins = Math.floor(clamped / 60);
       const secs = clamped % 60;
       text = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-      color = '#fff';
+      color = '#f8fafc';
     }
 
     if (text !== this.lastTimerText) {
@@ -279,10 +309,87 @@ export class HUDManager {
     }
   }
 
-  public addKillfeed(text: string): void {
+  public updateAliveCounts(ctAlive: number, tAlive: number): void {
+    if (ctAlive !== this.lastCtAlive) {
+      this.lastCtAlive = ctAlive;
+      if (!this.aliveCtEl) this.aliveCtEl = document.getElementById('alive-ct');
+      if (this.aliveCtEl) this.aliveCtEl.textContent = ctAlive.toString();
+    }
+    if (tAlive !== this.lastTAlive) {
+      this.lastTAlive = tAlive;
+      if (!this.aliveTEl) this.aliveTEl = document.getElementById('alive-t');
+      if (this.aliveTEl) this.aliveTEl.textContent = tAlive.toString();
+    }
+  }
+
+  public setFactionTheme(faction: 'Vanguard' | 'Syndicate'): void {
+    if (!this.factionEmblemEl) this.factionEmblemEl = document.getElementById('cs2-faction-emblem');
+    if (this.factionEmblemEl) {
+      this.factionEmblemEl.dataset.faction = faction.toLowerCase();
+      this.factionEmblemEl.style.borderColor =
+        faction === 'Syndicate' ? 'rgba(232, 184, 90, 0.72)' : 'rgba(104, 168, 232, 0.72)';
+      this.factionEmblemEl.style.color = faction === 'Syndicate' ? '#e8b85a' : '#68a8e8';
+    }
+  }
+
+  public recordRoundKill(isHeadshot: boolean): void {
+    this.roundKillCount = Math.min(5, this.roundKillCount + 1);
+    if (!this.killCardsEl) this.killCardsEl = document.getElementById('cs2-kill-cards');
+    if (this.killCardsEl) {
+      const card = document.createElement('div');
+      card.className = `cs2-kill-card${isHeadshot ? ' headshot' : ''}`;
+      card.textContent = isHeadshot ? '✦' : '•';
+      this.killCardsEl.appendChild(card);
+    }
+
+    if (!this.killFlareEl) this.killFlareEl = document.getElementById('cs2-kill-flare');
+    if (this.killFlareEl) {
+      this.killFlareEl.style.background = isHeadshot
+        ? 'linear-gradient(180deg, rgba(255, 220, 120, 0) 0%, rgba(255, 70, 85, 0.75) 55%, rgba(255, 240, 200, 0.95) 100%)'
+        : 'linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(210, 230, 255, 0.65) 55%, rgba(255, 255, 255, 0.92) 100%)';
+      this.killFlareEl.classList.remove('active');
+      void this.killFlareEl.offsetWidth;
+      this.killFlareEl.classList.add('active');
+      if (this.flareTimeout !== null) window.clearTimeout(this.flareTimeout);
+      this.flareTimeout = window.setTimeout(() => {
+        this.killFlareEl?.classList.remove('active');
+      }, 650);
+    }
+  }
+
+  public resetRoundKills(): void {
+    this.roundKillCount = 0;
+    this.wasBombArmed = false;
+    if (!this.killCardsEl) this.killCardsEl = document.getElementById('cs2-kill-cards');
+    if (this.killCardsEl) {
+      this.killCardsEl.innerHTML = '';
+    }
+    this.killFlareEl?.classList.remove('active');
+  }
+
+  public showTacticalToast(message: string, durationMs = 3600): void {
+    if (!this.tacticalToastEl) this.tacticalToastEl = document.getElementById('cs2-tactical-toast');
+    if (!this.tacticalToastEl) return;
+    this.tacticalToastEl.textContent = message;
+    this.tacticalToastEl.style.display = 'block';
+    this.tacticalToastEl.style.opacity = '1';
+    if (this.toastTimeout !== null) window.clearTimeout(this.toastTimeout);
+    this.toastTimeout = window.setTimeout(() => {
+      if (this.tacticalToastEl) {
+        this.tacticalToastEl.style.opacity = '0';
+        window.setTimeout(() => {
+          if (this.tacticalToastEl && this.tacticalToastEl.style.opacity === '0') {
+            this.tacticalToastEl.style.display = 'none';
+          }
+        }, 220);
+      }
+    }, durationMs);
+  }
+
+  public addKillfeed(text: string, isLocalKill = false): void {
     if (!this.killfeedEl) return;
     const entry = document.createElement('div');
-    entry.className = 'kill-entry';
+    entry.className = isLocalKill ? 'kill-entry local-kill' : 'kill-entry';
     entry.textContent = text;
     this.killfeedEl.appendChild(entry);
     setTimeout(() => entry.remove(), 5000);
@@ -536,15 +643,15 @@ export class HUDManager {
         ind.style.position = 'absolute';
         ind.style.top = '50%';
         ind.style.left = '50%';
-        ind.style.width = '280px';
-        ind.style.height = '280px';
+        ind.style.width = '310px';
+        ind.style.height = '310px';
         ind.style.transform = 'translate(-50%, -50%)';
         ind.style.pointerEvents = 'none';
         ind.style.zIndex = '45';
         ind.style.borderRadius = '50%';
-        ind.style.border = '5px solid transparent';
-        ind.style.borderTopColor = 'rgba(255, 30, 50, 0.9)';
-        ind.style.filter = 'drop-shadow(0 0 10px rgba(255, 30, 50, 0.8))';
+        ind.style.border = '8px solid transparent';
+        ind.style.borderTopColor = 'rgba(239, 32, 48, 0.92)';
+        ind.style.boxShadow = 'inset 0 12px 18px -14px rgba(255, 36, 56, 0.75)';
         document.body.appendChild(ind);
       }
       this.damageIndicatorEl = ind;
@@ -557,9 +664,9 @@ export class HUDManager {
     ind.style.transition = 'none';
 
     setTimeout(() => {
-      ind.style.transition = 'opacity 0.4s ease-out';
+      ind.style.transition = 'opacity 0.45s ease-out';
       ind.style.opacity = '0';
-    }, 80);
+    }, 90);
   }
 }
 

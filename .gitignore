@@ -23,6 +23,7 @@ playtest-*.png
 tmp_verify_*.png
 verify_*.png
 polish_*.png
+_tmp_*.ts
 .playwright-cli/
 *.zip
 GARAM/

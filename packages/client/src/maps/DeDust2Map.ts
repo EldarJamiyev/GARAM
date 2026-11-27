@@ -51,16 +51,21 @@ function tuneDust2Material(mat: THREE.Material, maxAniso: number): void {
     }
   }
 
-  mat.envMapIntensity = 0.6;
+  mat.envMapIntensity = 0.78;
   const name = mat.name || '';
   if (/ground_/i.test(name)) {
-    mat.roughness = 0.78;
-  } else if (/barrel|iron/i.test(name)) {
-    mat.metalness = 0.55;
+    mat.roughness = 0.76;
+    mat.envMapIntensity = 0.72;
+  } else if (/barrel|iron|metal/i.test(name)) {
+    mat.metalness = 0.62;
+    mat.roughness = Math.min(mat.roughness, 0.42);
+    mat.envMapIntensity = 1.15;
   } else if (/glass/i.test(name)) {
-    mat.roughness = 0.2;
-    mat.metalness = 0.4;
-    mat.envMapIntensity = 1.2;
+    mat.roughness = 0.16;
+    mat.metalness = 0.35;
+    mat.envMapIntensity = 1.45;
+  } else {
+    mat.roughness = Math.min(mat.roughness, 0.86);
   }
   mat.needsUpdate = true;
 }
@@ -93,22 +98,31 @@ export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): Ma
       root.position.set(0, DE_DUST2_Y_OFFSET, 0);
 
       root.traverse((obj) => {
-        if (!(obj instanceof THREE.Mesh)) return;
-        const isBackdrop = Boolean(obj.userData?.nocollide);
-        if (isBackdrop) {
-          obj.userData.isSkyBackdrop = true;
-        }
-        obj.castShadow = !isBackdrop;
-        obj.receiveShadow = true;
+        if (obj instanceof THREE.Mesh) {
+          const isBackdrop = Boolean(obj.userData?.nocollide);
+          if (isBackdrop) {
+            obj.userData.isSkyBackdrop = true;
+          }
+          obj.castShadow = !isBackdrop;
+          obj.receiveShadow = true;
+          if (obj.geometry && !obj.geometry.boundingSphere) {
+            obj.geometry.computeBoundingSphere();
+          }
+          obj.frustumCulled = true;
 
-        if (Array.isArray(obj.material)) {
-          for (const m of obj.material) tuneDust2Material(m, maxAniso);
-        } else if (obj.material) {
-          tuneDust2Material(obj.material, maxAniso);
+          if (Array.isArray(obj.material)) {
+            for (const m of obj.material) tuneDust2Material(m, maxAniso);
+          } else if (obj.material) {
+            tuneDust2Material(obj.material, maxAniso);
+          }
         }
       });
 
       mapRoot.add(root);
+      mapRoot.updateMatrixWorld(true);
+      root.traverse((obj) => {
+        obj.matrixAutoUpdate = false;
+      });
       assetMgr.reportProgress(100, 'DE_DUST2 (A-SITE) ARENA READY');
       onGlbReady?.();
     },
@@ -142,7 +156,12 @@ export function buildDeDust2Map(scene: THREE.Scene, onGlbReady?: () => void): Ma
     DE_DUST2_BOMBSITES.A.center.y + 0.03,
     DE_DUST2_BOMBSITES.A.center.z
   );
+  siteAMesh.geometry.computeBoundingSphere();
+  siteAMesh.frustumCulled = true;
   mapRoot.add(siteAMesh);
+  mapRoot.updateMatrixWorld(true);
+  siteAMesh.matrixAutoUpdate = false;
+  mapRoot.matrixAutoUpdate = false;
 
   // Spawn 9 grounded 5v5 tactical operators on verified Dust2 spawn & split positions
   const bots: BotEntity[] = [];
