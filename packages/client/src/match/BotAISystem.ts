@@ -11,6 +11,8 @@ import {
   KINEMATICS,
   BOMBSITES,
   SPAWN_POINTS,
+  DEFAULT_MAP_BOUNDS,
+  MapBounds,
   executeTacticalRaycast,
   TargetCollider,
   Ray,
@@ -18,6 +20,12 @@ import {
   SurfaceMaterial,
   CS_OFFICE_NAV_GRAPH,
   CS_OFFICE_BLOCKS,
+  DE_DUST2_NAV_GRAPH,
+  DE_DUST2_BLOCKS,
+  DE_DUST2_BOUNDS,
+  DE_DUST2_BOMBSITES,
+  DE_DUST2_SPAWN_POINTS,
+  NavNode,
   findNearestNavNode,
   findPathAStar,
   rollRandomStrategies,
@@ -33,6 +41,18 @@ import {
   WEAPONS,
 } from '@garam/shared';
 import { BotEntity } from '../maps/DeCitadelMap.js';
+
+export interface BotMapConfig {
+  navGraph: Record<string, NavNode>;
+  blocks: MapBlockCollider[];
+  bounds: MapBounds;
+  bombsites: { A: { center: Vec3; radius: number }; B: { center: Vec3; radius: number } };
+  spawnPoints: { VANGUARD_CT: Vec3; OBSIDIAN_T: Vec3 };
+  vanguardHolds: readonly string[];
+  syndicateExecutes: readonly string[];
+  smokeChokes: readonly string[];
+  postPlantFallbackNode: string;
+}
 
 export type BotDifficulty = 'Recruit' | 'Veteran' | 'Elite' | 'Sovereign';
 
@@ -181,12 +201,6 @@ const _otherPositionsScratch: Vec3[] = [];
 
 const MAX_FOV_YAW_RAD = (55 * Math.PI) / 180; // ±55° forward visual cone
 const MAX_FOV_PITCH_RAD = (38 * Math.PI) / 180; // 38° pitch cone
-const MIN_REACTION_FLOOR_MS: Record<BotDifficulty, number> = {
-  Recruit: 480,
-  Veteran: 310,
-  Elite: 220,
-  Sovereign: 175,
-};
 
 const VANGUARD_TACTICAL_HOLDS: readonly string[] = [
   'front_hall_mid',
@@ -219,6 +233,80 @@ const CS_OFFICE_SMOKE_CHOKES: readonly string[] = [
   'a_site_north_door',
   'b_site_paper_east',
 ];
+
+export const CS_OFFICE_BOT_MAP_CONFIG: BotMapConfig = {
+  navGraph: CS_OFFICE_NAV_GRAPH,
+  blocks: CS_OFFICE_BLOCKS,
+  bounds: DEFAULT_MAP_BOUNDS,
+  bombsites: BOMBSITES,
+  spawnPoints: SPAWN_POINTS,
+  vanguardHolds: VANGUARD_TACTICAL_HOLDS,
+  syndicateExecutes: SYNDICATE_TACTICAL_EXECUTES,
+  smokeChokes: CS_OFFICE_SMOKE_CHOKES,
+  postPlantFallbackNode: 'a_site_east',
+};
+
+/**
+ * Minimum horizontal separation (meters) strictly enforced between friendly bots'
+ * assigned hold anchors at round start and during mid-round rotations.
+ */
+export const MIN_FRIENDLY_HOLD_SEPARATION_M = 3.0;
+
+/**
+ * Dust 2 nav graph with A-Ramp exit centered cleanly through the open 2.5m gap
+ * (X in [13.0..15.5], clearing the X[11..13] Z[11.5..12] wooden crate) so CT bots
+ * never jam single-file against the left A-Site wall.
+ */
+const DE_DUST2_BOT_NAV_GRAPH: Record<string, NavNode> = {
+  ...DE_DUST2_NAV_GRAPH,
+  ramp_mid: {
+    ...DE_DUST2_NAV_GRAPH.ramp_mid,
+    pos: { x: 13.8, y: 1.75, z: 20 },
+  },
+  ramp_top: {
+    ...DE_DUST2_NAV_GRAPH.ramp_top,
+    pos: { x: 14.3, y: 3.5, z: 10.2 },
+  },
+};
+
+export const DE_DUST2_BOT_MAP_CONFIG: BotMapConfig = {
+  navGraph: DE_DUST2_BOT_NAV_GRAPH,
+  blocks: DE_DUST2_BLOCKS,
+  bounds: DE_DUST2_BOUNDS,
+  bombsites: DE_DUST2_BOMBSITES,
+  spawnPoints: DE_DUST2_SPAWN_POINTS,
+  // 5 primary distinct CT defensive zones (A Long, A Site Default, A Short/Catwalk, Goose, A Ramp)
+  // followed by well-spaced secondary rotations (all >= 3.0m apart).
+  vanguardHolds: [
+    'long_corner',
+    'default',
+    'short_plat',
+    'goose',
+    'ramp_top',
+    'car',
+    'site_center',
+    'stairs_bot',
+    'site_sw',
+    'site_e',
+    'elbow',
+    'pit',
+    'ramp_mid',
+  ],
+  syndicateExecutes: [
+    'site_center',
+    'default',
+    'site_nw',
+    'site_n',
+    'short_plat',
+    'stairs_bot',
+    'long_corner',
+    'car',
+    'elbow',
+    'goose',
+  ],
+  smokeChokes: ['long_corner', 'ramp_top', 'short_plat', 'elbow'],
+  postPlantFallbackNode: 'goose',
+};
 
 interface BotInternalState {
   botId: string;
@@ -257,6 +345,7 @@ interface BotInternalState {
   // Navigation & tactical angle-holding
   path: Vec3[];
   pathIndex: number;
+  assignedHoldPos: Vec3 | null;
   role: 'entry' | 'support' | 'lurker' | 'anchor' | 'rotator';
   isLurking: boolean;
   holdAngleTimer: number;
@@ -293,10 +382,16 @@ export class BotAISystem {
   private hasLastPlayerFeet = false;
   private playerVelX = 0;
   private playerVelZ = 0;
+  private mapConfig: BotMapConfig;
 
-  constructor(callbacks: BotAISystemCallbacks, difficulty: BotDifficulty = 'Veteran') {
+  constructor(
+    callbacks: BotAISystemCallbacks,
+    difficulty: BotDifficulty = 'Veteran',
+    mapConfig: BotMapConfig = CS_OFFICE_BOT_MAP_CONFIG
+  ) {
     this.callbacks = callbacks;
     this.difficulty = difficulty;
+    this.mapConfig = mapConfig;
     this.currentStrategies = rollRandomStrategies();
   }
 
@@ -308,6 +403,11 @@ export class BotAISystem {
       state.playerVisibleMs = 0;
       state.botVisibleMs.clear();
     }
+  }
+
+  public setMapConfig(mapConfig: BotMapConfig): void {
+    this.mapConfig = mapConfig;
+    this.botStates.clear();
   }
 
   private createBotState(
@@ -351,6 +451,7 @@ export class BotAISystem {
       antiFlashYaw: bot.mesh.rotation.y,
       path,
       pathIndex: 0,
+      assignedHoldPos: path.length > 0 ? { ...path[path.length - 1] } : null,
       role,
       isLurking: role === 'lurker',
       holdAngleTimer: 0,
@@ -398,6 +499,51 @@ export class BotAISystem {
       true
     );
 
+    const { navGraph, blocks: mapBlocks, bombsites, vanguardHolds, syndicateExecutes } = this.mapConfig;
+    const nodePos = (id: string, fallback: Vec3): Vec3 => navGraph[id]?.pos ?? fallback;
+
+    const pickSeparatedHoldNode = (
+      candidates: readonly string[],
+      startIdx: number,
+      usedIds: Set<string>,
+      usedPositions: Vec3[],
+      fallback: Vec3
+    ): Vec3 => {
+      const isFarEnough = (pos: Vec3, minDist: number): boolean =>
+        usedPositions.every((other) => Math.hypot(pos.x - other.x, pos.z - other.z) >= minDist);
+
+      // Pass 1: unique candidate strictly >= MIN_FRIENDLY_HOLD_SEPARATION_M from all teammates' holds
+      for (let offset = 0; offset < candidates.length; offset++) {
+        const id = candidates[(startIdx + offset) % candidates.length];
+        const node = navGraph[id];
+        if (!node || usedIds.has(id)) continue;
+        if (isFarEnough(node.pos, MIN_FRIENDLY_HOLD_SEPARATION_M)) {
+          usedIds.add(id);
+          usedPositions.push(node.pos);
+          return node.pos;
+        }
+      }
+
+      // Pass 2: scan full navGraph for any well-separated hold node if the pool is small
+      for (const id of Object.keys(navGraph)) {
+        if (usedIds.has(id)) continue;
+        const pos = navGraph[id].pos;
+        if (isFarEnough(pos, MIN_FRIENDLY_HOLD_SEPARATION_M)) {
+          usedIds.add(id);
+          usedPositions.push(pos);
+          return pos;
+        }
+      }
+
+      const id = candidates[startIdx % Math.max(1, candidates.length)];
+      const chosen = nodePos(id, fallback);
+      usedIds.add(id);
+      usedPositions.push(chosen);
+      return chosen;
+    };
+
+    const usedSynNodes = new Set<string>();
+    const usedSynPositions: Vec3[] = [];
     synBots.forEach((bot, index) => {
       const decision = synBuys[index];
       bot.armor = decision.buyArmor ? 100 : 0;
@@ -406,42 +552,40 @@ export class BotAISystem {
       bot.rig?.setWeapon(weaponId);
 
       let role: BotInternalState['role'] = 'entry';
-      let dest: Vec3 = BOMBSITES.A.center;
+      let dest: Vec3 = bombsites.A.center;
 
       if (this.currentStrategies.syndicate === 'RUSH_A_LONG') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = index === 4 ? CS_OFFICE_NAV_GRAPH['main_hall_north'].pos : BOMBSITES.A.center;
+        dest = pickSeparatedHoldNode(syndicateExecutes, index, usedSynNodes, usedSynPositions, bombsites.A.center);
       } else if (this.currentStrategies.syndicate === 'SPLIT_A_MID') {
         role = index < 2 ? 'entry' : 'rotator';
-        dest = index < 2 ? BOMBSITES.A.center : CS_OFFICE_NAV_GRAPH['a_site_west_door'].pos;
+        dest = pickSeparatedHoldNode(syndicateExecutes, index + 2, usedSynNodes, usedSynPositions, bombsites.A.center);
       } else if (this.currentStrategies.syndicate === 'RUSH_B_TUNNELS') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest = index === 4 ? CS_OFFICE_NAV_GRAPH['kitchen_north_door'].pos : BOMBSITES.B.center;
+        dest = pickSeparatedHoldNode(syndicateExecutes, index + 4, usedSynNodes, usedSynPositions, bombsites.B.center);
       } else if (this.currentStrategies.syndicate === 'MID_TO_B_SPLIT') {
         role = index < 3 ? 'entry' : 'support';
-        dest = index < 3 ? CS_OFFICE_NAV_GRAPH['b_site_paper_east'].pos : CS_OFFICE_NAV_GRAPH['long_hall_mid_n'].pos;
+        dest = pickSeparatedHoldNode(syndicateExecutes, index + 1, usedSynNodes, usedSynPositions, bombsites.B.center);
       } else {
         role = index === 0 ? 'entry' : index === 1 ? 'lurker' : 'rotator';
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
-          CS_OFFICE_NAV_GRAPH['main_hall_north'].pos,
-          CS_OFFICE_NAV_GRAPH['long_hall_mid_n'].pos,
-          CS_OFFICE_NAV_GRAPH['b_site_paper_center'].pos,
-          CS_OFFICE_NAV_GRAPH['kitchen_center'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = pickSeparatedHoldNode(syndicateExecutes, index, usedSynNodes, usedSynPositions, bombsites.A.center);
       }
 
       const path = findPathAStar(
         { x: bot.mesh.position.x, y: bot.mesh.position.y, z: bot.mesh.position.z },
         dest,
         undefined,
-        CS_OFFICE_BLOCKS
+        mapBlocks,
+        navGraph
       );
 
-      this.botStates.set(bot.id, this.createBotState(bot, path, role, index, weaponId));
+      const st = this.createBotState(bot, path, role, index, weaponId);
+      st.assignedHoldPos = { ...dest };
+      this.botStates.set(bot.id, st);
     });
 
+    const usedVgNodes = new Set<string>();
+    const usedVgPositions: Vec3[] = [];
     vgBots.forEach((bot, index) => {
       const decision = vgBuys[index];
       bot.armor = decision.buyArmor ? 100 : 0;
@@ -450,43 +594,19 @@ export class BotAISystem {
       bot.rig?.setWeapon(weaponId);
 
       let role: BotInternalState['role'] = 'anchor';
-      let dest: Vec3 = BOMBSITES.A.center;
+      let dest: Vec3 = bombsites.A.center;
 
       if (this.currentStrategies.vanguard === 'STANDARD_2_1_2') {
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['front_hall_mid'].pos,
-          CS_OFFICE_NAV_GRAPH['sniper_mezz_center'].pos,
-          CS_OFFICE_NAV_GRAPH['long_hall_north'].pos,
-          CS_OFFICE_NAV_GRAPH['side_hall_west'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = pickSeparatedHoldNode(vanguardHolds, index, usedVgNodes, usedVgPositions, bombsites.A.center);
         role = index === 1 || index === 3 ? 'anchor' : 'rotator';
       } else if (this.currentStrategies.vanguard === 'AGGRESSIVE_MID_CONTROL') {
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['main_hall_north'].pos,
-          CS_OFFICE_NAV_GRAPH['front_main_door'].pos,
-          CS_OFFICE_NAV_GRAPH['b_site_paper_center'].pos,
-          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = pickSeparatedHoldNode(vanguardHolds, index, usedVgNodes, usedVgPositions, bombsites.A.center);
         role = index < 2 ? 'rotator' : 'anchor';
       } else if (this.currentStrategies.vanguard === 'HEAVY_A_STACK') {
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['a_site_center'].pos,
-          CS_OFFICE_NAV_GRAPH['side_hall_west'].pos,
-          CS_OFFICE_NAV_GRAPH['storage_entry'].pos,
-          CS_OFFICE_NAV_GRAPH['front_hall_west'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = pickSeparatedHoldNode(vanguardHolds, index, usedVgNodes, usedVgPositions, bombsites.A.center);
         role = 'anchor';
       } else {
-        const spots = [
-          CS_OFFICE_NAV_GRAPH['front_hall_entry'].pos,
-          CS_OFFICE_NAV_GRAPH['sniper_mezz_center'].pos,
-          CS_OFFICE_NAV_GRAPH['long_front_door'].pos,
-          CS_OFFICE_NAV_GRAPH['storage_east'].pos,
-        ];
-        dest = spots[index % spots.length];
+        dest = pickSeparatedHoldNode(vanguardHolds, index, usedVgNodes, usedVgPositions, bombsites.A.center);
         role = index % 2 === 0 ? 'rotator' : 'anchor';
       }
 
@@ -494,10 +614,13 @@ export class BotAISystem {
         { x: bot.mesh.position.x, y: bot.mesh.position.y, z: bot.mesh.position.z },
         dest,
         undefined,
-        CS_OFFICE_BLOCKS
+        mapBlocks,
+        navGraph
       );
 
-      this.botStates.set(bot.id, this.createBotState(bot, path, role, index + 5, weaponId));
+      const st = this.createBotState(bot, path, role, index + 5, weaponId);
+      st.assignedHoldPos = { ...dest };
+      this.botStates.set(bot.id, st);
     });
   }
 
@@ -541,7 +664,7 @@ export class BotAISystem {
       const hasFlashLos = hasLineOfSight(
         botEye,
         flashVec,
-        CS_OFFICE_BLOCKS,
+        this.mapConfig.blocks,
         this.lastSmokeOccluders,
         this.lastSpatialGrid
       );
@@ -653,63 +776,92 @@ export class BotAISystem {
     blocks: MapBlockCollider[]
   ): number {
     // Primary expected threat origin: bomb site if armed, else opposing spawn direction
+    const { navGraph, bombsites, spawnPoints } = this.mapConfig;
     const threatAnchor: Vec3 = isBombArmed
       ? bombTargetSite === 'A'
-        ? BOMBSITES.A.center
-        : BOMBSITES.B.center
+        ? bombsites.A.center
+        : bombsites.B.center
       : team === 'Vanguard'
-        ? SPAWN_POINTS.OBSIDIAN_T
-        : SPAWN_POINTS.VANGUARD_CT;
+        ? spawnPoints.OBSIDIAN_T
+        : spawnPoints.VANGUARD_CT;
 
-    const currentNode = findNearestNavNode(botPos, undefined, blocks);
+    const currentNode = findNearestNavNode(botPos, undefined, blocks, navGraph);
     const threatYaw = Math.atan2(threatAnchor.x - botPos.x, threatAnchor.z - botPos.z);
+    const eye: Vec3 = { x: botPos.x, y: botPos.y + 1.48, z: botPos.z };
 
-    // Use CS_OFFICE pre-computed doorway watchAngles (converted from -Z to +Z mesh yaw) when available
+    const isSightlineOpen = (meshYaw: number, probeDist = 3.0): boolean => {
+      const probe: Vec3 = {
+        x: eye.x + Math.sin(meshYaw) * probeDist,
+        y: eye.y,
+        z: eye.z + Math.cos(meshYaw) * probeDist,
+      };
+      return hasLineOfSight(eye, probe, blocks, this.lastSmokeOccluders, this.lastSpatialGrid);
+    };
+
+    // 1. Prefer pre-computed doorway watchAngles that have >= 3.0m clear LOS (never stare at walls)
     if (currentNode.watchAngles && currentNode.watchAngles.length > 0) {
-      let bestYaw = threatYaw;
+      let bestOpenYaw: number | null = null;
       let smallestDelta = Infinity;
       for (const rawWatch of currentNode.watchAngles) {
         const meshWatchYaw = normalizeAngleRad(rawWatch + Math.PI);
+        if (!isSightlineOpen(meshWatchYaw, 3.0)) continue;
         const delta = Math.abs(normalizeAngleRad(meshWatchYaw - threatYaw));
         if (delta < smallestDelta) {
           smallestDelta = delta;
-          bestYaw = meshWatchYaw;
+          bestOpenYaw = meshWatchYaw;
         }
       }
-      return bestYaw;
+      if (bestOpenYaw !== null) return bestOpenYaw;
     }
 
-    let bestNeighborPos: Vec3 | null = null;
+    // 2. Otherwise inspect open corridor neighbors toward the expected threat
+    let bestNeighborYaw: number | null = null;
     let bestScore = Infinity;
 
     for (const neighborId of currentNode.neighbors) {
-      const neighbor = CS_OFFICE_NAV_GRAPH[neighborId];
+      const neighbor = navGraph[neighborId];
       if (!neighbor) continue;
+      const candYaw = Math.atan2(neighbor.pos.x - botPos.x, neighbor.pos.z - botPos.z);
+      if (!isSightlineOpen(candYaw, 3.0)) continue;
       const dToThreat = dist3D(neighbor.pos, threatAnchor);
       if (dToThreat < bestScore) {
         bestScore = dToThreat;
-        bestNeighborPos = neighbor.pos;
+        bestNeighborYaw = candYaw;
       }
     }
+    if (bestNeighborYaw !== null) return bestNeighborYaw;
 
-    const lookTarget = bestNeighborPos ?? threatAnchor;
-    return Math.atan2(lookTarget.x - botPos.x, lookTarget.z - botPos.z);
+    // 3. Radial fallback: pick the closest open >= 3.0m sightline to threatYaw so bots never face walls
+    if (isSightlineOpen(threatYaw, 3.0)) return threatYaw;
+    let bestRadialYaw = threatYaw;
+    let bestRadialDelta = Infinity;
+    for (let i = 0; i < 12; i++) {
+      const candYaw = normalizeAngleRad(threatYaw + (i * Math.PI * 2) / 12);
+      if (!isSightlineOpen(candYaw, 3.0)) continue;
+      const delta = Math.abs(normalizeAngleRad(candYaw - threatYaw));
+      if (delta < bestRadialDelta) {
+        bestRadialDelta = delta;
+        bestRadialYaw = candYaw;
+      }
+    }
+    return bestRadialYaw;
   }
 
   private findNearbyCoverPos(botPos: Vec3, enemyPos: Vec3): Vec3 | null {
+    const { navGraph } = this.mapConfig;
     const toEnemyX = enemyPos.x - botPos.x;
     const toEnemyZ = enemyPos.z - botPos.z;
     const enemyDist = Math.hypot(toEnemyX, toEnemyZ) || 1;
     const enemyDirX = toEnemyX / enemyDist;
     const enemyDirZ = toEnemyZ / enemyDist;
 
-    // 1. Prioritize pre-computed CS_OFFICE retreatNodeIds from current nav node
-    const currentNode = findNearestNavNode(botPos);
+    // 1. Prioritize pre-computed retreatNodeIds from current nav node
+    const currentNode = findNearestNavNode(botPos, undefined, undefined, navGraph);
     if (currentNode.retreatNodeIds && currentNode.retreatNodeIds.length > 0) {
       let bestRetreat: Vec3 | null = null;
       let bestRetreatScore = Infinity;
       for (const retreatId of currentNode.retreatNodeIds) {
-        const rNode = CS_OFFICE_NAV_GRAPH[retreatId];
+        const rNode = navGraph[retreatId];
         if (!rNode || Math.abs(rNode.pos.y - botPos.y) > 1.3) continue;
         const dx = rNode.pos.x - botPos.x;
         const dz = rNode.pos.z - botPos.z;
@@ -724,12 +876,12 @@ export class BotAISystem {
       if (bestRetreat) return bestRetreat;
     }
 
-    // 2. Fallback scan across HIGH cover CS_OFFICE nodes
+    // 2. Fallback scan across HIGH cover nav nodes
     let bestPos: Vec3 | null = null;
     let bestScore = Infinity;
 
-    for (const key of Object.keys(CS_OFFICE_NAV_GRAPH)) {
-      const node = CS_OFFICE_NAV_GRAPH[key];
+    for (const key of Object.keys(navGraph)) {
+      const node = navGraph[key];
       if (node.coverType !== 'HIGH') continue;
       const dx = node.pos.x - botPos.x;
       const dz = node.pos.z - botPos.z;
@@ -779,7 +931,8 @@ export class BotAISystem {
       state.isCrouching ? KINEMATICS.CAPSULE_HEIGHT_CROUCH : KINEMATICS.CAPSULE_HEIGHT_STAND,
       colliders,
       true,
-      KINEMATICS.STEP_HEIGHT
+      KINEMATICS.STEP_HEIGHT,
+      this.mapConfig.bounds
     );
 
     const floorY = this.findSupportingFloorY(resolved.x, resolved.y, resolved.z, colliders);
@@ -843,7 +996,8 @@ export class BotAISystem {
     playerTeam: 'Vanguard' | 'Syndicate' = 'Vanguard',
     isFreezeTime = false,
     spatialGrid?: SpatialGrid,
-    playerHasHelmet = true
+    playerHasHelmet = true,
+    cameraForward?: THREE.Vector3
   ): void {
     const clampedDt = Math.min(0.05, Math.max(0.0001, dt));
     const config = DIFFICULTY_PRESETS[this.difficulty];
@@ -866,7 +1020,13 @@ export class BotAISystem {
 
     for (let bIdx = 0; bIdx < bots.length; bIdx++) {
       const bot = bots[bIdx];
-      const camDist = bot.mesh.position.distanceTo(playerEye);
+      const dxCam = bot.mesh.position.x - playerEye.x;
+      const dyCam = bot.mesh.position.y + 1.0 - playerEye.y;
+      const dzCam = bot.mesh.position.z - playerEye.z;
+      const camDist = Math.hypot(dxCam, dyCam - 1.0, dzCam);
+      const isBehindCamera = cameraForward
+        ? dxCam * cameraForward.x + dyCam * cameraForward.y + dzCam * cameraForward.z < -2.0
+        : false;
 
       if (bot.isDead) {
         bot.vx = 0;
@@ -879,6 +1039,7 @@ export class BotAISystem {
           team: bot.team,
           name: bot.name,
           cameraDistance: camDist,
+          isBehindCamera,
         });
         continue;
       }
@@ -894,6 +1055,7 @@ export class BotAISystem {
           team: bot.team,
           name: bot.name,
           cameraDistance: camDist,
+          isBehindCamera,
         });
         continue;
       }
@@ -1007,144 +1169,139 @@ export class BotAISystem {
               wasMovingOrSurprised
             );
 
-            if (perception.spotted) {
-              engagedPlayer = true;
-              this.callbacks.onEnemySpotted?.(bot);
+        if (perception.spotted) {
+          engagedPlayer = true;
+          this.callbacks.onEnemySpotted?.(bot);
 
-              if (!state.announcedPlayerContact) {
-                state.announcedPlayerContact = true;
-                this.callbacks.onBotRadioCallout?.(bot, 'Visual contact on hostile!');
-              }
+          if (!state.announcedPlayerContact) {
+            state.announcedPlayerContact = true;
+            this.callbacks.onBotRadioCallout?.(bot, 'Visual contact on hostile!');
+          }
 
-              state.playerLostSec = 0;
-              state.playerVisibleMs += clampedDt * 1000;
-              state.holdAngleTimer = 0;
+          state.playerLostSec = 0;
+          state.playerVisibleMs += clampedDt * 1000;
+          state.holdAngleTimer = 0;
 
-              // Select realistic chest/upper-torso/head target point (never 100% forehead lock)
-              const isPlayerCrouched = playerEye.y - playerFeetPos.y < 1.35;
-              const aimRoll = Math.abs(Math.sin(state.swayPhase * 3.1 + bIdx * 1.7 + state.burstShotIndex * 2.3));
-              const desiredAimPt = BotBrain.selectAimTargetPoint(
-                { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
-                { x: playerEye.x, y: playerEye.y, z: playerEye.z },
-                isPlayerCrouched,
-                state.archetype.skill,
-                state.burstShotIndex,
-                aimRoll
-              );
+          // Select realistic chest/upper-torso/head target point (never 100% forehead lock)
+          const isPlayerCrouched = playerEye.y - playerFeetPos.y < 1.35;
+          const aimRoll = Math.abs(Math.sin(state.swayPhase * 3.1 + bIdx * 1.7 + state.burstShotIndex * 2.3));
+          const desiredAimPt = BotBrain.selectAimTargetPoint(
+            { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
+            { x: playerEye.x, y: playerEye.y, z: playerEye.z },
+            isPlayerCrouched,
+            state.archetype.skill,
+            state.burstShotIndex,
+            aimRoll
+          );
 
-              // Apply realistic human visual tracking inertia so fast-peeking players aren't glued on frame 0
-              if (!state.hasTrackedPlayer) {
-                const lagSec = config.trackingTauSec * 0.85;
-                state.trackedPlayerPos.set(
-                  desiredAimPt.x - this.playerVelX * lagSec,
-                  desiredAimPt.y,
-                  desiredAimPt.z - this.playerVelZ * lagSec
-                );
-                state.hasTrackedPlayer = true;
-              } else {
-                const trackBlend = 1 - Math.exp(-clampedDt / config.trackingTauSec);
-                state.trackedPlayerPos.x += (desiredAimPt.x - state.trackedPlayerPos.x) * trackBlend;
-                state.trackedPlayerPos.y += (desiredAimPt.y - state.trackedPlayerPos.y) * trackBlend;
-                state.trackedPlayerPos.z += (desiredAimPt.z - state.trackedPlayerPos.z) * trackBlend;
-              }
+          // Apply realistic human visual tracking inertia so fast-peeking players aren't glued on frame 0
+          if (!state.hasTrackedPlayer) {
+            const lagSec = config.trackingTauSec * 0.85;
+            state.trackedPlayerPos.set(
+              desiredAimPt.x - this.playerVelX * lagSec,
+              desiredAimPt.y,
+              desiredAimPt.z - this.playerVelZ * lagSec
+            );
+            state.hasTrackedPlayer = true;
+          } else {
+            const trackBlend = 1 - Math.exp(-clampedDt / config.trackingTauSec);
+            state.trackedPlayerPos.x += (desiredAimPt.x - state.trackedPlayerPos.x) * trackBlend;
+            state.trackedPlayerPos.y += (desiredAimPt.y - state.trackedPlayerPos.y) * trackBlend;
+            state.trackedPlayerPos.z += (desiredAimPt.z - state.trackedPlayerPos.z) * trackBlend;
+          }
 
-              _aimVec.subVectors(state.trackedPlayerPos, _botEye);
-              const aimDist = _aimVec.length() || 1;
-              const desiredYaw = Math.atan2(_aimVec.x, _aimVec.z);
-              const desiredPitch = Math.asin(Math.max(-0.98, Math.min(0.98, _aimVec.y / aimDist)));
+          _aimVec.subVectors(state.trackedPlayerPos, _botEye);
+          const aimDist = _aimVec.length() || 1;
+          const desiredYaw = Math.atan2(_aimVec.x, _aimVec.z);
+          const desiredPitch = Math.asin(Math.max(-0.98, Math.min(0.98, _aimVec.y / aimDist)));
 
-              // Subtle natural human micro-sway scaled inversely with skill
-              const swayAmp = ((100 - state.archetype.skill) / 100) * 0.018;
-              const aimRes = BotBrain.stepHumanAim({
-                currentYaw: state.currentYaw,
-                currentPitch: state.currentPitch,
-                desiredYaw,
-                desiredPitch,
-                dt: clampedDt,
-                slewRateDegPerSec: state.archetype.slewRateDegPerSec,
-                swayYawRad: Math.sin(state.swayPhase * 4.3) * swayAmp,
-                swayPitchRad: Math.cos(state.swayPhase * 3.7) * swayAmp * 0.65,
-              });
-              state.currentYaw = aimRes.nextYaw;
-              state.currentPitch = aimRes.nextPitch;
-              state.targetYaw = desiredYaw;
-              bot.mesh.rotation.y = state.currentYaw;
+          // Subtle natural human micro-sway scaled inversely with skill
+          const swayAmp = ((100 - state.archetype.skill) / 100) * 0.018;
+          const aimRes = BotBrain.stepHumanAim({
+            currentYaw: state.currentYaw,
+            currentPitch: state.currentPitch,
+            desiredYaw,
+            desiredPitch,
+            dt: clampedDt,
+            slewRateDegPerSec: state.archetype.slewRateDegPerSec,
+            swayYawRad: Math.sin(state.swayPhase * 4.3) * swayAmp,
+            swayPitchRad: Math.cos(state.swayPhase * 3.7) * swayAmp * 0.65,
+          });
+          state.currentYaw = aimRes.nextYaw;
+          state.currentPitch = aimRes.nextPitch;
+          state.targetYaw = desiredYaw;
+          bot.mesh.rotation.y = state.currentYaw;
 
-              // Tactical combat footwork: counter-strafe burst -> lateral strafe -> cover on reload/low HP
-              const nearbyCover = this.findNearbyCoverPos(
-                { x: botPos.x, y: botPos.y, z: botPos.z },
-                { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z }
-              );
-              const footwork = BotBrain.evaluateCombatFootwork({
-                botPos: { x: botPos.x, y: botPos.y, z: botPos.z },
-                enemyPos: { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
-                healthRatio: Math.max(0, bot.health / bot.maxHealth),
-                isReloading: state.isReloading,
-                isBlinded: state.blindTimer > 0.15,
-                skill: state.archetype.skill,
-                aggression: state.archetype.aggression,
-                phaseTimer: state.combatPhaseTimer,
-                currentPhase: state.combatPhase,
-                strafeSign: state.strafeSign,
-                nearbyCoverPos: nearbyCover,
-                dt: clampedDt,
-              });
-              state.combatPhase = footwork.nextPhase;
-              state.combatPhaseTimer = footwork.nextPhaseTimer;
-              state.strafeSign = footwork.nextStrafeSign;
-              state.isCrouching = footwork.shouldCrouch;
+          // Tactical combat footwork: counter-strafe burst -> lateral strafe -> cover on reload/low HP
+          const nearbyCover = this.findNearbyCoverPos(
+            { x: botPos.x, y: botPos.y, z: botPos.z },
+            { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z }
+          );
+          const footwork = BotBrain.evaluateCombatFootwork({
+            botPos: { x: botPos.x, y: botPos.y, z: botPos.z },
+            enemyPos: { x: playerFeetPos.x, y: playerFeetPos.y, z: playerFeetPos.z },
+            healthRatio: Math.max(0, bot.health / bot.maxHealth),
+            isReloading: state.isReloading,
+            isBlinded: state.blindTimer > 0.15,
+            skill: state.archetype.skill,
+            aggression: state.archetype.aggression,
+            phaseTimer: state.combatPhaseTimer,
+            currentPhase: state.combatPhase,
+            strafeSign: state.strafeSign,
+            nearbyCoverPos: nearbyCover,
+            dt: clampedDt,
+          });
+          state.combatPhase = footwork.nextPhase;
+          state.combatPhaseTimer = footwork.nextPhaseTimer;
+          state.strafeSign = footwork.nextStrafeSign;
+          state.isCrouching = footwork.shouldCrouch;
 
-              const moveRes = this.applyHorizontalMovement(
-                bot,
-                state,
-                footwork.moveDirX,
-                footwork.moveDirZ,
-                footwork.desiredSpeed,
-                clampedDt,
-                colliders
-              );
+          const moveRes = this.applyHorizontalMovement(
+            bot,
+            state,
+            footwork.moveDirX,
+            footwork.moveDirZ,
+            footwork.desiredSpeed,
+            clampedDt,
+            colliders
+          );
 
-              // Tactical utility throw at mid-long range (when already aware)
-              const canUseUtil = config.canUseUtility && state.archetype.skill >= 75;
-              if (
-                canUseUtil &&
-                !state.hasThrownFlash &&
-                state.playerVisibleMs > perception.effectiveReactionMs * 0.8 &&
-                distToPlayer > 18 &&
-                distToPlayer < 34
-              ) {
-                state.hasThrownFlash = true;
-                this.callbacks.onBotThrowUtility?.(bot, 'flash', playerFeetPos.clone());
-                this.callbacks.onBotRadioCallout?.(bot, 'Deploying tactical flash!');
-              }
+          // Tactical utility throw at mid-long range (when already aware)
+          const canUseUtil = config.canUseUtility && state.archetype.skill >= 75;
+          if (
+            canUseUtil &&
+            !state.hasThrownFlash &&
+            state.playerVisibleMs > perception.effectiveReactionMs * 0.8 &&
+            distToPlayer > 18 &&
+            distToPlayer < 34
+          ) {
+            state.hasThrownFlash = true;
+            this.callbacks.onBotThrowUtility?.(bot, 'flash', playerFeetPos.clone());
+            this.callbacks.onBotRadioCallout?.(bot, 'Deploying tactical flash!');
+          }
 
-              if (!state.isReloading && state.ammo <= 0) {
-                state.isReloading = true;
-                state.reloadTimeRemaining = botWeapon.reloadTime || 2.4;
-              }
+          if (!state.isReloading && state.ammo <= 0) {
+            state.isReloading = true;
+            state.reloadTimeRemaining = botWeapon.reloadTime || 2.4;
+          }
 
-              // Enforce human-tier reaction floor + strict aim threshold (2.5° AWP, 6.5° rifles/SMGs)
-              const isAwp = state.weaponId === 'sovereign-awp' || state.weaponId === 'awp';
-              const fireThresholdDeg = isAwp ? 2.5 : Math.min(6.5, config.maxFireErrorDeg);
-              const effectiveReactionMs = Math.max(
-                MIN_REACTION_FLOOR_MS[this.difficulty],
-                perception.effectiveReactionMs
-              );
-
-              // Strict anti-prefire fire gate: must have LOS + FOV + full reaction time + aligned crosshair + counter-strafed
-              const permittedToFire = BotBrain.canBotFire({
-                spotted: true,
-                isReloading: state.isReloading,
-                ammo: state.ammo,
-                blindTimerSec: state.blindTimer,
-                visibleDurationMs: state.playerVisibleMs,
-                effectiveReactionMs,
-                aimErrorDeg: aimRes.totalErrorDeg,
-                maxFireErrorDeg: fireThresholdDeg,
-                horizontalSpeed: moveRes.speed,
-                maxFireSpeed: config.maxFireSpeed,
-                targetDistance: distToPlayer,
-              });
+          // Strict anti-prefire fire gate: must have LOS + FOV + full reaction time + aligned crosshair + counter-strafed
+          const minReactionMs =
+            this.difficulty === 'Recruit' ? 480 : this.difficulty === 'Veteran' ? 310 : this.difficulty === 'Elite' ? 220 : 175;
+          const fireThresholdDeg = state.weaponId === 'sovereign-awp' ? Math.min(config.maxFireErrorDeg, 2.5) : config.maxFireErrorDeg;
+          const permittedToFire = BotBrain.canBotFire({
+            spotted: true,
+            isReloading: state.isReloading,
+            ammo: state.ammo,
+            blindTimerSec: state.blindTimer,
+            visibleDurationMs: state.playerVisibleMs,
+            effectiveReactionMs: Math.max(minReactionMs, perception.effectiveReactionMs),
+            aimErrorDeg: aimRes.totalErrorDeg,
+            maxFireErrorDeg: fireThresholdDeg,
+            horizontalSpeed: moveRes.speed,
+            maxFireSpeed: config.maxFireSpeed,
+            targetDistance: distToPlayer,
+          });
 
           if (permittedToFire && (now - bot.lastShotTime > config.burstCooldownMs || state.burstRemaining > 0)) {
             if (state.burstRemaining === 0) {
@@ -1257,13 +1414,14 @@ export class BotAISystem {
             pitch: state.currentPitch,
             yawOffset: normalizeAngleRad(desiredYaw - state.currentYaw),
             cameraDistance: camDist,
+            isBehindCamera,
             velocity: { x: bot.vx, z: bot.vz },
           });
           continue;
         }
+          }
+        }
       }
-    }
-  }
 
       // Target not currently spotted: decay visual confirmation so re-peeks NEVER trigger instant prefires
       if (!engagedPlayer) {
@@ -1330,11 +1488,6 @@ export class BotAISystem {
               spatialGrid
             );
             state.cachedBotLos.set(other.id, los);
-          }
-
-          if (!los) {
-            state.botVisibleMs.set(other.id, Math.max(0, (state.botVisibleMs.get(other.id) ?? 0) - clampedDt * 1500));
-            continue;
           }
 
           const p = BotBrain.evaluateVisualPerception(
@@ -1440,19 +1593,16 @@ export class BotAISystem {
         }
 
         const visibleBotMs = state.botVisibleMs.get(engagedBotTarget.id) ?? 0;
-        const isBotAwp = state.weaponId === 'sovereign-awp' || state.weaponId === 'awp';
-        const botFireThresholdDeg = isBotAwp ? 2.5 : Math.min(6.5, config.maxFireErrorDeg);
-        const botEffectiveReactionMs = Math.max(
-          MIN_REACTION_FLOOR_MS[this.difficulty],
-          engagedBotPerception.effectiveReactionMs
-        );
+        const minBotReactionMs =
+          this.difficulty === 'Recruit' ? 480 : this.difficulty === 'Veteran' ? 310 : this.difficulty === 'Elite' ? 220 : 175;
+        const botFireThresholdDeg = state.weaponId === 'sovereign-awp' ? Math.min(config.maxFireErrorDeg, 2.5) : config.maxFireErrorDeg;
         const permittedToFire = BotBrain.canBotFire({
           spotted: true,
           isReloading: state.isReloading,
           ammo: state.ammo,
           blindTimerSec: state.blindTimer,
           visibleDurationMs: visibleBotMs,
-          effectiveReactionMs: botEffectiveReactionMs,
+          effectiveReactionMs: Math.max(minBotReactionMs, engagedBotPerception.effectiveReactionMs),
           aimErrorDeg: aimRes.totalErrorDeg,
           maxFireErrorDeg: botFireThresholdDeg,
           horizontalSpeed: moveRes.speed,
@@ -1563,6 +1713,7 @@ export class BotAISystem {
           pitch: state.currentPitch,
           yawOffset: normalizeAngleRad(desiredYaw - state.currentYaw),
           cameraDistance: camDist,
+          isBehindCamera,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
@@ -1581,8 +1732,8 @@ export class BotAISystem {
         roundElapsed < 32 &&
         state.role === 'support'
       ) {
-        const chokeKey = CS_OFFICE_SMOKE_CHOKES[bIdx % CS_OFFICE_SMOKE_CHOKES.length];
-        const chokeNode = CS_OFFICE_NAV_GRAPH[chokeKey];
+        const chokeKey = this.mapConfig.smokeChokes[bIdx % this.mapConfig.smokeChokes.length];
+        const chokeNode = this.mapConfig.navGraph[chokeKey];
         if (chokeNode) {
           const distChoke = dist3D({ x: botPos.x, y: botPos.y, z: botPos.z }, chokeNode.pos);
           if (distChoke > 9 && distChoke < 24) {
@@ -1598,30 +1749,35 @@ export class BotAISystem {
       }
 
       if (isBombArmed) {
-        const bombSitePos = bombTargetSite === 'A' ? BOMBSITES.A.center : BOMBSITES.B.center;
+        const bombSitePos =
+          bombTargetSite === 'A' ? this.mapConfig.bombsites.A.center : this.mapConfig.bombsites.B.center;
         if (bot.team === 'Vanguard') {
           if (state.path.length === 0 || dist3D(state.path[state.path.length - 1], bombSitePos) > 4.0) {
             state.path = findPathAStar(
               { x: botPos.x, y: botPos.y, z: botPos.z },
               bombSitePos,
               undefined,
-              blocks
+              blocks,
+              this.mapConfig.navGraph
             );
             state.pathIndex = 0;
             state.holdAngleTimer = 0;
           }
         } else if (bot.team === 'Syndicate' && !state.hasCommittedPostPlant) {
           state.hasCommittedPostPlant = true;
-          const defenseNodes = Object.values(CS_OFFICE_NAV_GRAPH).filter(
+          const defenseNodes = Object.values(this.mapConfig.navGraph).filter(
             (n) => dist3D(n.pos, bombSitePos) < 16.5 && n.coverType === 'HIGH'
           );
           const chosen =
-            defenseNodes[bIdx % Math.max(1, defenseNodes.length)] || CS_OFFICE_NAV_GRAPH['a_site_east'];
+            defenseNodes[bIdx % Math.max(1, defenseNodes.length)] ||
+            this.mapConfig.navGraph[this.mapConfig.postPlantFallbackNode] ||
+            Object.values(this.mapConfig.navGraph)[0];
           state.path = findPathAStar(
             { x: botPos.x, y: botPos.y, z: botPos.z },
             chosen.pos,
             undefined,
-            blocks
+            blocks,
+            this.mapConfig.navGraph
           );
           state.pathIndex = 0;
           state.holdAngleTimer = 0;
@@ -1653,15 +1809,48 @@ export class BotAISystem {
           name: bot.name,
           isReloading: state.isReloading,
           cameraDistance: camDist,
+          isBehindCamera,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
       }
 
-      // Tactical angle-holding at arrived choke/site position (no mindless circle patrolling)
+      // Tactical angle-holding at arrived choke/site position (with personal-space anti-clump)
       if (state.holdAngleTimer > 0) {
         state.holdAngleTimer -= clampedDt;
-        const moveRes = this.applyHorizontalMovement(bot, state, 0, 0, 0, clampedDt, colliders);
+        _otherPositionsScratch.length = 0;
+        let tooClose = false;
+        for (let j = 0; j < bots.length; j++) {
+          if (j === bIdx || bots[j].isDead) continue;
+          const op = bots[j].mesh.position;
+          const d = Math.hypot(botPos.x - op.x, botPos.z - op.z);
+          if (d < 2.0) tooClose = true;
+          _otherPositionsScratch.push({ x: op.x, y: op.y, z: op.z });
+        }
+        let holdDirX = 0;
+        let holdDirZ = 0;
+        let holdSpeed = 0;
+        if (tooClose) {
+          const sep = BotBrain.computeCorridorSeparation(
+            { x: botPos.x, y: botPos.y, z: botPos.z },
+            0,
+            0,
+            bIdx,
+            _otherPositionsScratch
+          );
+          holdDirX = sep.dirX;
+          holdDirZ = sep.dirZ;
+          holdSpeed = 1.8;
+        }
+        const moveRes = this.applyHorizontalMovement(
+          bot,
+          state,
+          holdDirX,
+          holdDirZ,
+          holdSpeed,
+          clampedDt,
+          colliders
+        );
 
         let watchYaw = state.holdWatchYaw;
         if (state.soundInvestigateTarget) {
@@ -1695,6 +1884,7 @@ export class BotAISystem {
           name: bot.name,
           isReloading: state.isReloading,
           cameraDistance: camDist,
+          isBehindCamera,
           velocity: { x: bot.vx, z: bot.vz },
         });
         continue;
@@ -1733,16 +1923,45 @@ export class BotAISystem {
             const roleMul = state.role === 'anchor' ? 1.15 : state.role === 'lurker' ? 1.0 : 0.55;
             state.holdAngleTimer = Math.max(1.4, holdBase * roleMul);
 
-            // Pre-plan next meaningful tactical rotation node (never jog back into own spawn)
-            const pool = bot.team === 'Vanguard' ? VANGUARD_TACTICAL_HOLDS : SYNDICATE_TACTICAL_EXECUTES;
-            const nextKey = pool[(bIdx + Math.floor(roundElapsed / 6) + bot.waypointIndex) % pool.length];
+            // Pre-plan next meaningful tactical rotation node strictly >= 3.0m away from all friendly bots' holds & positions
+            const pool =
+              bot.team === 'Vanguard' ? this.mapConfig.vanguardHolds : this.mapConfig.syndicateExecutes;
+            const friendlyAnchors: Vec3[] = [];
+            for (let j = 0; j < bots.length; j++) {
+              const mate = bots[j];
+              if (j === bIdx || mate.isDead || mate.team !== bot.team) continue;
+              friendlyAnchors.push({ x: mate.mesh.position.x, y: mate.mesh.position.y, z: mate.mesh.position.z });
+              const mateState = this.botStates.get(mate.id);
+              if (mateState?.assignedHoldPos) {
+                friendlyAnchors.push(mateState.assignedHoldPos);
+              }
+            }
+            const baseIdx = (bIdx + Math.floor(roundElapsed / 6) + bot.waypointIndex) % pool.length;
+            let chosenDest: Vec3 | null = null;
+            for (let offset = 0; offset < pool.length; offset++) {
+              const candKey = pool[(baseIdx + offset) % pool.length];
+              const candPos = this.mapConfig.navGraph[candKey]?.pos;
+              if (!candPos) continue;
+              const separated = friendlyAnchors.every(
+                (other) => Math.hypot(candPos.x - other.x, candPos.z - other.z) >= MIN_FRIENDLY_HOLD_SEPARATION_M
+              );
+              if (separated) {
+                chosenDest = candPos;
+                break;
+              }
+            }
+            const nextDest =
+              chosenDest ??
+              this.mapConfig.navGraph[pool[baseIdx]]?.pos ??
+              bot.patrolTarget;
             bot.waypointIndex = (bot.waypointIndex + 1) % pool.length;
-            const nextDest = CS_OFFICE_NAV_GRAPH[nextKey]?.pos ?? bot.patrolTarget;
+            state.assignedHoldPos = { ...nextDest };
             state.path = findPathAStar(
               { x: botPos.x, y: botPos.y, z: botPos.z },
               nextDest,
               undefined,
-              blocks
+              blocks,
+              this.mapConfig.navGraph
             );
             state.pathIndex = 0;
             state.consecutiveStuckCount = 0;
@@ -1758,6 +1977,7 @@ export class BotAISystem {
             name: bot.name,
             isReloading: state.isReloading,
             cameraDistance: camDist,
+            isBehindCamera,
             velocity: { x: bot.vx, z: bot.vz },
           });
           continue;
@@ -1868,7 +2088,8 @@ export class BotAISystem {
                 { x: botPos.x, y: botPos.y, z: botPos.z },
                 goal,
                 undefined,
-                blocks
+                blocks,
+                this.mapConfig.navGraph
               );
               state.pathIndex = 0;
             }
@@ -1979,6 +2200,7 @@ export class BotAISystem {
         isReloading: state.isReloading,
         pitch: state.currentPitch,
         cameraDistance: camDist,
+        isBehindCamera,
         velocity: { x: bot.vx, z: bot.vz },
       });
     }

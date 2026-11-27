@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import {
   WEAPONS,
-  SPAWN_POINTS,
   HitZone,
   SurfaceMaterial,
   WeaponDef,
@@ -9,10 +8,30 @@ import {
   AABBCollider,
   SpatialGrid,
   KinematicPlayerController,
+  KINEMATICS,
+  getMapDescriptor,
+  MapId,
 } from '@garam/shared';
-import { settingsStore, BotDifficulty, CrosshairConfig, PlayerFaction, GraphicsQuality } from './SettingsStore.js';
+import {
+  settingsStore,
+  BotDifficulty,
+  CrosshairConfig,
+  PlayerFaction,
+  GraphicsQuality,
+  FpsLimit,
+  ActiveMapId,
+} from './SettingsStore.js';
 import { BotEntity } from '../maps/DeCitadelMap.js';
-import { BotAISystem, BotAISystemCallbacks } from '../match/BotAISystem.js';
+import {
+  BotAISystem,
+  BotAISystemCallbacks,
+  DE_DUST2_BOT_MAP_CONFIG,
+  CS_OFFICE_BOT_MAP_CONFIG,
+} from '../match/BotAISystem.js';
+import { buildDeDust2Map } from '../maps/DeDust2Map.js';
+import { buildCsOfficeMap } from '../maps/CsOfficeMap.js';
+import { SceneManager } from '../render/SceneManager.js';
+import { AssetManager } from '../render/AssetManager.js';
 import { WeaponController, WeaponCombatCallbacks } from '../combat/WeaponController.js';
 import { RoundManager, RoundCallbacks, RoundPhase } from '../match/RoundManager.js';
 import type { CustomizerUI, CustomizerCallbacks } from '../ui/CustomizerUI.js';
@@ -35,6 +54,8 @@ import { RadarRenderer } from '../ui/RadarRenderer.js';
 
 export interface GameContext {
   canvas: HTMLCanvasElement;
+  renderer?: THREE.WebGLRenderer;
+  sceneManager?: SceneManager;
   worldCamera: THREE.PerspectiveCamera;
   viewmodelCamera: THREE.PerspectiveCamera;
   worldScene: THREE.Scene;
@@ -63,6 +84,7 @@ export interface GameContext {
   cameraPunchPitch: { value: number };
   syncActiveWeapon: () => void;
   applyGraphicsQuality?: (quality: GraphicsQuality) => void;
+  applyFpsLimit?: (limit: FpsLimit) => void;
   // Late-initialized controllers populated during GaramGame constructor
   weaponController?: WeaponController;
   roundManager?: RoundManager;
@@ -79,6 +101,99 @@ const _utilThrowVel = new THREE.Vector3();
 const _playerFeetScratch = new THREE.Vector3();
 
 const customizerPromises = new WeakMap<GameContext, Promise<CustomizerUI>>();
+
+export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
+  const desc = getMapDescriptor(mapId);
+
+  ctx.spectator.stop();
+  ctx.droppedWeapons.clearAll();
+  ctx.utilityManager.resetRound();
+  ctx.radar.clearSpotted();
+  ctx.effects.clearAll();
+
+  for (const bot of ctx.bots) {
+    bot.rig?.dispose();
+    ctx.worldScene.remove(bot.mesh);
+  }
+  const toRemove: THREE.Object3D[] = [];
+  for (const child of ctx.worldScene.children) {
+    if (child.userData?.isMapRoot) {
+      toRemove.push(child);
+    }
+  }
+  for (const root of toRemove) {
+    ctx.worldScene.remove(root);
+    AssetManager.disposeObject3D(root, true);
+  }
+
+  if (mapId === 'cs_office') {
+    ctx.sceneManager?.configureOfficeAtmosphere();
+  } else {
+    ctx.sceneManager?.configureDust2Atmosphere();
+  }
+
+  const mapData =
+    mapId === 'cs_office'
+      ? buildCsOfficeMap(ctx.worldScene)
+      : buildDeDust2Map(ctx.worldScene, () => {
+          if (ctx.renderer) {
+            ctx.radar.bakeFromScene(ctx.renderer, ctx.worldScene);
+          }
+          ctx.sceneManager?.invalidateShadows();
+        });
+
+  ctx.blocks = mapData.blocks;
+  ctx.colliders = mapData.colliders;
+  ctx.bots = mapData.bots;
+  ctx.spatialGrid = new SpatialGrid(mapData.blocks, 6);
+
+  ctx.economy.setSpawnZones(desc.spawnZones);
+  ctx.utilityManager.setMapBounds(desc.bounds);
+  ctx.roundManager?.setBombsites(desc.bombsites);
+  ctx.botAI?.setMapConfig(
+    mapId === 'cs_office' ? CS_OFFICE_BOT_MAP_CONFIG : DE_DUST2_BOT_MAP_CONFIG
+  );
+  ctx.networkClient?.setMapColliders(mapData.colliders, ctx.spatialGrid);
+
+  ctx.radar.configureMap(desc.bounds, desc.bombsites, desc.isGlbArena);
+  if (ctx.renderer) {
+    ctx.radar.bakeFromScene(ctx.renderer, ctx.worldScene);
+  }
+  ctx.sceneManager?.invalidateShadows();
+
+  const scoreboardTitle = document.querySelector('#scoreboard-modal h2');
+  if (scoreboardTitle) {
+    scoreboardTitle.textContent = `TACTICAL OPERATIONS // ${desc.id.toUpperCase()}`;
+  }
+
+  const faction = settingsStore.settings.faction;
+  const factionSpawn =
+    faction === 'Syndicate' ? desc.spawnPoints.OBSIDIAN_T : desc.spawnPoints.VANGUARD_CT;
+  ctx.spawnPos.x = factionSpawn.x;
+  ctx.spawnPos.y = factionSpawn.y;
+  ctx.spawnPos.z = factionSpawn.z;
+
+  const initialYaw = desc.initialYaw[faction];
+  ctx.weaponController?.resetRoundCombatState();
+  ctx.cameraPunchPitch.value = 0;
+  ctx.isFiring.value = false;
+  ctx.pendingFireTrigger.value = false;
+  ctx.isInteracting.value = false;
+  ctx.inputManager?.resetMovementInputs();
+  ctx.playerManager.reset(ctx.spawnPos, initialYaw);
+  if (ctx.inputManager) {
+    ctx.inputManager.input.yaw = initialYaw;
+    ctx.inputManager.input.pitch = 0;
+    ctx.inputManager.mouseDeltaX = 0;
+    ctx.inputManager.mouseDeltaY = 0;
+  }
+  ctx.worldCamera.position.set(ctx.spawnPos.x, ctx.spawnPos.y + KINEMATICS.EYE_HEIGHT_STAND, ctx.spawnPos.z);
+  ctx.worldCamera.rotation.set(0, initialYaw, 0, 'YXZ');
+  ctx.worldCamera.updateMatrixWorld(true);
+  ctx.viewmodel.resetMotionState();
+  ctx.hud.resetRoundKills();
+  ctx.hud.setFactionTheme(faction);
+}
 
 export function ensureCustomizer(ctx: GameContext): Promise<CustomizerUI> {
   if (ctx.customizer) return Promise.resolve(ctx.customizer);
@@ -98,6 +213,14 @@ export function buildNetworkCallbacks(ctx: GameContext): NetworkClientCallbacks 
   return {
     onKillfeed: (text: string) => ctx.hud.addKillfeed(text),
     onScoresUpdated: (ct: number, t: number) => ctx.hud.updateScores(ct, t),
+    onMapSync: (serverMapId: MapId) => {
+      if (serverMapId !== settingsStore.settings.mapId) {
+        settingsStore.update('mapId', serverMapId);
+        const sel = document.getElementById('map-selector') as HTMLSelectElement | null;
+        if (sel) sel.value = serverMapId;
+        switchActiveMap(ctx, serverMapId);
+      }
+    },
     onEconomySync: (payload) => {
       ctx.economy.cash = payload.cash;
       ctx.economy.armor = payload.armor;
@@ -166,7 +289,13 @@ export function buildUtilityCallbacks(ctx: GameContext): UtilityCallbacks {
         0
       );
     },
-    onKillfeed: (text: string) => ctx.hud.addKillfeed(text),
+    onKillfeed: (text: string) => {
+      if (text.includes('eliminated')) {
+        ctx.hud.addKillfeed(text);
+      } else {
+        ctx.hud.addRadioMessage(text);
+      }
+    },
   };
 }
 
@@ -181,6 +310,12 @@ export function buildBotAICallbacks(ctx: GameContext): BotAISystemCallbacks {
       armorDamage = 0
     ) => {
       ctx.combatReport.recordDamageTaken(bot.id, bot.name, dmg, isHeadshot);
+      const botWeaponId =
+        bot.weaponId && WEAPONS[bot.weaponId]
+          ? bot.weaponId
+          : bot.team === 'Syndicate'
+            ? 'garam-47'
+            : 'vanguard-m4';
       // RaycastEngine already computed armor-penetration damage and armor durability loss
       ctx.playerManager.damagePlayer(
         dmg,
@@ -189,9 +324,14 @@ export function buildBotAICallbacks(ctx: GameContext): BotAISystemCallbacks {
         ctx.inputManager?.input.yaw ?? 0,
         ctx.bots,
         true,
-        armorDamage
+        armorDamage,
+        {
+          name: bot.name,
+          team: bot.team,
+          weaponId: botWeaponId,
+          isHeadshot,
+        }
       );
-      const botWeaponId = bot.team === 'Syndicate' ? 'garam-47' : 'vanguard-m4';
       ctx.audio.playGunshot(botWeaponId, bot.mesh.position, ctx.worldCamera.position, ctx.blocks);
     },
     onBotShootBot: (
@@ -231,7 +371,7 @@ export function buildBotAICallbacks(ctx: GameContext): BotAISystemCallbacks {
     },
     onBotRadioCallout: (bot: BotEntity, message: string) => {
       ctx.audio.playRadioChirp();
-      ctx.hud.addKillfeed(`[RADIO] ${bot.name}: "${message}"`);
+      ctx.hud.addRadioMessage(`${bot.name}: "${message}"`);
     },
   };
 }
@@ -250,7 +390,7 @@ export function buildWeaponControllerCallbacks(ctx: GameContext): WeaponCombatCa
       const scopedSens = sens * settingsStore.settings.scopedSensitivityMultiplier;
       ctx.inputManager?.setSensitivity(scopedSens);
     },
-    onUtilityThrown: () => ctx.hud.addKillfeed('Tactical Smoke Deployed'),
+    onUtilityThrown: () => ctx.hud.addRadioMessage('Tactical Smoke Deployed'),
     onHitmarker: (headshot: boolean) => ctx.hud.triggerHitmarker(headshot),
     onFire: (weapon: WeaponDef, isScoped: boolean, rayDir: THREE.Vector3, isSecondaryMelee: boolean) => {
       // Alert nearby hostile bots to gunshot acoustic signature (suppressed rifles have smaller radius)
@@ -304,7 +444,22 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.hud.updateScores(ctScore, tScore);
       const localTeam = settingsStore.settings.faction;
       const didWin = winner === localTeam;
-      ctx.hud.showCenterBanner(`${winner.toUpperCase()} WINS THE ROUND`, reason, 4500);
+
+      // Determine winning-team MVP callsign by top kills
+      let mvpName = settingsStore.settings.callsign || 'Operator';
+      let bestKills = didWin ? ctx.playerManager.kills : -1;
+      for (const b of ctx.bots) {
+        if (b.team === winner && b.kills > bestKills) {
+          bestKills = b.kills;
+          mvpName = b.name;
+        }
+      }
+      if (!didWin && bestKills < 0) {
+        const fallbackBot = ctx.bots.find((b) => b.team === winner);
+        if (fallbackBot) mvpName = fallbackBot.name;
+      }
+
+      ctx.hud.showRoundWinRibbon(winner, reason, mvpName, 4500);
       ctx.combatReport.show();
 
       const lossStreak =
@@ -316,26 +471,49 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
         lossStreak,
         reason.includes('Defused') || reason.includes('Detonated')
       );
-      ctx.hud.addKillfeed(`Round End Payout: +$${payout}`);
+      ctx.hud.addRadioMessage(`Round End Payout: +$${payout}`);
     },
     onResetRound: () => {
+      const desc = getMapDescriptor(settingsStore.settings.mapId);
+      const faction = settingsStore.settings.faction;
       const factionSpawn =
-        settingsStore.settings.faction === 'Syndicate'
-          ? SPAWN_POINTS.OBSIDIAN_T
-          : SPAWN_POINTS.VANGUARD_CT;
+        faction === 'Syndicate' ? desc.spawnPoints.OBSIDIAN_T : desc.spawnPoints.VANGUARD_CT;
       ctx.spawnPos.x = factionSpawn.x;
       ctx.spawnPos.y = factionSpawn.y;
       ctx.spawnPos.z = factionSpawn.z;
+      const initialYaw = desc.initialYaw[faction];
 
+      // Instant CS2 hard-cut round reset: stop deathcam, zero camera roll/punch/zoom, lock kinematics to spawn floor
       ctx.spectator.stop();
+      ctx.weaponController?.resetRoundCombatState();
+      ctx.cameraPunchPitch.value = 0;
+      ctx.isFiring.value = false;
+      ctx.pendingFireTrigger.value = false;
+      ctx.isInteracting.value = false;
+      ctx.inputManager?.resetMovementInputs();
+
       ctx.droppedWeapons.clearAll();
       ctx.utilityManager.resetRound();
+      ctx.effects.clearAll();
       ctx.radar.clearSpotted();
-      ctx.playerManager.reset(ctx.spawnPos);
+      ctx.playerManager.reset(ctx.spawnPos, initialYaw);
       if (ctx.inputManager) {
-        ctx.inputManager.input.yaw = settingsStore.settings.faction === 'Syndicate' ? Math.PI : 0;
+        ctx.inputManager.input.yaw = initialYaw;
         ctx.inputManager.input.pitch = 0;
+        ctx.inputManager.mouseDeltaX = 0;
+        ctx.inputManager.mouseDeltaY = 0;
       }
+      ctx.worldCamera.position.set(
+        ctx.spawnPos.x,
+        ctx.spawnPos.y + KINEMATICS.EYE_HEIGHT_STAND,
+        ctx.spawnPos.z
+      );
+      ctx.worldCamera.rotation.set(0, initialYaw, 0, 'YXZ');
+      ctx.worldCamera.updateMatrixWorld(true);
+      ctx.viewmodel.resetMotionState();
+      ctx.hud.resetRoundKills();
+      ctx.hud.setFactionTheme(faction);
+
       ctx.playerManager.respawnAllBots(ctx.bots);
       for (let s = 1; s <= 3; s++) {
         const state = ctx.inventory.slots[s as SlotNumber];
@@ -367,16 +545,16 @@ export function buildCustomizerCallbacks(ctx: GameContext): CustomizerCallbacks 
     },
     onGrantCash: () => {
       ctx.economy.devPracticeMoney();
-      ctx.hud.addKillfeed('Practice Mode: $16,000 Cash + Infinite Utility Granted');
+      ctx.hud.addRadioMessage('Practice Mode: $16,000 Cash + Infinite Utility Granted');
     },
-    onToggleInfiniteAmmo: (en: boolean) => ctx.hud.addKillfeed(`Infinite Ammo: ${en ? 'ON' : 'OFF'}`),
-    onToggleShowImpacts: (en: boolean) => ctx.hud.addKillfeed(`Show Impacts: ${en ? 'ON' : 'OFF'}`),
-    onToggleFreezeBots: (fr: boolean) => ctx.hud.addKillfeed(`Freeze Bots: ${fr ? 'FROZEN' : 'ACTIVE'}`),
+    onToggleInfiniteAmmo: (en: boolean) => ctx.hud.addRadioMessage(`Infinite Ammo: ${en ? 'ON' : 'OFF'}`),
+    onToggleShowImpacts: (en: boolean) => ctx.hud.addRadioMessage(`Show Impacts: ${en ? 'ON' : 'OFF'}`),
+    onToggleFreezeBots: (fr: boolean) => ctx.hud.addRadioMessage(`Freeze Bots: ${fr ? 'FROZEN' : 'ACTIVE'}`),
     onToggleHitboxes: (sh: boolean) => ctx.bots.forEach((b) => b.rig?.setWireframesVisible(sh)),
-    onToggleFollowRecoil: (en: boolean) => ctx.hud.addKillfeed(`Follow Recoil: ${en ? 'ON' : 'OFF'}`),
+    onToggleFollowRecoil: (en: boolean) => ctx.hud.addRadioMessage(`Follow Recoil: ${en ? 'ON' : 'OFF'}`),
     onRespawnBots: () => {
       ctx.playerManager.respawnAllBots(ctx.bots);
-      ctx.hud.addKillfeed('Respawned all bots to tactical spawn positions');
+      ctx.hud.addRadioMessage('Respawned all bots to tactical spawn positions');
     },
     onExit: () => {
       if (ctx.hasMatchStarted.value) {
@@ -404,6 +582,7 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
         ctx.spectator.cycleTeammate(1, ctx.bots);
         return;
       }
+      if (ctx.roundManager?.phase === 'FREEZE_TIME') return;
       const active = ctx.inventory.getActiveWeapon();
       if (active.category === 'grenade') {
         ctx.playerManager.throwUtilityGrenade('long', ctx.worldCamera);
@@ -423,6 +602,10 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
         return;
       }
       const active = ctx.inventory.getActiveWeapon();
+      if (ctx.roundManager?.phase === 'FREEZE_TIME') {
+        // Allow AWP scope check in freeze time, but block knife stab & grenade throws
+        if (active.id !== 'sovereign-awp') return;
+      }
       if (active.category === 'grenade') {
         ctx.playerManager.throwUtilityGrenade('short', ctx.worldCamera);
         return;
@@ -481,7 +664,7 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
     },
     onPracticeToggle: () => {
       ctx.economy.devPracticeMoney();
-      ctx.hud.addKillfeed('Practice Mode: $16,000 Cash + Infinite Utility Granted');
+      ctx.hud.addRadioMessage('Practice Mode: $16,000 Cash + Infinite Utility Granted');
     },
     onInspectWeapon: () => ctx.weaponController?.inspectWeapon(),
     onDropWeapon: () => {
@@ -501,10 +684,12 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
       void ensureCustomizer(ctx).then((cust) => cust.toggle(willOpen));
     },
     onInteractDown: () => {
-      ctx.isInteracting.value = true;
-      if (ctx.networkClient?.isConnected) {
-        const action = settingsStore.settings.faction === 'Syndicate' ? 'plant' : 'defuse';
-        ctx.networkClient.sendPlantDefuse(action);
+      if (ctx.roundManager?.phase !== 'FREEZE_TIME') {
+        ctx.isInteracting.value = true;
+        if (ctx.networkClient?.isConnected) {
+          const action = settingsStore.settings.faction === 'Syndicate' ? 'plant' : 'defuse';
+          ctx.networkClient.sendPlantDefuse(action);
+        }
       }
       ctx.worldCamera.getWorldDirection(_forward);
       ctx.droppedWeapons.tryLootAimingAt(ctx.worldCamera.position, _forward, (dropped: DroppedWeaponEntity) => {
@@ -563,7 +748,8 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     if (!ctx.hasMatchStarted.value) {
       ctx.hasMatchStarted.value = true;
       ctx.roundManager?.startMatch();
-      const initialYaw = settingsStore.settings.faction === 'Syndicate' ? Math.PI : 0;
+      const desc = getMapDescriptor(settingsStore.settings.mapId);
+      const initialYaw = desc.initialYaw[settingsStore.settings.faction];
       if (ctx.inputManager) {
         ctx.inputManager.input.yaw = initialYaw;
         ctx.inputManager.input.pitch = 0;
@@ -585,7 +771,12 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
           wsUrl = defaultWs;
         }
         const callsign = nameInput?.value?.trim() || settingsStore.settings.callsign || 'Eldar Garamov';
-        ctx.networkClient.connect(wsUrl, callsign, settingsStore.settings.faction);
+        ctx.networkClient.connect(
+          wsUrl,
+          callsign,
+          settingsStore.settings.faction,
+          settingsStore.settings.mapId
+        );
       }
     } else {
       ctx.networkClient?.disconnect();
@@ -606,32 +797,39 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     onVolumeChanged: (vol: number) => ctx.audio.setMasterVolume(vol),
     onDifficultyChanged: (diff: BotDifficulty) => {
       ctx.botAI?.setDifficulty(diff);
-      ctx.hud.addKillfeed(`Bot Difficulty: ${diff.toUpperCase()}`);
+      ctx.hud.addRadioMessage(`Bot Difficulty: ${diff.toUpperCase()}`);
     },
     onFactionChanged: (faction: PlayerFaction) => {
-      const nextSpawn = faction === 'Syndicate' ? SPAWN_POINTS.OBSIDIAN_T : SPAWN_POINTS.VANGUARD_CT;
+      ctx.viewmodel.setFaction(faction);
+      ctx.hud.setFactionTheme(faction);
+      const desc = getMapDescriptor(settingsStore.settings.mapId);
+      const nextSpawn =
+        faction === 'Syndicate' ? desc.spawnPoints.OBSIDIAN_T : desc.spawnPoints.VANGUARD_CT;
       ctx.spawnPos.x = nextSpawn.x;
       ctx.spawnPos.y = nextSpawn.y;
       ctx.spawnPos.z = nextSpawn.z;
       if (!ctx.hasMatchStarted.value) {
-        ctx.player.state.x = nextSpawn.x;
-        ctx.player.state.y = nextSpawn.y;
-        ctx.player.state.z = nextSpawn.z;
-        ctx.player.state.vx = 0;
-        ctx.player.state.vy = 0;
-        ctx.player.state.vz = 0;
-        const nextYaw = faction === 'Syndicate' ? Math.PI : 0;
+        const nextYaw = desc.initialYaw[faction];
+        ctx.player.hardReset(nextSpawn.x, nextSpawn.y, nextSpawn.z, nextYaw, 0);
         if (ctx.inputManager) {
           ctx.inputManager.input.yaw = nextYaw;
           ctx.inputManager.input.pitch = 0;
         }
-        ctx.worldCamera.position.set(nextSpawn.x, nextSpawn.y + 1.68, nextSpawn.z);
+        ctx.worldCamera.position.set(nextSpawn.x, nextSpawn.y + KINEMATICS.EYE_HEIGHT_STAND, nextSpawn.z);
         ctx.worldCamera.rotation.set(0, nextYaw, 0, 'YXZ');
       }
     },
+    onMapChanged: (mapId: ActiveMapId) => {
+      switchActiveMap(ctx, mapId);
+      ctx.hud.addRadioMessage(`Arena Loaded: ${mapId.toUpperCase()}`);
+    },
     onQualityChanged: (quality: GraphicsQuality) => {
       ctx.applyGraphicsQuality?.(quality);
-      ctx.hud.addKillfeed(`Graphics Quality: ${quality}`);
+      ctx.hud.addRadioMessage(`Graphics Quality: ${quality}`);
+    },
+    onFpsLimitChanged: (limit: FpsLimit) => {
+      ctx.applyFpsLimit?.(limit);
+      ctx.hud.addRadioMessage(`Frame Pacing: ${limit}`);
     },
   };
 }
@@ -649,6 +847,7 @@ export interface FrameStepState {
 }
 
 const _camEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _camForward = new THREE.Vector3();
 
 export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   const { frameDelta, hozSpeed, isFreezeTime, playerFeet, currentZone } = s;
@@ -664,11 +863,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   if (!inputMgr || !wc || !rm || !botAI || !net) return;
 
   ctx.audio.updateListener(worldCamera);
-  ctx.audio.setIndoorZone(
-    currentZone !== 'FRONT COURTYARD' &&
-      currentZone !== 'CT SPAWN' &&
-      currentZone !== 'GARAGE'
-  );
+  ctx.audio.setIndoorZone(currentZone === 'CT SPAWN' || currentZone === 'A SHORT');
 
   const invUpdate = ctx.inventory.update(frameDelta);
   if (invUpdate.reloadCompleted) {
@@ -704,6 +899,7 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
   const smokeOccluders = ctx.utilityManager.getActiveSmokeOccluders();
 
   if (!cust?.freezeBots) {
+    worldCamera.getWorldDirection(_camForward);
     botAI.update(
       ctx.bots,
       frameDelta,
@@ -719,7 +915,8 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
       settingsStore.settings.faction,
       isFreezeTime,
       ctx.spatialGrid,
-      ctx.economy.hasHelmet
+      ctx.economy.hasHelmet,
+      _camForward
     );
   }
 
@@ -793,6 +990,17 @@ export function stepMatchFrame(ctx: GameContext, s: FrameStepState): void {
     wc.aimPunchPitch,
     settingsStore.settings.followRecoil
   );
+  const localFaction = settingsStore.settings.faction;
+  let ctAlive = localFaction === 'Vanguard' && ctx.playerManager.playerHealth > 0 ? 1 : 0;
+  let tAlive = localFaction === 'Syndicate' && ctx.playerManager.playerHealth > 0 ? 1 : 0;
+  for (let i = 0; i < ctx.bots.length; i++) {
+    const b = ctx.bots[i];
+    if (!b.isDead) {
+      if (b.team === 'Vanguard') ctAlive++;
+      else tAlive++;
+    }
+  }
+  ctx.hud.updateAliveCounts(ctAlive, tAlive);
   ctx.hud.updateCallout(currentZone);
 }
 
