@@ -18,59 +18,58 @@
       GARAM: ZERO HOUR — DEVELOPMENT ROADMAP &amp; MILESTONE PROGRESS
     </text>
     <text y="24" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#00FF88" letter-spacing="1.5">
-      MILESTONE: TACTICAL ARCHETYPES &amp; CC0 HDR SKYBOX • 102/102 TESTS PASSING • 23 DRAW CALLS • INSTANCED 3D CASINGS
+      RELEASE POLISH COMPLETE • 160/160 TESTS PASSING (20 SUITES) • CS2 SMOOTH STEPS &amp; PHYSICAL GRIPS
     </text>
   </g>
 
   <!-- Horizontal Milestone Tracker -->
   <g transform="translate(40, 115)">
-    <!-- Milestone Progress Track Line -->
     <line x1="60" y1="50" x2="940" y2="50" stroke="rgba(255, 255, 255, 0.15)" stroke-width="4"/>
     <line x1="60" y1="50" x2="940" y2="50" stroke="#00FF88" stroke-width="4"/>
 
-    <!-- MILESTONE 1: Phases 1-4 (Foundations) -->
+    <!-- MILESTONE 1: Phases 1-4 -->
     <g transform="translate(60, 50)">
       <circle r="14" fill="#00FF88"/>
       <text y="4" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="900" fill="#080C11">✓</text>
       <text y="-26" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00FF88">PHASE 1–4</text>
       <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">Core FPS Kernel</text>
-      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="rgba(255,255,255,0.6)">128Hz, SAT Physics, De_Citadel</text>
+      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="rgba(255,255,255,0.6)">128Hz SAT, 5-Zone Hitboxes</text>
     </g>
 
-    <!-- MILESTONE 2: Sprints E1-E4 (Elite Fundamentals) -->
+    <!-- MILESTONE 2: Dual-Pass PBR & 9-Weapon Arsenal -->
     <g transform="translate(280, 50)">
       <circle r="14" fill="#00FF88"/>
       <text y="4" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="900" fill="#080C11">✓</text>
       <text y="-26" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00FF88">SPRINT E1–E4</text>
-      <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">Visuals &amp; Gunplay</text>
-      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="rgba(255,255,255,0.6)">sRGB, Shadows, [Q] Fast Switch</text>
+      <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">9-Weapon Viewmodels</text>
+      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="rgba(255,255,255,0.6)">PMREM IBL, Faction Gloves, [Q]</text>
     </g>
 
-    <!-- MILESTONE 3: Sprints E5-E7 (Tactical Brain & 3D Assets) -->
+    <!-- MILESTONE 3: Anti-Prefire AI & 3P Operator IK -->
     <g transform="translate(500, 50)">
       <circle r="14" fill="#00FF88"/>
       <text y="4" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="900" fill="#080C11">✓</text>
       <text y="-26" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00FF88">SPRINT E5–E7</text>
-      <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">Tactical Brain &amp; Polish</text>
-      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="rgba(255,255,255,0.6)">A* NavGraph, Karambit, Spectator</text>
+      <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">Anti-Prefire AI &amp; 3P IK</text>
+      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="rgba(255,255,255,0.6)">A* NavGraph, Baked Radar, Smoke LOS</text>
     </g>
 
-    <!-- MILESTONE 4: P0/P1 Hardening -->
+    <!-- MILESTONE 4: 64-Tick Network & MapRegistry -->
     <g transform="translate(720, 50)">
       <circle r="14" fill="#00FF88"/>
       <text y="4" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="900" fill="#080C11">✓</text>
-      <text y="-26" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00FF88">P0–P1 HARDENED</text>
-      <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">Anti-Cheat &amp; Kinematics</text>
-      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="#00FF88">Origin Security, 128Hz Parity, Tuck</text>
+      <text y="-26" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00FF88">NETCODE + MAPS</text>
+      <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">64-Tick &amp; MapRegistry</text>
+      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="#00FF88">DE_DUST2 + CS_OFFICE Sync</text>
     </g>
 
-    <!-- MILESTONE 5: P2 Binary Codec, RoomRegistry & PVS Fog-of-War -->
+    <!-- MILESTONE 5: Physical Grips, Smooth Steps & Zero-Overlap Polish -->
     <g transform="translate(940, 50)">
       <circle r="14" fill="#00FF88"/>
       <text y="4" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="900" fill="#080C11">✓</text>
-      <text y="-26" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00FF88">P2 COMPLETE</text>
-      <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">306B Codec &amp; PVS</text>
-      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="#00FF88">RoomRegistry, 23 Draws, Fog-of-War</text>
+      <text y="-26" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00FF88">POLISH AUDIT</text>
+      <text y="36" text-anchor="middle" font-family="'Inter', sans-serif" font-size="11" font-weight="700" fill="#FFF">CS2 Grips &amp; HUD</text>
+      <text y="52" text-anchor="middle" font-family="'Inter', sans-serif" font-size="9" fill="#00FF88">0 Overlap, Smooth Steps, AUTO</text>
     </g>
   </g>
 
@@ -78,7 +77,7 @@
   <g transform="translate(40, 260)">
     <rect width="1020" height="38" rx="6" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)"/>
     <text x="24" y="24" font-family="'JetBrains Mono', monospace" font-size="11" fill="rgba(255,255,255,0.7)">
-      AUTHORITATIVE TICK: <tspan fill="#00FF88" font-weight="700">64Hz hrtime</tspan>  |  FIXED KINEMATICS: <tspan fill="#00FF88" font-weight="700">128Hz</tspan>  |  DRAW CALLS: <tspan fill="#00FF88" font-weight="700">23</tspan>  |  BANDWIDTH: <tspan fill="#00FF88" font-weight="700">306B (-93%)</tspan>  |  TESTS: <tspan fill="#00FF88" font-weight="700">102 PASSING (100%)</tspan>
+      SERVER: <tspan fill="#00FF88" font-weight="700">64Hz Rewind</tspan>  |  KINEMATICS: <tspan fill="#00FF88" font-weight="700">128Hz Smooth Step</tspan>  |  ARENAS: <tspan fill="#00FF88" font-weight="700">Dust 2 + Office</tspan>  |  ARSENAL: <tspan fill="#00FF88" font-weight="700">9 Weapons</tspan>  |  TESTS: <tspan fill="#00FF88" font-weight="700">160/160 PASSING</tspan>
     </text>
   </g>
 </svg>

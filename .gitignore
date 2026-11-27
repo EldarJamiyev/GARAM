@@ -21,6 +21,9 @@ Desktop.ini
 *.tmp
 playtest-*.png
 tmp_verify_*.png
+verify_*.png
+polish_*.png
+.playwright-cli/
 *.zip
 GARAM/
 

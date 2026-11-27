@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-156%20Passing-00FF88?style=for-the-badge" alt="156 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-160%20Passing-00FF88?style=for-the-badge" alt="160 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -21,13 +21,13 @@
 - **Lead Operator:** Eldar Garamov (Callsign: Sovereign-1), Supreme Commander of the GARAM Vanguard.
 - **The Conflict:** **GARAM Vanguard** (Defenders / CT) vs. **The Obsidian Syndicate** (Attackers / T).
 - **Core Directives:**
-  1. **Strict 128Hz Kinematic Determinism & Parity:** Pure mathematical kinematics with `STOP_SPEED` Source friction, `SpatialGrid` broadphase acceleration, Circle-AABB Separating Axis Theorem (SAT) wall deflection, overhead ceiling clearance verification, air-strafe speed capping, and clamped smooth stair stepping (`stepOffsetY`). Discrete 1/128s server sub-stepping and full `KinematicSnapshot` reconciliation guarantee zero Euler drift between client prediction and authoritative server.
+  1. **Strict 128Hz Kinematic Determinism & CS2 Smooth Step Traversal:** Pure mathematical kinematics with `STOP_SPEED` Source friction, `SpatialGrid` broadphase acceleration, Circle-AABB Separating Axis Theorem (SAT) wall deflection, overhead ceiling clearance verification, air-strafe speed capping, lowest-riser CS2 step-up / downhill step-down grounding, and bidirectional `stepOffsetY` camera smoothing. Discrete 1/128s server sub-stepping and full `KinematicSnapshot` reconciliation guarantee zero Euler drift between client prediction and authoritative server.
   2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin, deterministic PRNG spread (`BallisticsSpread`), per-weapon fire cooldowns, 180ms weapon-deploy lockouts, and bomb plant/defuse ownership mutexes are strictly enforced server-side. Includes atomic IP connection caps, smooth token-bucket rate limiting, trusted proxy hop parsing, strict production `Origin` validation, 2KB payload caps, full-RTT `ping_challenge`/`pong_challenge` verification, and recursive prototype-pollution defenses.
   3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All primary rifles and pistols (`garam-47`, `vanguard-m4`, `m4a4`, `sovereign-awp`, `desert-eagle`, `usp-s`, `glock-18`) enforce `sprayPattern[0] = [0.0, 0.0]` with full magazine-length recoil arrays. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy, and scoped Sovereign AWP shots support high-penetration collateral hits (`penetrationPower >= 250`).
-  4. **Human-Perception Tactical Bot AI (Zero Prefires & Counter-Strafe Footwork):** Collision-free tactical waypoint & nav-graph patrolling across both `DE_DUST2 (A-SITE)` and `CS_OFFICE (2-SITE)` paired with forward-FOV visual perception, peripheral/distance/surprise reaction latencies, strict crosshair-alignment firing gates (shots fire strictly along actual slewed yaw/pitch with realistic moving-target tracking lag), counter-strafed burst-and-strafe combat footwork, cover retreats on reload/low HP, tactical choke angle-holding with corner-slicing crosshair placement, deadlock-free corridor passing, flashbang blindness & smooth anti-flash turns, live mid-match difficulty re-scaling, and smoke-occluded `hasLineOfSight`.
-  5. **Dual-Pass PBR Rendering & Unified CS2 Viewmodel Overhaul (`60°–66°` FOV):** Depth-isolated viewmodel rendering (`60°` desktop FOV, gently clamped up to `66°` on narrow/portrait screens, `0.05m` near plane) with unified CS2 Rigify first-person arms (`cs2_fps_arms.glb`), faction-tinted tactical gloves (**Vanguard CT** navy-slate vs. **Syndicate T** crimson-obsidian with natural bare forearm skin), automated dual-viewport (`1440×900` & `430×932`) skinned-vertex posture verification across `Idle`, `Fire`, `Reload`, `Draw`, and `Inspect` (`0` visible bicep cutoffs, elbows off bottom edge, rifle buttstocks tucked into the shoulder pocket, `0` crosshair occlusion), full 9-weapon CS2 arsenal (`garam-47`, `vanguard-m4`, `m4a4`, `mp9`, `sovereign-awp`, `desert-eagle`, `usp-s`, `glock-18`, `garam-karambit`), rigged 3P skeletal operators (`operator_vanguard.glb`, `operator_syndicate.glb`) with distance-clamped transparent overhead chevron callsigns, live top-down orthographic radar baking, and a streamlined Lobby with an inline asset progress bar (`0%–100%`), **MAP** selector (`DE_DUST2 (A-SITE)` / `CS_OFFICE (2-SITE)`), top 5 core controls inline, and `[?] CONTROLS` keybindings modal.
+  4. **Human-Perception Tactical Bot AI (Zero Prefires & Counter-Strafe Footwork):** Collision-free tactical waypoint & nav-graph patrolling across both `DE_DUST2 (A-SITE)` and `CS_OFFICE (2-SITE)` (spawned facing down active choke corridors along `wp0 → wp1`), forward-FOV visual perception, peripheral/distance/surprise reaction latencies, strict crosshair-alignment firing gates (shots fire strictly along actual slewed yaw/pitch with realistic moving-target tracking lag), counter-strafed burst-and-strafe combat footwork, cover retreats on reload/low HP, tactical choke angle-holding with corner-slicing crosshair placement, deadlock-free corridor passing, flashbang blindness & smooth anti-flash turns, live mid-match difficulty re-scaling, and smoke-occluded `hasLineOfSight`.
+  5. **Dual-Pass PBR Rendering, Physical Finger Gripping & Zero-Overlap HUD (`60°–66°` FOV):** Depth-isolated viewmodel rendering (`60°` desktop FOV, gently clamped up to `66°` on narrow/portrait screens, `0.05m` near plane) with unified CS2 Rigify first-person arms (`cs2_fps_arms.glb`), biomechanical curled finger phalanges (closed fist gripping the **Crimson Karambit** handle/ring + two-handed pistol and forend rifle grips), faction-tinted tactical gloves (**Vanguard CT** navy-slate vs. **Syndicate T** crimson-obsidian with natural bare forearm skin), automated dual-viewport (`1440×900` & `430×932`) skinned-vertex posture verification across `Idle`, `Fire`, `Reload`, `Draw`, and `Inspect` (`0` visible bicep cutoffs, elbows off bottom edge, rifle buttstocks tucked into the shoulder pocket, `0` crosshair occlusion), full 9-weapon CS2 arsenal (`garam-47`, `vanguard-m4`, `m4a4`, `mp9`, `sovereign-awp`, `desert-eagle`, `usp-s`, `glock-18`, `garam-karambit`), rigged 3P skeletal operators (`operator_vanguard.glb`, `operator_syndicate.glb`) with depth-tested dark-pill nameplates, live top-down orthographic radar baking, zero-overlap responsive HUD/Lobby (`#killfeed`, `#slot-bar`, mid-width/mobile layouts, `[?] CONTROLS` modal), and non-sticky `AUTO` graphics governance.
   6. **Shared `MapRegistry` & Adaptive Clock-Skew Immune 64-Tick Netcode:** Both client and authoritative 64-tick `GameRoom.ts` resolve map colliders, spawn points, buy zones, bombsites, and bot patrol routes through a single shared `MapRegistry` (`mapId` handshake on `join`/`welcome`), eliminating online server-client map desync alongside 64-slot ring-buffer `O(1)` half-RTT hitbox rewind, Int16-clamped Binary Protocol v2 (`36 + 29*N` bytes), and 2×128Hz batched binary inputs (`0x03`, 41 bytes).
-  7. **Authoritative Utility Physics & MR12 Halftime Rules:** Shared `UtilitySimulation` steps server-side bouncing grenade arcs, LOS-occluded HE blast waves, and smoke-extinguishable 40 DPS Molotov zones alongside automatic MR12 Round 13 halftime side-swap and `$800` pistol-round resets.
+  7. **Authoritative Utility Physics & MR12 Halftime Rules:** Shared `UtilitySimulation` steps server-side bouncing grenade arcs with sloped voxel ramp-lip deflection, active `MapBounds`, LOS-occluded HE blast waves, and smoke-extinguishable 40 DPS Molotov zones alongside automatic MR12 Round 13 halftime side-swap and `$800` pistol-round resets.
 
 ---
 
@@ -121,13 +121,13 @@ Players can switch maps live in the Lobby (`MAP` selector) or synchronize automa
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (156 Passing Tests Across 20 Suites)
+### Test Suite Coverage (160 Passing Tests Across 20 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
 ```
 ```text
- ✓ packages/client/src/__tests__/client-systems.test.ts       (11 tests)
+ ✓ packages/client/src/__tests__/client-systems.test.ts       (13 tests)
  ✓ packages/client/src/__tests__/viewmodel-rig.test.ts        (10 tests)
  ✓ packages/client/src/__tests__/operator-rig.test.ts         (1 test)
  ✓ packages/server/src/__tests__/gameroom.integration.test.ts (9 tests)
@@ -144,12 +144,12 @@ npm test
  ✓ packages/shared/src/__tests__/lagcomp.test.ts              (8 tests)
  ✓ packages/shared/src/__tests__/navgraph.test.ts             (12 tests)
  ✓ packages/shared/src/__tests__/callout.test.ts              (5 tests)
- ✓ packages/shared/src/__tests__/dedust2.test.ts              (4 tests)
+ ✓ packages/shared/src/__tests__/dedust2.test.ts              (6 tests)
  ✓ packages/shared/src/__tests__/economy.test.ts              (5 tests)
  ✓ packages/shared/src/__tests__/docs-sync.test.ts            (3 tests)
 
  Test Files  20 passed (20)
-      Tests  156 passed (156)
+      Tests  160 passed (160)
 ```
 
 ---

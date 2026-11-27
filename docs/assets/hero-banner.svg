@@ -62,16 +62,16 @@
     <line x1="0" y1="-120" x2="0" y2="120" stroke="rgba(0, 240, 255, 0.15)" stroke-width="1"/>
     <line x1="0" y1="0" x2="65" y2="-65" stroke="#FF2A55" stroke-width="2" filter="url(#glow-crimson)"/>
     <circle cx="65" cy="-65" r="4.5" fill="#FF2A55"/>
-    <text x="75" y="-60" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#FF2A55" letter-spacing="1">HOSTILE [A_LONG]</text>
+    <text x="75" y="-60" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#FF2A55" letter-spacing="1">HOSTILE [A_RAMP]</text>
   </g>
 
   <!-- Tactical Header Status Bar -->
   <g transform="translate(60, 48)">
-    <rect width="180" height="22" rx="4" fill="rgba(0, 240, 255, 0.12)" stroke="rgba(0, 240, 255, 0.4)" stroke-width="1"/>
+    <rect width="188" height="22" rx="4" fill="rgba(0, 240, 255, 0.12)" stroke="rgba(0, 240, 255, 0.4)" stroke-width="1"/>
     <circle cx="12" cy="11" r="4" fill="#00FF88"/>
-    <text x="24" y="15" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="800" fill="#00F0FF" letter-spacing="2">TACTICAL KERNEL v0.3.0</text>
+    <text x="24" y="15" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="800" fill="#00F0FF" letter-spacing="2">TACTICAL KERNEL v1.0</text>
     
-    <text x="210" y="15" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="600" fill="rgba(255, 255, 255, 0.45)" letter-spacing="1.5">LOCATION: DE_CITADEL // 128Hz TICKLESS CLIENT</text>
+    <text x="206" y="15" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="600" fill="rgba(255, 255, 255, 0.45)" letter-spacing="1.5">ARENAS: DE_DUST2 &amp; CS_OFFICE // 128Hz CLIENT • 160 TESTS</text>
   </g>
 
   <!-- Main Hero Brand Headline -->
@@ -80,43 +80,43 @@
       GARAM<tspan fill="#FF2A55">:</tspan> <tspan fill="#FFFFFF">ZERO HOUR</tspan>
     </text>
     <text y="38" font-family="'Inter', -apple-system, sans-serif" font-size="18" font-weight="600" fill="rgba(200, 220, 245, 0.85)" letter-spacing="1.5">
-      Competitive Browser-Native 5v5 Tactical FPS • CS2 Precision • WebGL2 / WebGPU
+      Competitive Browser-Native 5v5 Tactical FPS • CS2 Precision • WebGL2 PBR
     </text>
   </g>
 
   <!-- Feature Badge Strip -->
   <g transform="translate(60, 225)">
-    <!-- Badge 1: 128Hz Fixed Kinematics -->
+    <!-- Badge 1: 128Hz Smooth Steps -->
     <g transform="translate(0, 0)">
-      <rect width="168" height="38" rx="6" fill="rgba(0, 240, 255, 0.08)" stroke="rgba(0, 240, 255, 0.35)" stroke-width="1"/>
+      <rect width="172" height="38" rx="6" fill="rgba(0, 240, 255, 0.08)" stroke="rgba(0, 240, 255, 0.35)" stroke-width="1"/>
       <circle cx="16" cy="19" r="4" fill="#00F0FF"/>
-      <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#E2F1FF" letter-spacing="0.8">128Hz Kinematics</text>
+      <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#E2F1FF" letter-spacing="0.8">128Hz Smooth Step</text>
     </g>
 
-    <!-- Badge 2: SAT Wall Deflection -->
-    <g transform="translate(180, 0)">
-      <rect width="176" height="38" rx="6" fill="rgba(255, 42, 85, 0.08)" stroke="rgba(255, 42, 85, 0.35)" stroke-width="1"/>
+    <!-- Badge 2: 9 Grip-Rigged Weapons -->
+    <g transform="translate(184, 0)">
+      <rect width="180" height="38" rx="6" fill="rgba(255, 42, 85, 0.08)" stroke="rgba(255, 42, 85, 0.35)" stroke-width="1"/>
       <circle cx="16" cy="19" r="4" fill="#FF2A55"/>
-      <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#FFE2E8" letter-spacing="0.8">Circle-AABB SAT</text>
+      <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#FFE2E8" letter-spacing="0.8">9 Physical-Grip Arms</text>
     </g>
 
-    <!-- Badge 3: A* Bot Brain -->
-    <g transform="translate(368, 0)">
-      <rect width="164" height="38" rx="6" fill="rgba(0, 255, 136, 0.08)" stroke="rgba(0, 255, 136, 0.35)" stroke-width="1"/>
+    <!-- Badge 3: Anti-Prefire AI -->
+    <g transform="translate(376, 0)">
+      <rect width="174" height="38" rx="6" fill="rgba(0, 255, 136, 0.08)" stroke="rgba(0, 255, 136, 0.35)" stroke-width="1"/>
       <circle cx="16" cy="19" r="4" fill="#00FF88"/>
-      <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#E2FFE8" letter-spacing="0.8">A* Tactical Brain</text>
+      <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#E2FFE8" letter-spacing="0.8">Anti-Prefire A* AI</text>
     </g>
 
-    <!-- Badge 4: True Hawkbill Karambit -->
-    <g transform="translate(544, 0)">
-      <rect width="180" height="38" rx="6" fill="rgba(212, 175, 55, 0.08)" stroke="rgba(212, 175, 55, 0.45)" stroke-width="1"/>
+    <!-- Badge 4: Baked Radar & GLB -->
+    <g transform="translate(562, 0)">
+      <rect width="174" height="38" rx="6" fill="rgba(212, 175, 55, 0.08)" stroke="rgba(212, 175, 55, 0.45)" stroke-width="1"/>
       <circle cx="16" cy="19" r="4" fill="#D4AF37"/>
-      <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#FFF4D0" letter-spacing="0.8">Crimson Karambit</text>
+      <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#FFF4D0" letter-spacing="0.8">Dust 2 + Office Pool</text>
     </g>
 
     <!-- Badge 5: 64-Tick Rewind -->
-    <g transform="translate(736, 0)">
-      <rect width="168" height="38" rx="6" fill="rgba(168, 85, 247, 0.08)" stroke="rgba(168, 85, 247, 0.4)" stroke-width="1"/>
+    <g transform="translate(748, 0)">
+      <rect width="164" height="38" rx="6" fill="rgba(168, 85, 247, 0.08)" stroke="rgba(168, 85, 247, 0.4)" stroke-width="1"/>
       <circle cx="16" cy="19" r="4" fill="#A855F7"/>
       <text x="28" y="24" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#F3E8FF" letter-spacing="0.8">64-Tick Rewind</text>
     </g>
