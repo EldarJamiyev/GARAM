@@ -116,116 +116,352 @@ export function applyFactionGloveTint(
   return tintedCount;
 }
 
-const _fingerAxisX = new THREE.Vector3(1, 0, 0);
-const _fingerAxisZ = new THREE.Vector3(0, 0, 1);
 const _fingerQ = new THREE.Quaternion();
+const _restV1 = new THREE.Vector3();
+const _restV2 = new THREE.Vector3();
+const _restV3 = new THREE.Vector3();
+const _restV4 = new THREE.Vector3();
+const _restV5 = new THREE.Vector3();
+const _restFwd = new THREE.Vector3();
+const _restAcross = new THREE.Vector3();
+const _restPalmar = new THREE.Vector3();
+const _restThumbDir = new THREE.Vector3();
+const _restBendLocal = new THREE.Vector3();
+const _restUpY = new THREE.Vector3(0, 1, 0);
+const _restInvQ = new THREE.Quaternion();
 
-function curlBone(
-  root: THREE.Object3D,
-  name: string,
-  axis: THREE.Vector3,
-  angleRad: number
+const DEG2RAD = Math.PI / 180;
+
+export type CS2FingerName = 'index' | 'middle' | 'ring' | 'pinky' | 'thumb';
+
+export const CS2_FINGER_BONE_CHAINS: Record<
+  'L' | 'R',
+  {
+    hand: string;
+    palms: readonly string[];
+    fingers: Record<CS2FingerName, readonly [string, string, string]>;
+  }
+> = {
+  L: {
+    hand: 'DEF-handL_233',
+    palms: [
+      'ORG-palm01L_174',
+      'ORG-palm02L_193',
+      'ORG-palm03L_212',
+      'ORG-palm04L_231',
+      'DEF-palm01L_153',
+      'DEF-palm02L_182',
+      'DEF-palm03L_201',
+      'DEF-palm04L_220',
+    ],
+    fingers: {
+      index: ['DEF-f_index01L_147', 'DEF-f_index02L_146', 'DEF-f_index03L_145'],
+      middle: ['DEF-f_middle01L_180', 'DEF-f_middle02L_179', 'DEF-f_middle03L_178'],
+      ring: ['DEF-f_ring01L_199', 'DEF-f_ring02L_198', 'DEF-f_ring03L_197'],
+      pinky: ['DEF-f_pinky01L_218', 'DEF-f_pinky02L_217', 'DEF-f_pinky03L_216'],
+      thumb: ['DEF-thumb01L_151', 'DEF-thumb02L_150', 'DEF-thumb03L_149'],
+    },
+  },
+  R: {
+    hand: 'DEF-handR_357',
+    palms: [
+      'ORG-palm01R_298',
+      'ORG-palm02R_317',
+      'ORG-palm03R_336',
+      'ORG-palm04R_355',
+      'DEF-palm01R_277',
+      'DEF-palm02R_306',
+      'DEF-palm03R_325',
+      'DEF-palm04R_344',
+    ],
+    fingers: {
+      index: ['DEF-f_index01R_271', 'DEF-f_index02R_270', 'DEF-f_index03R_269'],
+      middle: ['DEF-f_middle01R_304', 'DEF-f_middle02R_303', 'DEF-f_middle03R_302'],
+      ring: ['DEF-f_ring01R_323', 'DEF-f_ring02R_322', 'DEF-f_ring03R_321'],
+      pinky: ['DEF-f_pinky01R_342', 'DEF-f_pinky02R_341', 'DEF-f_pinky03R_340'],
+      thumb: ['DEF-thumb01R_275', 'DEF-thumb02R_274', 'DEF-thumb03R_273'],
+    },
+  },
+};
+
+export interface CS2FingerBoneRest {
+  bone: THREE.Object3D;
+  restPos: THREE.Vector3;
+  restQuat: THREE.Quaternion;
+  restScale: THREE.Vector3;
+  flexAxis: THREE.Vector3;
+}
+
+export interface CS2PalmBoneRest {
+  bone: THREE.Object3D;
+  restPos: THREE.Vector3;
+  restQuat: THREE.Quaternion;
+  restScale: THREE.Vector3;
+}
+
+export interface CS2FingerRestRig {
+  palms: CS2PalmBoneRest[];
+  handScales: Array<{ bone: THREE.Object3D; restScale: THREE.Vector3 }>;
+  bones: Map<string, CS2FingerBoneRest>;
+  palmCenterLocal: Record<'L' | 'R', THREE.Vector3>;
+}
+
+const cs2FingerRestCache = new WeakMap<THREE.Object3D, CS2FingerRestRig>();
+
+/**
+ * Captures bind-pose rest transforms (position, quaternion, scale) for all left/right
+ * palm and finger phalanx bones and computes each bone's exact local flexion axis
+ * (`cross(+Y, localPalmarDir)`) so positive curl angles bend fingertips straight into the
+ * palm with zero sideways splay and zero cumulative drift.
+ */
+export function initCS2FingerRestRig(
+  armsRoot: THREE.Object3D,
+  bindPoseSnapshot?: Map<THREE.Object3D, BoneTransformSnapshot>
+): CS2FingerRestRig {
+  const existing = cs2FingerRestCache.get(armsRoot);
+  if (existing) return existing;
+
+  // If caller provided a bind-pose snapshot, temporarily apply it to hand/palm/finger bones
+  // so world-space palmar axes are derived strictly from the clean bind pose.
+  const tempPrev = new Map<
+    THREE.Object3D,
+    { pos: THREE.Vector3; quat: THREE.Quaternion; scale: THREE.Vector3 }
+  >();
+  if (bindPoseSnapshot) {
+    for (const side of ['L', 'R'] as const) {
+      const sideCfg = CS2_FINGER_BONE_CHAINS[side];
+      const names: string[] = [sideCfg.hand, ...sideCfg.palms];
+      for (const fName of ['index', 'middle', 'ring', 'pinky', 'thumb'] as const) {
+        names.push(...sideCfg.fingers[fName]);
+      }
+      for (const name of names) {
+        const b = armsRoot.getObjectByName(name);
+        const snap = b ? bindPoseSnapshot.get(b) : undefined;
+        if (b && snap) {
+          tempPrev.set(b, {
+            pos: b.position.clone(),
+            quat: b.quaternion.clone(),
+            scale: b.scale.clone(),
+          });
+          b.position.copy(snap.position);
+          b.quaternion.copy(snap.quaternion);
+          b.scale.copy(snap.scale);
+        }
+      }
+    }
+  }
+
+  armsRoot.updateMatrixWorld(true);
+
+  const palms: CS2PalmBoneRest[] = [];
+  const handScales: Array<{ bone: THREE.Object3D; restScale: THREE.Vector3 }> = [];
+  const bones = new Map<string, CS2FingerBoneRest>();
+  const palmCenterLocal: Record<'L' | 'R', THREE.Vector3> = {
+    L: new THREE.Vector3(),
+    R: new THREE.Vector3(),
+  };
+
+  for (const side of ['L', 'R'] as const) {
+    const sideCfg = CS2_FINGER_BONE_CHAINS[side];
+    const handNode = armsRoot.getObjectByName(sideCfg.hand);
+    if (handNode) {
+      handScales.push({ bone: handNode, restScale: handNode.scale.clone() });
+    }
+    for (const pName of sideCfg.palms) {
+      const pBone = armsRoot.getObjectByName(pName);
+      if (pBone) {
+        palms.push({
+          bone: pBone,
+          restPos: pBone.position.clone(),
+          restQuat: pBone.quaternion.clone(),
+          restScale: pBone.scale.clone(),
+        });
+      }
+    }
+
+    const hand = armsRoot.getObjectByName(sideCfg.hand);
+    const idx01 = armsRoot.getObjectByName(sideCfg.fingers.index[0]);
+    const mid01 = armsRoot.getObjectByName(sideCfg.fingers.middle[0]);
+    const pnk01 = armsRoot.getObjectByName(sideCfg.fingers.pinky[0]);
+    const thm01 = armsRoot.getObjectByName(sideCfg.fingers.thumb[0]);
+
+    if (hand && idx01 && mid01 && pnk01 && thm01) {
+      hand.getWorldPosition(_restV1);
+      idx01.getWorldPosition(_restV2);
+      mid01.getWorldPosition(_restV3);
+      pnk01.getWorldPosition(_restV4);
+      thm01.getWorldPosition(_restV5);
+
+      _restFwd.subVectors(_restV3, _restV1).normalize();
+      _restAcross.subVectors(_restV4, _restV2).normalize();
+      _restPalmar.crossVectors(_restFwd, _restAcross).normalize();
+      if (_restPalmar.dot(_restV5.sub(_restV3)) < 0) {
+        _restPalmar.negate();
+      }
+      _restThumbDir
+        .copy(_restPalmar)
+        .multiplyScalar(0.25)
+        .addScaledVector(_restAcross, 0.85)
+        .addScaledVector(_restFwd, 0.45)
+        .normalize();
+
+      // Store anatomical palm center in hand-local space for regression & grip checks
+      _restV2.copy(_restV1).lerp(_restV3, 0.55).addScaledVector(_restPalmar, 0.025);
+      hand.worldToLocal(_restV2);
+      palmCenterLocal[side].copy(_restV2);
+    } else {
+      _restPalmar.set(side === 'L' ? -1 : 1, 0, 0);
+      _restThumbDir.set(side === 'L' ? -0.4 : 0.4, -0.3, -0.85).normalize();
+    }
+
+    for (const fName of ['index', 'middle', 'ring', 'pinky', 'thumb'] as const) {
+      const targetDir = fName === 'thumb' ? _restThumbDir : _restPalmar;
+      for (const bName of sideCfg.fingers[fName]) {
+        const bone = armsRoot.getObjectByName(bName);
+        if (!bone) continue;
+        bone.getWorldQuaternion(_restInvQ).invert();
+        _restBendLocal.copy(targetDir).applyQuaternion(_restInvQ);
+        _restBendLocal.y = 0;
+        if (_restBendLocal.lengthSq() < 1e-8) {
+          _restBendLocal.set(0, 0, 1);
+        } else {
+          _restBendLocal.normalize();
+        }
+        const flexAxis = new THREE.Vector3().crossVectors(_restUpY, _restBendLocal).normalize();
+        bones.set(bName, {
+          bone,
+          restPos: bone.position.clone(),
+          restQuat: bone.quaternion.clone(),
+          restScale: bone.scale.clone(),
+          flexAxis,
+        });
+      }
+    }
+  }
+
+  if (tempPrev.size > 0) {
+    tempPrev.forEach((prev, b) => {
+      b.position.copy(prev.pos);
+      b.quaternion.copy(prev.quat);
+      b.scale.copy(prev.scale);
+    });
+    armsRoot.updateMatrixWorld(true);
+  }
+
+  const rig: CS2FingerRestRig = { palms, handScales, bones, palmCenterLocal };
+  cs2FingerRestCache.set(armsRoot, rig);
+  return rig;
+}
+
+type HandCurlPreset = Record<CS2FingerName, readonly [number, number, number]>;
+
+const FINGER_GRIP_PRESETS: Record<
+  'rifle' | 'pistol' | 'karambit',
+  { L: HandCurlPreset; R: HandCurlPreset }
+> = {
+  rifle: {
+    // Solid pistol-grip wrap (middle/ring/pinky tightly wrapped, index ~35° on trigger, thumb across backstrap)
+    R: {
+      index: [22, 35, 22],
+      middle: [45, 76, 52],
+      ring: [52, 80, 54],
+      pinky: [52, 80, 54],
+      thumb: [20, 25, 18],
+    },
+    // Cohesive underside handguard cradle (all 4 fingers uniformly curled ~55-70°, thumb tucked ~25° along side)
+    L: {
+      index: [34, 56, 40],
+      middle: [36, 60, 42],
+      ring: [38, 62, 44],
+      pinky: [40, 64, 44],
+      thumb: [10, 15, 10],
+    },
+  },
+  pistol: {
+    // Tight right-hand pistol grip + index ~35° on trigger + thumb forward along frame
+    R: {
+      index: [22, 35, 24],
+      middle: [45, 78, 54],
+      ring: [54, 84, 56],
+      pinky: [54, 84, 56],
+      thumb: [14, 16, 12],
+    },
+    // Tight two-handed support wrap over right knuckles + thumb parallel to slide
+    L: {
+      index: [46, 74, 52],
+      middle: [48, 78, 54],
+      ring: [50, 80, 56],
+      pinky: [50, 80, 56],
+      thumb: [12, 14, 10],
+    },
+  },
+  karambit: {
+    // Tight closed reverse-grip fist: handle clamped cleanly, index locked around retention ring, thumb tucked over index knuckle
+    R: {
+      index: [48, 72, 52],
+      middle: [58, 84, 56],
+      ring: [60, 86, 58],
+      pinky: [60, 86, 58],
+      thumb: [19, 21, 15],
+    },
+    // Relaxed natural CS2 open guard: fingers gently & uniformly curved (~22-30°) together, thumb relaxed ~18° inward
+    L: {
+      index: [12, 24, 18],
+      middle: [14, 26, 20],
+      ring: [16, 28, 22],
+      pinky: [18, 30, 22],
+      thumb: [8, 10, 8],
+    },
+  },
+};
+
+function setFingerChainCurl(
+  rig: CS2FingerRestRig,
+  boneNames: readonly [string, string, string],
+  curlsDeg: readonly [number, number, number]
 ): void {
-  const bone = root.getObjectByName(name);
-  if (!bone || Math.abs(angleRad) < 1e-4) return;
-  _fingerQ.setFromAxisAngle(axis, angleRad);
-  bone.quaternion.multiply(_fingerQ);
+  for (let i = 0; i < 3; i++) {
+    const entry = rig.bones.get(boneNames[i]);
+    if (!entry) continue;
+    entry.bone.position.copy(entry.restPos);
+    entry.bone.scale.copy(entry.restScale);
+    _fingerQ.setFromAxisAngle(entry.flexAxis, curlsDeg[i] * DEG2RAD);
+    entry.bone.quaternion.copy(entry.restQuat).multiply(_fingerQ);
+  }
 }
 
 /**
- * Biomechanically curls the CS2 Rigify right & left finger phalanges around the active
- * weapon's physical grip so hands never float open beside handles (Karambit, pistols, rifles).
- * Curl directions are calibrated directly against cs2_fps_arms.glb bone roll axes:
- *   Right index/middle/ring curl inward on -X; right pinky curls inward on +X; right thumb on -Z.
- *   Left index/middle curl inward on +X; left ring/pinky curl inward on -X.
+ * Deterministically overwrites every left and right palm & finger phalanx transform from
+ * bind-pose rest + verified anatomical flexion axes (`restQuat * axisAngle(flexAxis, rad)`).
+ * Zero accumulation, zero swimming, zero floating/detached knuckles.
  */
-function applyCS2PhysicalFingerGrip(
+export function applyCS2PhysicalFingerGrip(
   armsRoot: THREE.Object3D,
-  mode: 'rifle' | 'pistol' | 'karambit'
+  mode: 'rifle' | 'pistol' | 'karambit',
+  bindPoseSnapshot?: Map<THREE.Object3D, BoneTransformSnapshot>
 ): void {
-  if (mode === 'karambit') {
-    // Tight closed right fist physically gripping Karambit handle + pinky hooking retention ring
-    curlBone(armsRoot, 'DEF-f_index01R_271', _fingerAxisX, -0.82);
-    curlBone(armsRoot, 'DEF-f_index02R_270', _fingerAxisX, -1.18);
-    curlBone(armsRoot, 'DEF-f_index03R_269', _fingerAxisX, -0.92);
+  const rig = initCS2FingerRestRig(armsRoot, bindPoseSnapshot);
 
-    curlBone(armsRoot, 'DEF-f_middle01R_304', _fingerAxisX, -0.68);
-    curlBone(armsRoot, 'DEF-f_middle02R_303', _fingerAxisX, -1.15);
-    curlBone(armsRoot, 'DEF-f_middle03R_302', _fingerAxisX, -0.88);
-
-    curlBone(armsRoot, 'DEF-f_ring01R_323', _fingerAxisX, -0.68);
-    curlBone(armsRoot, 'DEF-f_ring02R_322', _fingerAxisX, -1.16);
-    curlBone(armsRoot, 'DEF-f_ring03R_321', _fingerAxisX, -0.90);
-
-    curlBone(armsRoot, 'DEF-f_pinky01R_342', _fingerAxisX, 0.58);
-    curlBone(armsRoot, 'DEF-f_pinky02R_341', _fingerAxisX, 1.12);
-    curlBone(armsRoot, 'DEF-f_pinky03R_340', _fingerAxisX, 0.84);
-
-    curlBone(armsRoot, 'DEF-thumb02R_274', _fingerAxisZ, -0.64);
-    curlBone(armsRoot, 'DEF-thumb03R_273', _fingerAxisZ, -0.46);
-
-    // Poised natural martial CQC curve on left guard hand (not stiff/flat)
-    curlBone(armsRoot, 'DEF-f_index02L_146', _fingerAxisX, 0.34);
-    curlBone(armsRoot, 'DEF-f_index03L_145', _fingerAxisX, 0.28);
-    curlBone(armsRoot, 'DEF-f_middle02L_179', _fingerAxisX, 0.42);
-    curlBone(armsRoot, 'DEF-f_middle03L_178', _fingerAxisX, 0.32);
-    curlBone(armsRoot, 'DEF-f_ring02L_198', _fingerAxisX, -0.48);
-    curlBone(armsRoot, 'DEF-f_ring03L_197', _fingerAxisX, -0.36);
-    curlBone(armsRoot, 'DEF-f_pinky02L_217', _fingerAxisX, -0.52);
-    curlBone(armsRoot, 'DEF-f_pinky03L_216', _fingerAxisX, -0.38);
-    return;
+  for (let i = 0; i < rig.handScales.length; i++) {
+    const hs = rig.handScales[i];
+    hs.bone.scale.copy(hs.restScale);
   }
 
-  if (mode === 'pistol') {
-    // Firm right-hand pistol grip + index curved lightly toward trigger
-    curlBone(armsRoot, 'DEF-f_index02R_270', _fingerAxisX, -0.48);
-    curlBone(armsRoot, 'DEF-f_index03R_269', _fingerAxisX, -0.42);
-
-    curlBone(armsRoot, 'DEF-f_middle01R_304', _fingerAxisX, -0.36);
-    curlBone(armsRoot, 'DEF-f_middle02R_303', _fingerAxisX, -0.92);
-    curlBone(armsRoot, 'DEF-f_middle03R_302', _fingerAxisX, -0.72);
-
-    curlBone(armsRoot, 'DEF-f_ring01R_323', _fingerAxisX, -0.38);
-    curlBone(armsRoot, 'DEF-f_ring02R_322', _fingerAxisX, -0.96);
-    curlBone(armsRoot, 'DEF-f_ring03R_321', _fingerAxisX, -0.76);
-
-    curlBone(armsRoot, 'DEF-f_pinky01R_342', _fingerAxisX, 0.36);
-    curlBone(armsRoot, 'DEF-f_pinky02R_341', _fingerAxisX, 0.94);
-    curlBone(armsRoot, 'DEF-f_pinky03R_340', _fingerAxisX, 0.72);
-
-    curlBone(armsRoot, 'DEF-thumb02R_274', _fingerAxisZ, -0.35);
-
-    // Two-handed left-hand wrap cupping tightly around right grip
-    curlBone(armsRoot, 'DEF-f_index02L_146', _fingerAxisX, 0.68);
-    curlBone(armsRoot, 'DEF-f_index03L_145', _fingerAxisX, 0.56);
-    curlBone(armsRoot, 'DEF-f_middle02L_179', _fingerAxisX, 0.78);
-    curlBone(armsRoot, 'DEF-f_middle03L_178', _fingerAxisX, 0.62);
-    curlBone(armsRoot, 'DEF-f_ring02L_198', _fingerAxisX, -0.82);
-    curlBone(armsRoot, 'DEF-f_ring03L_197', _fingerAxisX, -0.64);
-    curlBone(armsRoot, 'DEF-f_pinky02L_217', _fingerAxisX, -0.84);
-    curlBone(armsRoot, 'DEF-f_pinky03L_216', _fingerAxisX, -0.64);
-    return;
+  for (let i = 0; i < rig.palms.length; i++) {
+    const p = rig.palms[i];
+    p.bone.position.copy(p.restPos);
+    p.bone.quaternion.copy(p.restQuat);
+    p.bone.scale.copy(p.restScale);
   }
 
-  // Rifle / SMG: right hand firmly gripping pistol grip, left hand wrapping forend handguard
-  curlBone(armsRoot, 'DEF-f_index02R_270', _fingerAxisX, -0.44);
-  curlBone(armsRoot, 'DEF-f_index03R_269', _fingerAxisX, -0.36);
-  curlBone(armsRoot, 'DEF-f_middle02R_303', _fingerAxisX, -0.82);
-  curlBone(armsRoot, 'DEF-f_middle03R_302', _fingerAxisX, -0.64);
-  curlBone(armsRoot, 'DEF-f_ring02R_322', _fingerAxisX, -0.86);
-  curlBone(armsRoot, 'DEF-f_ring03R_321', _fingerAxisX, -0.68);
-  curlBone(armsRoot, 'DEF-f_pinky02R_341', _fingerAxisX, 0.84);
-  curlBone(armsRoot, 'DEF-f_pinky03R_340', _fingerAxisX, 0.66);
-  curlBone(armsRoot, 'DEF-thumb02R_274', _fingerAxisZ, -0.32);
-
-  curlBone(armsRoot, 'DEF-f_index02L_146', _fingerAxisX, 0.54);
-  curlBone(armsRoot, 'DEF-f_index03L_145', _fingerAxisX, 0.42);
-  curlBone(armsRoot, 'DEF-f_middle02L_179', _fingerAxisX, 0.62);
-  curlBone(armsRoot, 'DEF-f_middle03L_178', _fingerAxisX, 0.48);
-  curlBone(armsRoot, 'DEF-f_ring02L_198', _fingerAxisX, -0.66);
-  curlBone(armsRoot, 'DEF-f_ring03L_197', _fingerAxisX, -0.50);
-  curlBone(armsRoot, 'DEF-f_pinky02L_217', _fingerAxisX, -0.68);
-  curlBone(armsRoot, 'DEF-f_pinky03L_216', _fingerAxisX, -0.52);
+  const preset = FINGER_GRIP_PRESETS[mode];
+  for (const side of ['L', 'R'] as const) {
+    const chains = CS2_FINGER_BONE_CHAINS[side].fingers;
+    const handPreset = preset[side];
+    for (const fName of ['index', 'middle', 'ring', 'pinky', 'thumb'] as const) {
+      setFingerChainCurl(rig, chains[fName], handPreset[fName]);
+    }
+  }
 }
 
 /**
@@ -245,6 +481,7 @@ export function applyCS2WeaponHandPosture(params: {
   isReloading: boolean;
   isInspecting: boolean;
   narrowOffsetX?: number;
+  bindPoseSnapshot?: Map<THREE.Object3D, BoneTransformSnapshot>;
 }): void {
   const {
     armsRoot,
@@ -258,11 +495,12 @@ export function applyCS2WeaponHandPosture(params: {
     leftHandLockWeight,
     isReloading,
     narrowOffsetX = 0,
+    bindPoseSnapshot,
   } = params;
 
   if (cfg.leftArmPoseMode === 'rifle') {
     if (!handLSocket || !gripAnchorWorld) {
-      applyCS2PhysicalFingerGrip(armsRoot, 'rifle');
+      applyCS2PhysicalFingerGrip(armsRoot, 'rifle', bindPoseSnapshot);
       return;
     }
     const fIdx = armsRoot.getObjectByName('DEF-f_index01L_147');
@@ -298,7 +536,7 @@ export function applyCS2WeaponHandPosture(params: {
       _ikG.set(_ikF.x - 0.08, _ikF.y - 0.55, _ikF.z + 0.06);
       armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
     }
-    applyCS2PhysicalFingerGrip(armsRoot, 'rifle');
+    applyCS2PhysicalFingerGrip(armsRoot, 'rifle', bindPoseSnapshot);
     return;
   }
 
@@ -336,7 +574,7 @@ export function applyCS2WeaponHandPosture(params: {
     _ikF.set(_ikE.x - 0.014, _ikE.y - 0.020 + reloadDropY, _ikE.z + 0.008);
     _ikG.set(_ikE.x - 0.22, _ikE.y - 0.48, _ikE.z + 0.08);
     armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
-    applyCS2PhysicalFingerGrip(armsRoot, 'pistol');
+    applyCS2PhysicalFingerGrip(armsRoot, 'pistol', bindPoseSnapshot);
     return;
   }
 
@@ -371,7 +609,7 @@ export function applyCS2WeaponHandPosture(params: {
     _ikG.set(-0.24 + narrowOffsetX * 0.5, -0.48, -0.12);
     meshRoot.localToWorld(_ikG);
     armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
-    applyCS2PhysicalFingerGrip(armsRoot, 'karambit');
+    applyCS2PhysicalFingerGrip(armsRoot, 'karambit', bindPoseSnapshot);
   }
 }
 
@@ -817,6 +1055,7 @@ export class WeaponViewmodel {
         const armsModel = armsRes.model;
         this.armsRoot = armsModel;
         this.bindPoseSnapshot = captureBindPose(armsModel);
+        initCS2FingerRestRig(armsModel, this.bindPoseSnapshot);
 
         // Detect CS2 Rigify sockets (weapon_hand_r_5, DEF-handR_357, DEF-handL_233, clip bone)
         this.cs2WeaponSocket = armsModel.getObjectByName('weapon_hand_r_5') || null;
@@ -1158,7 +1397,12 @@ export class WeaponViewmodel {
     action.setEffectiveTimeScale(timeScale);
     action.play();
     this.armsMixer.update(0.001);
-    this.armIKSolver?.solve(this.currentWeaponId === 'garam-karambit');
+    if (this.isCS2ArmsRig) {
+      const cfg = getWeaponSocketConfig(this.currentWeaponId);
+      applyCS2PhysicalFingerGrip(this.armsRoot, cfg.leftArmPoseMode, this.bindPoseSnapshot);
+    } else {
+      this.armIKSolver?.solve(this.currentWeaponId === 'garam-karambit');
+    }
 
     const isLoopClip = clipName.endsWith('_Idle') || clipName.endsWith('_Walk');
     const isOneShot =
@@ -1628,6 +1872,7 @@ export class WeaponViewmodel {
           isReloading: this.isReloading,
           isInspecting: this.isInspecting,
           narrowOffsetX: computeNarrowAspectOffsetX(this.viewportAspect),
+          bindPoseSnapshot: this.bindPoseSnapshot,
         });
       } else {
         if (this.currentWeaponId === 'garam-karambit') {

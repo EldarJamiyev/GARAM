@@ -6,6 +6,8 @@ import {
   computeRecoilStepPerMeter,
   applyCS2WeaponHandPosture,
   applyFactionGloveTint,
+  CS2_FINGER_BONE_CHAINS,
+  initCS2FingerRestRig,
 } from '../viewmodel/WeaponViewmodel.js';
 import {
   WEAPON_SOCKET_CONFIGS,
@@ -14,6 +16,7 @@ import {
   computeNarrowAspectOffsetX,
   resolveWeaponClipName,
   patchM4IdleClip,
+  isFingerOrPalmTrack,
 } from '../viewmodel/ViewmodelRig.js';
 
 function buildSyntheticFPSArmRig(useDots: boolean): {
@@ -532,6 +535,7 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
             isReloading: phaseSample.isReloading,
             isInspecting: phaseSample.isInspecting,
             narrowOffsetX,
+            bindPoseSnapshot: bindSnapshot,
           });
           meshRoot.updateMatrixWorld(true);
 
@@ -796,5 +800,216 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
 
     const gap = finalPalm.distanceTo(gripAnchorWorld);
     expect(gap).toBeLessThanOrEqual(0.015);
+  });
+
+  it('prevents finger swimming, floating/detachment, and sideways splay across CS2_Idle (0..0.9s) and all 9 weapons', async () => {
+    const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
+    const { buildCS2AnimationClips, captureBindPose, restoreBindPose } = await import(
+      '../viewmodel/ViewmodelRig.js'
+    );
+
+    const gltf = await loadCS2ArmsInNode();
+    expect(gltf, 'cs2_fps_arms.glb must exist in packages/client/public/models/').not.toBeNull();
+
+    const slicedClips = buildCS2AnimationClips(gltf.animations);
+
+    // 1. Verify animated finger/palm track stripping across generated CS2 clips
+    for (const clip of slicedClips) {
+      for (const track of clip.tracks) {
+        if (!isFingerOrPalmTrack(track.name)) continue;
+        expect(
+          track.name.endsWith('.position') || track.name.endsWith('.scale'),
+          `${clip.name} must strip finger/palm position & scale track: ${track.name}`
+        ).toBe(false);
+        if (
+          clip.name === 'CS2_Idle' ||
+          clip.name === 'CS2_Walk' ||
+          clip.name === 'CS2_Fire' ||
+          clip.name === 'CS2_Draw' ||
+          clip.name === 'CS2_Inspect'
+        ) {
+          throw new Error(`${clip.name} must not contain any finger/palm track: ${track.name}`);
+        }
+      }
+    }
+
+    const sampleTimes = [0.0, 0.3, 0.6, 0.9];
+    const fingerKeys = ['index', 'middle', 'ring', 'pinky', 'thumb'] as const;
+    const upY = new THREE.Vector3(0, 1, 0);
+
+    for (const [weaponId, cfg] of Object.entries(WEAPON_SOCKET_CONFIGS)) {
+      const root = clone(gltf.scene);
+      const bindSnapshot = captureBindPose(root);
+      const restRig = initCS2FingerRestRig(root, bindSnapshot);
+
+      // Capture bind-pose parent->child bone distances and bind-pose fingertip-to-palm distances
+      root.updateMatrixWorld(true);
+      const bindParentDist = new Map<string, number>();
+      const bindTipToPalm = new Map<string, number>();
+
+      for (const side of ['L', 'R'] as const) {
+        const hand = root.getObjectByName(CS2_FINGER_BONE_CHAINS[side].hand)!;
+        const palmWorld = restRig.palmCenterLocal[side].clone().applyMatrix4(hand.matrixWorld);
+
+        for (const fKey of fingerKeys) {
+          const chain = CS2_FINGER_BONE_CHAINS[side].fingers[fKey];
+          for (const bName of chain) {
+            const bone = root.getObjectByName(bName)!;
+            const pPos = bone.parent!.getWorldPosition(new THREE.Vector3());
+            const bPos = bone.getWorldPosition(new THREE.Vector3());
+            bindParentDist.set(bName, bPos.distanceTo(pPos));
+          }
+          const tipBone = root.getObjectByName(chain[2])!;
+          const tipWorld = new THREE.Vector3(0, 0.025, 0).applyMatrix4(tipBone.matrixWorld);
+          bindTipToPalm.set(`${side}_${fKey}`, tipWorld.distanceTo(palmWorld));
+        }
+      }
+
+      const meshRoot = new THREE.Group();
+      const container = new THREE.Group();
+      container.position.set(...cfg.armsOffset);
+      container.scale.setScalar(cfg.armsScale);
+      container.rotation.y = Math.PI;
+      container.add(root);
+      meshRoot.add(container);
+
+      const socket = root.getObjectByName(cfg.socketBone) || null;
+      const holder = new THREE.Group();
+      holder.userData.isWeaponAttachment = true;
+      holder.position.set(...cfg.localPos);
+      holder.rotation.set(...cfg.localRotEuler);
+      holder.scale.setScalar(cfg.localScale);
+      socket!.add(holder);
+
+      let anchorObj: THREE.Object3D | null = null;
+      if (cfg.leftHandAnchorLocal) {
+        anchorObj = new THREE.Object3D();
+        anchorObj.position.set(...cfg.leftHandAnchorLocal);
+        holder.add(anchorObj);
+      }
+
+      const mixer = new THREE.AnimationMixer(root);
+      const solver = new ArmIKSolver(root);
+      const handR = root.getObjectByName('DEF-handR_357')!;
+      const handL = root.getObjectByName('DEF-handL_233')!;
+      const idleClip = slicedClips.find((c) => c.name === resolveWeaponClipName(weaponId, 'idle'))!;
+      const action = mixer.clipAction(idleClip);
+      action.play();
+
+      const baselineTipsHandLocal = new Map<string, THREE.Vector3>();
+      let prevTime = 0;
+
+      for (const t of sampleTimes) {
+        if (t === 0) {
+          restoreBindPose(root, bindSnapshot);
+          mixer.update(0);
+        } else {
+          mixer.update(t - prevTime);
+        }
+        prevTime = t;
+        meshRoot.updateMatrixWorld(true);
+
+        const gripAnchorWorld = anchorObj
+          ? anchorObj.getWorldPosition(new THREE.Vector3())
+          : null;
+
+        applyCS2WeaponHandPosture({
+          armsRoot: root,
+          meshRoot,
+          armIKSolver: solver,
+          cfg,
+          weaponSocket: socket,
+          handRSocket: handR,
+          handLSocket: handL,
+          gripAnchorWorld,
+          leftHandLockWeight: 1.0,
+          isReloading: false,
+          isInspecting: false,
+          bindPoseSnapshot: bindSnapshot,
+        });
+        meshRoot.updateMatrixWorld(true);
+
+        for (const side of ['L', 'R'] as const) {
+          const hand = side === 'L' ? handL : handR;
+          const handInv = hand.matrixWorld.clone().invert();
+          const palmWorld = restRig.palmCenterLocal[side].clone().applyMatrix4(hand.matrixWorld);
+
+          for (const fKey of fingerKeys) {
+            const chain = CS2_FINGER_BONE_CHAINS[side].fingers[fKey];
+
+            // b. Zero Floating/Detachment: phalanx bones keep exact bind-pose distance from parent (<= 0.001m)
+            for (const bName of chain) {
+              const bone = root.getObjectByName(bName)!;
+              const dist = bone
+                .getWorldPosition(new THREE.Vector3())
+                .distanceTo(bone.parent!.getWorldPosition(new THREE.Vector3()));
+              expect(
+                Math.abs(dist - bindParentDist.get(bName)!),
+                `[${weaponId} t=${t}s] ${bName} parent detachment drift`
+              ).toBeLessThanOrEqual(0.001);
+            }
+
+            // a. Zero Swimming: fingertip in DEF-handL / DEF-handR local space drifts <= 0.001m
+            const tipBone = root.getObjectByName(chain[2])!;
+            const tipWorld = new THREE.Vector3(0, 0.025, 0).applyMatrix4(tipBone.matrixWorld);
+            const tipLocal = tipWorld.clone().applyMatrix4(handInv);
+            const key = `${side}_${fKey}`;
+            if (!baselineTipsHandLocal.has(key)) {
+              baselineTipsHandLocal.set(key, tipLocal);
+            } else {
+              expect(
+                tipLocal.distanceTo(baselineTipsHandLocal.get(key)!),
+                `[${weaponId} t=${t}s] ${key} fingertip swimming drift in hand-local space`
+              ).toBeLessThanOrEqual(0.001);
+            }
+
+            // d. Curl Direction Verified: gripped/curled fingers move closer to palm center than bind pose
+            const curTipToPalm = tipWorld.distanceTo(palmWorld);
+            const bindDist = bindTipToPalm.get(key)!;
+            const isCurledFinger =
+              (cfg.leftArmPoseMode === 'karambit' && side === 'R') ||
+              (cfg.leftArmPoseMode === 'rifle' &&
+                ((side === 'R' && (fKey === 'middle' || fKey === 'ring' || fKey === 'pinky')) ||
+                  (side === 'L' && fKey !== 'thumb'))) ||
+              (cfg.leftArmPoseMode === 'pistol' &&
+                ((side === 'R' && (fKey === 'middle' || fKey === 'ring' || fKey === 'pinky')) ||
+                  (side === 'L' && fKey !== 'thumb')));
+
+            if (isCurledFinger) {
+              expect(
+                curTipToPalm,
+                `[${weaponId} t=${t}s] ${key} curled fingertip must move closer to palm than bind pose (${bindDist.toFixed(4)}m)`
+              ).toBeLessThan(bindDist - 0.015);
+            }
+          }
+
+          // c. Zero Sideways Splay: adjacent finger proximal bones stay within natural anatomical bounds (<= 28 deg)
+          const dirOf = (bn: string) =>
+            upY
+              .clone()
+              .applyQuaternion(root.getObjectByName(bn)!.getWorldQuaternion(new THREE.Quaternion()))
+              .normalize();
+          const dIdx = dirOf(CS2_FINGER_BONE_CHAINS[side].fingers.index[0]);
+          const dMid = dirOf(CS2_FINGER_BONE_CHAINS[side].fingers.middle[0]);
+          const dRng = dirOf(CS2_FINGER_BONE_CHAINS[side].fingers.ring[0]);
+          const dPnk = dirOf(CS2_FINGER_BONE_CHAINS[side].fingers.pinky[0]);
+
+          const pairs: [string, THREE.Vector3, THREE.Vector3][] = [
+            ['index-middle', dIdx, dMid],
+            ['middle-ring', dMid, dRng],
+            ['ring-pinky', dRng, dPnk],
+          ];
+          for (const [pairLabel, va, vb] of pairs) {
+            const angDeg = (va.angleTo(vb) * 180) / Math.PI;
+            const maxDeg =
+              cfg.leftArmPoseMode === 'karambit' && side === 'L' ? 15 : 28;
+            expect(
+              angDeg,
+              `[${weaponId} ${side} t=${t}s] ${pairLabel} proximal splay (${angDeg.toFixed(1)} deg)`
+            ).toBeLessThanOrEqual(maxDeg);
+          }
+        }
+      }
+    }
   });
 });

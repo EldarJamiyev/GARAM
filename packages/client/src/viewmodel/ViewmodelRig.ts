@@ -339,20 +339,51 @@ export function resolveWeaponClipName(
   }
 }
 
+const FINGER_OR_PALM_TRACK_RE =
+  /(?:^|[./])(DEF-f_|DEF-thumb|DEF-palm|ORG-f_|ORG-thumb|ORG-palm|MCH-f_|MCH-thumb|MCH-palm|f_index|f_middle|f_ring|f_pinky|thumb0|palm0|Bone_L|Bone_R)/i;
+const HAND_SCALE_TRACK_RE =
+  /(?:^|[./])(DEF-hand|ORG-hand|DEF-forearm|ORG-forearm|DEF-upper_arm|ORG-upper_arm).+\.scale$/i;
+
+export function isFingerOrPalmTrack(trackName: string): boolean {
+  return FINGER_OR_PALM_TRACK_RE.test(trackName);
+}
+
+function stripFingerTracks(
+  clip: THREE.AnimationClip,
+  stripRotations: boolean
+): THREE.AnimationClip {
+  const filtered = clip.tracks.filter((track) => {
+    if (HAND_SCALE_TRACK_RE.test(track.name)) return false;
+    if (!isFingerOrPalmTrack(track.name)) return true;
+    if (track.name.endsWith('.position') || track.name.endsWith('.scale')) {
+      return false;
+    }
+    return !stripRotations;
+  });
+  return new THREE.AnimationClip(clip.name, clip.duration, filtered);
+}
+
 function stabilizeCS2ClipToShoulderPocket(
   clip: THREE.AnimationClip,
   idleClip: THREE.AnimationClip,
-  pocketBlendWeight: number
+  pocketBlendWeight: number,
+  stripFingerRotations = true
 ): THREE.AnimationClip {
   const dur = Math.max(0.1, clip.duration);
   const clipTracksByName = new Map<string, THREE.KeyframeTrack>();
   for (const t of clip.tracks) {
+    if (HAND_SCALE_TRACK_RE.test(t.name)) continue;
+    if (isFingerOrPalmTrack(t.name)) {
+      if (t.name.endsWith('.position') || t.name.endsWith('.scale') || stripFingerRotations) {
+        continue;
+      }
+    }
     clipTracksByName.set(t.name, t);
   }
 
   const stabilizedTracks: THREE.KeyframeTrack[] = [];
   const isAnimatedSubPart = (trackName: string): boolean =>
-    /DEF-f_.*R_|v_weapon_|clip|bolt|slide/i.test(trackName);
+    /v_weapon_|clip|bolt|slide/i.test(trackName);
   const isBlendedSocketTrack = (trackName: string): boolean =>
     /weapon_hand_r_5|DEF-handR_357/i.test(trackName);
 
@@ -362,7 +393,7 @@ function stabilizeCS2ClipToShoulderPocket(
   const qOut = new THREE.Quaternion();
 
   for (const idleTrack of idleClip.tracks) {
-    if (isAnimatedSubPart(idleTrack.name)) {
+    if (isAnimatedSubPart(idleTrack.name) || isFingerOrPalmTrack(idleTrack.name)) {
       continue;
     }
 
@@ -424,7 +455,12 @@ function stabilizeCS2ClipToShoulderPocket(
   }
 
   for (const [name, track] of clipTracksByName.entries()) {
-    if (!isAnimatedSubPart(name)) continue;
+    if (!isAnimatedSubPart(name)) {
+      if (!stripFingerRotations && isFingerOrPalmTrack(name) && name.endsWith('.quaternion')) {
+        stabilizedTracks.push(track.clone());
+      }
+      continue;
+    }
     stabilizedTracks.push(track.clone());
   }
 
@@ -435,7 +471,8 @@ function stabilizeCS2ClipToShoulderPocket(
  * Slices the CS2 First-Person Arms Sketchfab GLB clips (Equip, Shots, Reload, Inspect)
  * into clean, responsive game-ready clips (CS2_Idle, CS2_Walk, CS2_Draw, CS2_Fire,
  * CS2_Reload, CS2_Inspect) at 30 FPS while anchoring upper arms to the authentic CS2
- * 60-66 deg FOV shoulder pocket and preserving lively receiver/bolt/magazine motion.
+ * 60-66 deg FOV shoulder pocket, stripping all finger/palm tracks to prevent swimming
+ * or detachment, and preserving lively receiver/bolt/magazine motion.
  */
 export function buildCS2AnimationClips(
   sourceClips: THREE.AnimationClip[]
@@ -450,34 +487,56 @@ export function buildCS2AnimationClips(
 
   if (shots) {
     // Calm breathing idle window (0.80s .. 1.80s = frames 24..54 at 30fps)
-    idleClip = THREE.AnimationUtils.subclip(shots, 'CS2_Idle', 24, 54, 30);
+    idleClip = stripFingerTracks(
+      THREE.AnimationUtils.subclip(shots, 'CS2_Idle', 24, 54, 30),
+      true
+    );
     out.push(idleClip);
 
     // Subtle walk sway loop (0.80s .. 1.80s)
-    const walkClip = THREE.AnimationUtils.subclip(shots, 'CS2_Walk', 24, 54, 30);
+    const walkClip = stripFingerTracks(
+      THREE.AnimationUtils.subclip(shots, 'CS2_Walk', 24, 54, 30),
+      true
+    );
     out.push(walkClip);
 
     // Crisp single-shot recoil impulse (0.03s .. 0.43s = frames 1..13 at 30fps)
     const fireClip = THREE.AnimationUtils.subclip(shots, 'CS2_Fire', 1, 13, 30);
-    out.push(idleClip ? stabilizeCS2ClipToShoulderPocket(fireClip, idleClip, 0.20) : fireClip);
+    out.push(
+      idleClip
+        ? stabilizeCS2ClipToShoulderPocket(fireClip, idleClip, 0.20, true)
+        : stripFingerTracks(fireClip, true)
+    );
   }
 
   if (equip) {
     // Snappy CS2 tactical raise into firing stance (2.53s .. 3.10s = frames 76..93 at 30fps)
     const drawClip = THREE.AnimationUtils.subclip(equip, 'CS2_Draw', 76, 93, 30);
-    out.push(idleClip ? stabilizeCS2ClipToShoulderPocket(drawClip, idleClip, 0.16) : drawClip);
+    out.push(
+      idleClip
+        ? stabilizeCS2ClipToShoulderPocket(drawClip, idleClip, 0.16, true)
+        : stripFingerTracks(drawClip, true)
+    );
   }
 
   if (reload) {
     // Full CS2 mag-swap & bolt-release reload (0.00s .. 4.40s = frames 0..132 at 30fps)
     const reloadClip = THREE.AnimationUtils.subclip(reload, 'CS2_Reload', 0, 132, 30);
-    out.push(idleClip ? stabilizeCS2ClipToShoulderPocket(reloadClip, idleClip, 0.06) : reloadClip);
+    out.push(
+      idleClip
+        ? stabilizeCS2ClipToShoulderPocket(reloadClip, idleClip, 0.06, false)
+        : stripFingerTracks(reloadClip, false)
+    );
   }
 
   if (inspect) {
     // Full CS2 weapon inspection sweep (0.00s .. 7.60s = frames 0..228 at 30fps)
     const inspectClip = THREE.AnimationUtils.subclip(inspect, 'CS2_Inspect', 0, 228, 30);
-    out.push(idleClip ? stabilizeCS2ClipToShoulderPocket(inspectClip, idleClip, 0.24) : inspectClip);
+    out.push(
+      idleClip
+        ? stabilizeCS2ClipToShoulderPocket(inspectClip, idleClip, 0.24, true)
+        : stripFingerTracks(inspectClip, true)
+    );
   }
 
   return out;
