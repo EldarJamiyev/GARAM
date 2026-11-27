@@ -518,7 +518,7 @@ export class BotBrain {
     }
 
     if (phase === 'HOLD_FIRE') {
-      const shouldCrouch = skill >= 82 && dist > 10 && dist < 24 && timer < 0.22;
+      const shouldCrouch = skill >= 65 && dist > 8 && dist < 26 && timer < 0.34;
       return {
         nextPhase: 'HOLD_FIRE',
         nextPhaseTimer: timer,
@@ -576,31 +576,32 @@ export class BotBrain {
     let dirZ = desiredDirZ;
     let speedMultiplier = 1.0;
 
+    const MIN_SPACING = 2.05;
     for (let i = 0; i < otherPositions.length; i++) {
       const other = otherPositions[i];
       const dx = botPos.x - other.x;
       const dz = botPos.z - other.z;
       const dist = Math.hypot(dx, dz);
-      if (dist >= 1.75 || dist < 0.001) continue;
+      if (dist >= MIN_SPACING || dist < 0.001) continue;
 
       const pushX = dx / dist;
       const pushZ = dz / dist;
-      const weight = (1.75 - dist) / 1.75;
+      const weight = (MIN_SPACING - dist) / MIN_SPACING;
 
       // Always add a deterministic right-hand passing tangent so head-on bots smoothly pass
       const passSign = (botIndex % 2 === 0 ? 1 : -1);
       const tanX = -pushZ * passSign;
       const tanZ = pushX * passSign;
 
-      dirX += (pushX * 0.9 + tanX * 0.65) * weight;
-      dirZ += (pushZ * 0.9 + tanZ * 0.65) * weight;
+      dirX += (pushX * 1.25 + tanX * 0.72) * weight;
+      dirZ += (pushZ * 1.25 + tanZ * 0.72) * weight;
 
       // Gently yield speed when directly behind a teammate without ever freezing to 0.0
       const toOtherX = -pushX;
       const toOtherZ = -pushZ;
       const dotHeading = toOtherX * desiredDirX + toOtherZ * desiredDirZ;
-      if (dotHeading > 0.72 && dist < 1.35) {
-        speedMultiplier = Math.min(speedMultiplier, Math.max(0.45, dist / 1.35));
+      if (dotHeading > 0.72 && dist < 1.55) {
+        speedMultiplier = Math.min(speedMultiplier, Math.max(0.45, dist / 1.55));
       }
     }
 

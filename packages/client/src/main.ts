@@ -60,7 +60,7 @@ export class GaramGame {
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.06;
     this.renderer.autoClear = false;
 
     const mapDesc = getMapDescriptor(settingsStore.settings.mapId);

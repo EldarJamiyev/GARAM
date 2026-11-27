@@ -250,13 +250,14 @@ export const DE_DUST2_BOT_MAP_CONFIG: BotMapConfig = {
   bombsites: DE_DUST2_BOMBSITES,
   spawnPoints: DE_DUST2_SPAWN_POINTS,
   vanguardHolds: [
-    'site_center',
-    'goose',
-    'ramp_top',
-    'site_sw',
-    'stairs_bot',
-    'site_e',
     'car',
+    'site_center',
+    'short_plat',
+    'ramp_top',
+    'goose',
+    'stairs_bot',
+    'site_sw',
+    'site_e',
     'triple',
     'ninja',
     'elbow',
@@ -469,6 +470,24 @@ export class BotAISystem {
     const { navGraph, blocks: mapBlocks, bombsites, vanguardHolds, syndicateExecutes } = this.mapConfig;
     const nodePos = (id: string, fallback: Vec3): Vec3 => navGraph[id]?.pos ?? fallback;
 
+    const pickUniqueNode = (
+      candidates: readonly string[],
+      startIdx: number,
+      used: Set<string>,
+      fallback: Vec3
+    ): Vec3 => {
+      for (let offset = 0; offset < candidates.length; offset++) {
+        const id = candidates[(startIdx + offset) % candidates.length];
+        if (!used.has(id) && navGraph[id]) {
+          used.add(id);
+          return navGraph[id].pos;
+        }
+      }
+      const id = candidates[startIdx % Math.max(1, candidates.length)];
+      return nodePos(id, fallback);
+    };
+
+    const usedSynNodes = new Set<string>();
     synBots.forEach((bot, index) => {
       const decision = synBuys[index];
       bot.armor = decision.buyArmor ? 100 : 0;
@@ -481,28 +500,19 @@ export class BotAISystem {
 
       if (this.currentStrategies.syndicate === 'RUSH_A_LONG') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest =
-          index === 4
-            ? nodePos(syndicateExecutes[4 % syndicateExecutes.length], bombsites.A.center)
-            : bombsites.A.center;
+        dest = pickUniqueNode(syndicateExecutes, index, usedSynNodes, bombsites.A.center);
       } else if (this.currentStrategies.syndicate === 'SPLIT_A_MID') {
         role = index < 2 ? 'entry' : 'rotator';
-        dest =
-          index < 2
-            ? bombsites.A.center
-            : nodePos(syndicateExecutes[(index + 2) % syndicateExecutes.length], bombsites.A.center);
+        dest = pickUniqueNode(syndicateExecutes, index + 2, usedSynNodes, bombsites.A.center);
       } else if (this.currentStrategies.syndicate === 'RUSH_B_TUNNELS') {
         role = index === 0 ? 'entry' : index === 4 ? 'lurker' : 'support';
-        dest =
-          index === 4
-            ? nodePos(syndicateExecutes[5 % syndicateExecutes.length], bombsites.B.center)
-            : bombsites.B.center;
+        dest = pickUniqueNode(syndicateExecutes, index + 4, usedSynNodes, bombsites.B.center);
       } else if (this.currentStrategies.syndicate === 'MID_TO_B_SPLIT') {
         role = index < 3 ? 'entry' : 'support';
-        dest = nodePos(syndicateExecutes[index % syndicateExecutes.length], bombsites.B.center);
+        dest = pickUniqueNode(syndicateExecutes, index + 1, usedSynNodes, bombsites.B.center);
       } else {
         role = index === 0 ? 'entry' : index === 1 ? 'lurker' : 'rotator';
-        dest = nodePos(syndicateExecutes[index % syndicateExecutes.length], bombsites.A.center);
+        dest = pickUniqueNode(syndicateExecutes, index, usedSynNodes, bombsites.A.center);
       }
 
       const path = findPathAStar(
@@ -516,6 +526,7 @@ export class BotAISystem {
       this.botStates.set(bot.id, this.createBotState(bot, path, role, index, weaponId));
     });
 
+    const usedVgNodes = new Set<string>();
     vgBots.forEach((bot, index) => {
       const decision = vgBuys[index];
       bot.armor = decision.buyArmor ? 100 : 0;
@@ -527,16 +538,16 @@ export class BotAISystem {
       let dest: Vec3 = bombsites.A.center;
 
       if (this.currentStrategies.vanguard === 'STANDARD_2_1_2') {
-        dest = nodePos(vanguardHolds[index % vanguardHolds.length], bombsites.A.center);
+        dest = pickUniqueNode(vanguardHolds, index, usedVgNodes, bombsites.A.center);
         role = index === 1 || index === 3 ? 'anchor' : 'rotator';
       } else if (this.currentStrategies.vanguard === 'AGGRESSIVE_MID_CONTROL') {
-        dest = nodePos(vanguardHolds[(index + 4) % vanguardHolds.length], bombsites.A.center);
+        dest = pickUniqueNode(vanguardHolds, index + 3, usedVgNodes, bombsites.A.center);
         role = index < 2 ? 'rotator' : 'anchor';
       } else if (this.currentStrategies.vanguard === 'HEAVY_A_STACK') {
-        dest = nodePos(vanguardHolds[(index + 2) % vanguardHolds.length], bombsites.A.center);
+        dest = pickUniqueNode(vanguardHolds, index + 1, usedVgNodes, bombsites.A.center);
         role = 'anchor';
       } else {
-        dest = nodePos(vanguardHolds[(index + 6) % vanguardHolds.length], bombsites.A.center);
+        dest = pickUniqueNode(vanguardHolds, index + 5, usedVgNodes, bombsites.A.center);
         role = index % 2 === 0 ? 'rotator' : 'anchor';
       }
 
@@ -715,37 +726,64 @@ export class BotAISystem {
 
     const currentNode = findNearestNavNode(botPos, undefined, blocks, navGraph);
     const threatYaw = Math.atan2(threatAnchor.x - botPos.x, threatAnchor.z - botPos.z);
+    const eye: Vec3 = { x: botPos.x, y: botPos.y + 1.48, z: botPos.z };
 
-    // Use pre-computed doorway watchAngles (converted from -Z to +Z mesh yaw) when available
+    const isSightlineOpen = (meshYaw: number, probeDist = 3.0): boolean => {
+      const probe: Vec3 = {
+        x: eye.x + Math.sin(meshYaw) * probeDist,
+        y: eye.y,
+        z: eye.z + Math.cos(meshYaw) * probeDist,
+      };
+      return hasLineOfSight(eye, probe, blocks, this.lastSmokeOccluders, this.lastSpatialGrid);
+    };
+
+    // 1. Prefer pre-computed doorway watchAngles that have >= 3.0m clear LOS (never stare at walls)
     if (currentNode.watchAngles && currentNode.watchAngles.length > 0) {
-      let bestYaw = threatYaw;
+      let bestOpenYaw: number | null = null;
       let smallestDelta = Infinity;
       for (const rawWatch of currentNode.watchAngles) {
         const meshWatchYaw = normalizeAngleRad(rawWatch + Math.PI);
+        if (!isSightlineOpen(meshWatchYaw, 3.0)) continue;
         const delta = Math.abs(normalizeAngleRad(meshWatchYaw - threatYaw));
         if (delta < smallestDelta) {
           smallestDelta = delta;
-          bestYaw = meshWatchYaw;
+          bestOpenYaw = meshWatchYaw;
         }
       }
-      return bestYaw;
+      if (bestOpenYaw !== null) return bestOpenYaw;
     }
 
-    let bestNeighborPos: Vec3 | null = null;
+    // 2. Otherwise inspect open corridor neighbors toward the expected threat
+    let bestNeighborYaw: number | null = null;
     let bestScore = Infinity;
 
     for (const neighborId of currentNode.neighbors) {
       const neighbor = navGraph[neighborId];
       if (!neighbor) continue;
+      const candYaw = Math.atan2(neighbor.pos.x - botPos.x, neighbor.pos.z - botPos.z);
+      if (!isSightlineOpen(candYaw, 3.0)) continue;
       const dToThreat = dist3D(neighbor.pos, threatAnchor);
       if (dToThreat < bestScore) {
         bestScore = dToThreat;
-        bestNeighborPos = neighbor.pos;
+        bestNeighborYaw = candYaw;
       }
     }
+    if (bestNeighborYaw !== null) return bestNeighborYaw;
 
-    const lookTarget = bestNeighborPos ?? threatAnchor;
-    return Math.atan2(lookTarget.x - botPos.x, lookTarget.z - botPos.z);
+    // 3. Radial fallback: pick the closest open >= 3.0m sightline to threatYaw so bots never face walls
+    if (isSightlineOpen(threatYaw, 3.0)) return threatYaw;
+    let bestRadialYaw = threatYaw;
+    let bestRadialDelta = Infinity;
+    for (let i = 0; i < 12; i++) {
+      const candYaw = normalizeAngleRad(threatYaw + (i * Math.PI * 2) / 12);
+      if (!isSightlineOpen(candYaw, 3.0)) continue;
+      const delta = Math.abs(normalizeAngleRad(candYaw - threatYaw));
+      if (delta < bestRadialDelta) {
+        bestRadialDelta = delta;
+        bestRadialYaw = candYaw;
+      }
+    }
+    return bestRadialYaw;
   }
 
   private findNearbyCoverPos(botPos: Vec3, enemyPos: Vec3): Vec3 | null {
@@ -1677,10 +1715,42 @@ export class BotAISystem {
         continue;
       }
 
-      // Tactical angle-holding at arrived choke/site position (no mindless circle patrolling)
+      // Tactical angle-holding at arrived choke/site position (with personal-space anti-clump)
       if (state.holdAngleTimer > 0) {
         state.holdAngleTimer -= clampedDt;
-        const moveRes = this.applyHorizontalMovement(bot, state, 0, 0, 0, clampedDt, colliders);
+        _otherPositionsScratch.length = 0;
+        let tooClose = false;
+        for (let j = 0; j < bots.length; j++) {
+          if (j === bIdx || bots[j].isDead) continue;
+          const op = bots[j].mesh.position;
+          const d = Math.hypot(botPos.x - op.x, botPos.z - op.z);
+          if (d < 2.0) tooClose = true;
+          _otherPositionsScratch.push({ x: op.x, y: op.y, z: op.z });
+        }
+        let holdDirX = 0;
+        let holdDirZ = 0;
+        let holdSpeed = 0;
+        if (tooClose) {
+          const sep = BotBrain.computeCorridorSeparation(
+            { x: botPos.x, y: botPos.y, z: botPos.z },
+            0,
+            0,
+            bIdx,
+            _otherPositionsScratch
+          );
+          holdDirX = sep.dirX;
+          holdDirZ = sep.dirZ;
+          holdSpeed = 1.8;
+        }
+        const moveRes = this.applyHorizontalMovement(
+          bot,
+          state,
+          holdDirX,
+          holdDirZ,
+          holdSpeed,
+          clampedDt,
+          colliders
+        );
 
         let watchYaw = state.holdWatchYaw;
         if (state.soundInvestigateTarget) {

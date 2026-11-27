@@ -289,7 +289,13 @@ export function buildUtilityCallbacks(ctx: GameContext): UtilityCallbacks {
         0
       );
     },
-    onKillfeed: (text: string) => ctx.hud.addKillfeed(text),
+    onKillfeed: (text: string) => {
+      if (text.includes('eliminated')) {
+        ctx.hud.addKillfeed(text);
+      } else {
+        ctx.hud.addRadioMessage(text);
+      }
+    },
   };
 }
 
@@ -304,6 +310,12 @@ export function buildBotAICallbacks(ctx: GameContext): BotAISystemCallbacks {
       armorDamage = 0
     ) => {
       ctx.combatReport.recordDamageTaken(bot.id, bot.name, dmg, isHeadshot);
+      const botWeaponId =
+        bot.weaponId && WEAPONS[bot.weaponId]
+          ? bot.weaponId
+          : bot.team === 'Syndicate'
+            ? 'garam-47'
+            : 'vanguard-m4';
       // RaycastEngine already computed armor-penetration damage and armor durability loss
       ctx.playerManager.damagePlayer(
         dmg,
@@ -312,9 +324,14 @@ export function buildBotAICallbacks(ctx: GameContext): BotAISystemCallbacks {
         ctx.inputManager?.input.yaw ?? 0,
         ctx.bots,
         true,
-        armorDamage
+        armorDamage,
+        {
+          name: bot.name,
+          team: bot.team,
+          weaponId: botWeaponId,
+          isHeadshot,
+        }
       );
-      const botWeaponId = bot.team === 'Syndicate' ? 'garam-47' : 'vanguard-m4';
       ctx.audio.playGunshot(botWeaponId, bot.mesh.position, ctx.worldCamera.position, ctx.blocks);
     },
     onBotShootBot: (
@@ -354,7 +371,7 @@ export function buildBotAICallbacks(ctx: GameContext): BotAISystemCallbacks {
     },
     onBotRadioCallout: (bot: BotEntity, message: string) => {
       ctx.audio.playRadioChirp();
-      ctx.hud.addKillfeed(`[RADIO] ${bot.name}: "${message}"`);
+      ctx.hud.addRadioMessage(`${bot.name}: "${message}"`);
     },
   };
 }
@@ -373,7 +390,7 @@ export function buildWeaponControllerCallbacks(ctx: GameContext): WeaponCombatCa
       const scopedSens = sens * settingsStore.settings.scopedSensitivityMultiplier;
       ctx.inputManager?.setSensitivity(scopedSens);
     },
-    onUtilityThrown: () => ctx.hud.addKillfeed('Tactical Smoke Deployed'),
+    onUtilityThrown: () => ctx.hud.addRadioMessage('Tactical Smoke Deployed'),
     onHitmarker: (headshot: boolean) => ctx.hud.triggerHitmarker(headshot),
     onFire: (weapon: WeaponDef, isScoped: boolean, rayDir: THREE.Vector3, isSecondaryMelee: boolean) => {
       // Alert nearby hostile bots to gunshot acoustic signature (suppressed rifles have smaller radius)
@@ -427,7 +444,22 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
       ctx.hud.updateScores(ctScore, tScore);
       const localTeam = settingsStore.settings.faction;
       const didWin = winner === localTeam;
-      ctx.hud.showCenterBanner(`${winner.toUpperCase()} WINS THE ROUND`, reason, 4500);
+
+      // Determine winning-team MVP callsign by top kills
+      let mvpName = settingsStore.settings.callsign || 'Operator';
+      let bestKills = didWin ? ctx.playerManager.kills : -1;
+      for (const b of ctx.bots) {
+        if (b.team === winner && b.kills > bestKills) {
+          bestKills = b.kills;
+          mvpName = b.name;
+        }
+      }
+      if (!didWin && bestKills < 0) {
+        const fallbackBot = ctx.bots.find((b) => b.team === winner);
+        if (fallbackBot) mvpName = fallbackBot.name;
+      }
+
+      ctx.hud.showRoundWinRibbon(winner, reason, mvpName, 4500);
       ctx.combatReport.show();
 
       const lossStreak =
@@ -439,7 +471,7 @@ export function buildRoundCallbacks(ctx: GameContext): RoundCallbacks {
         lossStreak,
         reason.includes('Defused') || reason.includes('Detonated')
       );
-      ctx.hud.addKillfeed(`Round End Payout: +$${payout}`);
+      ctx.hud.addRadioMessage(`Round End Payout: +$${payout}`);
     },
     onResetRound: () => {
       const desc = getMapDescriptor(settingsStore.settings.mapId);
@@ -513,16 +545,16 @@ export function buildCustomizerCallbacks(ctx: GameContext): CustomizerCallbacks 
     },
     onGrantCash: () => {
       ctx.economy.devPracticeMoney();
-      ctx.hud.addKillfeed('Practice Mode: $16,000 Cash + Infinite Utility Granted');
+      ctx.hud.addRadioMessage('Practice Mode: $16,000 Cash + Infinite Utility Granted');
     },
-    onToggleInfiniteAmmo: (en: boolean) => ctx.hud.addKillfeed(`Infinite Ammo: ${en ? 'ON' : 'OFF'}`),
-    onToggleShowImpacts: (en: boolean) => ctx.hud.addKillfeed(`Show Impacts: ${en ? 'ON' : 'OFF'}`),
-    onToggleFreezeBots: (fr: boolean) => ctx.hud.addKillfeed(`Freeze Bots: ${fr ? 'FROZEN' : 'ACTIVE'}`),
+    onToggleInfiniteAmmo: (en: boolean) => ctx.hud.addRadioMessage(`Infinite Ammo: ${en ? 'ON' : 'OFF'}`),
+    onToggleShowImpacts: (en: boolean) => ctx.hud.addRadioMessage(`Show Impacts: ${en ? 'ON' : 'OFF'}`),
+    onToggleFreezeBots: (fr: boolean) => ctx.hud.addRadioMessage(`Freeze Bots: ${fr ? 'FROZEN' : 'ACTIVE'}`),
     onToggleHitboxes: (sh: boolean) => ctx.bots.forEach((b) => b.rig?.setWireframesVisible(sh)),
-    onToggleFollowRecoil: (en: boolean) => ctx.hud.addKillfeed(`Follow Recoil: ${en ? 'ON' : 'OFF'}`),
+    onToggleFollowRecoil: (en: boolean) => ctx.hud.addRadioMessage(`Follow Recoil: ${en ? 'ON' : 'OFF'}`),
     onRespawnBots: () => {
       ctx.playerManager.respawnAllBots(ctx.bots);
-      ctx.hud.addKillfeed('Respawned all bots to tactical spawn positions');
+      ctx.hud.addRadioMessage('Respawned all bots to tactical spawn positions');
     },
     onExit: () => {
       if (ctx.hasMatchStarted.value) {
@@ -632,7 +664,7 @@ export function buildInputManagerCallbacks(ctx: GameContext): InputCallbacks {
     },
     onPracticeToggle: () => {
       ctx.economy.devPracticeMoney();
-      ctx.hud.addKillfeed('Practice Mode: $16,000 Cash + Infinite Utility Granted');
+      ctx.hud.addRadioMessage('Practice Mode: $16,000 Cash + Infinite Utility Granted');
     },
     onInspectWeapon: () => ctx.weaponController?.inspectWeapon(),
     onDropWeapon: () => {
@@ -765,7 +797,7 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     onVolumeChanged: (vol: number) => ctx.audio.setMasterVolume(vol),
     onDifficultyChanged: (diff: BotDifficulty) => {
       ctx.botAI?.setDifficulty(diff);
-      ctx.hud.addKillfeed(`Bot Difficulty: ${diff.toUpperCase()}`);
+      ctx.hud.addRadioMessage(`Bot Difficulty: ${diff.toUpperCase()}`);
     },
     onFactionChanged: (faction: PlayerFaction) => {
       ctx.viewmodel.setFaction(faction);
@@ -789,15 +821,15 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
     },
     onMapChanged: (mapId: ActiveMapId) => {
       switchActiveMap(ctx, mapId);
-      ctx.hud.addKillfeed(`Arena Loaded: ${mapId.toUpperCase()}`);
+      ctx.hud.addRadioMessage(`Arena Loaded: ${mapId.toUpperCase()}`);
     },
     onQualityChanged: (quality: GraphicsQuality) => {
       ctx.applyGraphicsQuality?.(quality);
-      ctx.hud.addKillfeed(`Graphics Quality: ${quality}`);
+      ctx.hud.addRadioMessage(`Graphics Quality: ${quality}`);
     },
     onFpsLimitChanged: (limit: FpsLimit) => {
       ctx.applyFpsLimit?.(limit);
-      ctx.hud.addKillfeed(`Frame Pacing: ${limit}`);
+      ctx.hud.addRadioMessage(`Frame Pacing: ${limit}`);
     },
   };
 }

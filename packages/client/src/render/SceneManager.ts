@@ -59,6 +59,7 @@ export class SceneManager {
   private pacingTargetCb: ((now: number) => void) | null = null;
   private pacingTimerId: number | null = null;
   private lastPacedFrameMs = 0;
+  private playerFeetShadow: THREE.Mesh;
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
@@ -165,6 +166,23 @@ export class SceneManager {
 
     // 8. Dynamic Viewmodel Zone Lighting Controller
     this.viewmodelLighting = new ViewmodelLighting(this.viewmodelScene);
+
+    // 9. Subtle First-Person Grounded Contact Shadow Disc (visible when looking down at feet)
+    const feetShadowGeo = new THREE.CircleGeometry(0.42, 20);
+    feetShadowGeo.rotateX(-Math.PI / 2);
+    const feetShadowMat = new THREE.MeshBasicMaterial({
+      color: 0x090b0f,
+      transparent: true,
+      opacity: 0.36,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+    });
+    this.playerFeetShadow = new THREE.Mesh(feetShadowGeo, feetShadowMat);
+    this.playerFeetShadow.position.set(0, 0.02, 0);
+    this.playerFeetShadow.castShadow = false;
+    this.playerFeetShadow.receiveShadow = false;
+    this.worldScene.add(this.playerFeetShadow);
   }
 
   private generateProceduralPMREM(renderer: THREE.WebGLRenderer): THREE.WebGLRenderTarget {
@@ -438,19 +456,19 @@ export class SceneManager {
   }
 
   /**
-   * Configures bright, warm Counter-Strike 2 (Source 2) Mediterranean daylight for Dust 2
-   * with rich sandstone bounce GI and crisp atmospheric clarity.
+   * Configures warm golden Counter-Strike 2 (Source 2) Mediterranean daylight for Dust 2:
+   * ~34 deg angled warm gold sunlight against cool slate-blue sky shadows and sunlit sandstone haze.
    */
   public configureDust2Atmosphere(): void {
     this.horizonMesh.visible = false;
-    this.worldScene.fog = new THREE.FogExp2(0xeadcc8, 0.0011);
-    this.hemiLight.color.setHex(0xb8d8f8);
-    this.hemiLight.groundColor.setHex(0xc4a278);
-    this.hemiLight.intensity = 1.05;
+    this.worldScene.fog = new THREE.FogExp2(0xd9c8b0, 0.0042);
+    this.hemiLight.color.setHex(0x78aee8);
+    this.hemiLight.groundColor.setHex(0x8f6b47);
+    this.hemiLight.intensity = 0.58;
 
-    this.sunLight.color.setHex(0xfff0d4);
-    this.sunLight.intensity = 2.65;
-    this.sunLight.position.set(54, 62, 40);
+    this.sunLight.color.setHex(0xffe1ad);
+    this.sunLight.intensity = 3.1;
+    this.sunLight.position.set(62, 46, 36);
     this.sunLight.target.position.set(-22, 3.5, 6);
     this.sunLight.target.updateMatrixWorld(true);
     this.sunLight.updateMatrixWorld(true);
@@ -494,6 +512,7 @@ export class SceneManager {
 
   public update(dt: number, cameraPos: THREE.Vector3, currentZone?: string): void {
     this.skyMesh.position.copy(cameraPos);
+    this.playerFeetShadow.position.set(cameraPos.x, Math.max(0.02, cameraPos.y - 1.66), cameraPos.z);
     if (this.horizonMesh.visible) {
       this.horizonMesh.position.set(cameraPos.x, 0, cameraPos.z);
     }
@@ -749,6 +768,8 @@ export class SceneManager {
     (this.skyMesh.material as THREE.Material).dispose();
     this.horizonMesh.geometry.dispose();
     (this.horizonMesh.material as THREE.Material).dispose();
+    this.playerFeetShadow.geometry.dispose();
+    (this.playerFeetShadow.material as THREE.Material).dispose();
     this.postProcess.dispose();
   }
 }

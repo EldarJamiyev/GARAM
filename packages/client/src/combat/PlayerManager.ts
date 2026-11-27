@@ -5,7 +5,7 @@ import { InventoryManager } from './InventoryManager.js';
 import { DroppedWeaponManager } from './DroppedWeaponManager.js';
 import { UtilityManager, UtilityType, ThrowMode } from '../utility/UtilityManager.js';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
-import { HUDManager } from '../ui/HUDManager.js';
+import { HUDManager, computeRelativeAttackerAngleRad } from '../ui/HUDManager.js';
 import { CombatReportManager } from '../ui/CombatReportManager.js';
 import { SpectatorManager } from '../match/SpectatorManager.js';
 import { EconomyManager } from '../match/EconomyManager.js';
@@ -85,14 +85,20 @@ export class PlayerManager {
     inputYaw: number,
     bots: BotEntity[],
     armorAlreadyApplied = false,
-    armorDamage = 0
+    armorDamage = 0,
+    attackerInfo?: {
+      name: string;
+      team: 'Vanguard' | 'Syndicate';
+      weaponId: string;
+      isHeadshot?: boolean;
+    }
   ): void {
     if (this.playerHealth <= 0) return;
 
     this.player.applyTagging(0.58);
 
     if (attackerPos) {
-      const angle = Math.atan2(attackerPos.x - cameraPos.x, attackerPos.z - cameraPos.z) + inputYaw;
+      const angle = computeRelativeAttackerAngleRad(cameraPos, inputYaw, attackerPos);
       this.hud.triggerDamageIndicator(angle);
     }
 
@@ -111,7 +117,27 @@ export class PlayerManager {
       this.deaths++;
       const callsign = settingsStore.settings.callsign || 'Operator';
       const playerTeam = settingsStore.settings.faction;
-      this.hud.addKillfeed(`💀 ${callsign} was eliminated`);
+      const opposingTeam: 'Vanguard' | 'Syndicate' = playerTeam === 'Vanguard' ? 'Syndicate' : 'Vanguard';
+      if (attackerInfo) {
+        this.hud.addKillEntry({
+          killer: attackerInfo.name,
+          killerTeam: attackerInfo.team,
+          victim: callsign,
+          victimTeam: playerTeam,
+          weaponId: attackerInfo.weaponId,
+          isHeadshot: attackerInfo.isHeadshot,
+          isLocalInvolved: true,
+        });
+      } else {
+        this.hud.addKillEntry({
+          killer: 'Utility',
+          killerTeam: opposingTeam,
+          victim: callsign,
+          victimTeam: playerTeam,
+          weaponId: 'he-grenade',
+          isLocalInvolved: true,
+        });
+      }
       this.combatReport.show();
 
       const livingAllies = bots.filter((b) => b.team === playerTeam && !b.isDead);
@@ -143,7 +169,7 @@ export class PlayerManager {
     this.inventory.equipSlot(3);
     this.callbacks.onSyncActiveWeapon();
     this.audio.playReload();
-    this.hud.addKillfeed(`Dropped ${WEAPONS[state.weaponId]?.name || 'Weapon'}`);
+    this.hud.addRadioMessage(`Dropped ${WEAPONS[state.weaponId]?.name || 'Weapon'}`);
   }
 
   public equipDroppedWeapon(dropped: { weaponId: string; currentAmmo: number; reserveAmmo: number }): boolean {
@@ -159,7 +185,7 @@ export class PlayerManager {
     this.inventory.equipSlot(slot, true);
     this.callbacks.onSyncActiveWeapon();
     this.audio.playWeaponPickup();
-    this.hud.addKillfeed(`Looted ${def.name}`);
+    this.hud.addRadioMessage(`Looted ${def.name}`);
     return true;
   }
 
@@ -242,7 +268,7 @@ export class PlayerManager {
     killerName: string,
     victimBot: BotEntity,
     headshot: boolean,
-    weaponName: string,
+    _weaponName: string,
     reward: number,
     bots: BotEntity[]
   ): void {
@@ -263,9 +289,18 @@ export class PlayerManager {
       victimBot.mesh.position,
       this._dropDir
     );
-    const text = CombatReportManager.formatKillfeedEntry(killerName, victimBot.name, weaponName, headshot);
-    this.hud.addKillfeed(text, true);
+    const activeWeaponId = this.inventory.getActiveWeapon().id;
+    this.hud.addKillEntry({
+      killer: killerName,
+      killerTeam: settingsStore.settings.faction,
+      victim: victimBot.name,
+      victimTeam: victimBot.team,
+      weaponId: activeWeaponId,
+      isHeadshot: headshot,
+      isLocalInvolved: true,
+    });
     this.hud.recordRoundKill(headshot);
+    this.audio.playKillChime(this.hud.roundKillCount, headshot);
     this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, bots);
   }
 
@@ -310,14 +345,16 @@ export class PlayerManager {
         victim.mesh.position,
         this._dropDir
       );
-      const killfeedText = CombatReportManager.formatKillfeedEntry(
-        shooter.name,
-        victim.name,
-        shooterWeaponDef.name,
+      this.hud.addKillEntry({
+        killer: shooter.name,
+        killerTeam: shooter.team,
+        victim: victim.name,
+        victimTeam: victim.team,
+        weaponId: shooterWeaponDef.id,
         isHeadshot,
-        penetrated > 0
-      );
-      this.hud.addKillfeed(killfeedText);
+        isWallbang: penetrated > 0,
+        isLocalInvolved: false,
+      });
       this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, bots);
     }
   }

@@ -780,11 +780,14 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
               { reset: () => {}, show: () => {} } as never,
               {
                 addKillfeed: () => {},
+                addKillEntry: () => {},
+                addRadioMessage: () => {},
                 recordRoundKill: () => {},
                 resetRoundKills: () => { hudKillsReset = true; },
                 setFactionTheme: () => {},
                 updateScores: () => {},
                 showCenterBanner: () => {},
+                showRoundWinRibbon: () => {},
                 updateRoundTimer: () => {},
               } as never,
               { playKillSound: () => {}, playImpact: () => {} } as never,
@@ -832,8 +835,11 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
                 setFactionTheme: () => {},
                 updateScores: () => {},
                 showCenterBanner: () => {},
+                showRoundWinRibbon: () => {},
                 updateRoundTimer: () => {},
                 addKillfeed: () => {},
+                addKillEntry: () => {},
+                addRadioMessage: () => {},
                 updateInteractionBar: () => {},
               },
               combatReport: { resetRound: () => {}, show: () => {} },
@@ -1038,8 +1044,249 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
         (globalThis as unknown as { window: unknown }).window = origWin;
       }
     });
+
+    it('isolates radio/system feed (max 3 lines) from pure SVG killfeed (max 5 rows) and renders pulsing C4 timer & MVP ribbon', async () => {
+      const { HUDManager } = await import('../ui/HUDManager.js');
+
+      type MockEl = {
+        id: string;
+        textContent: string;
+        innerHTML: string;
+        className: string;
+        dataset: Record<string, string>;
+        style: Record<string, string> & { setProperty: (k: string, v: string) => void };
+        offsetWidth: number;
+        children: MockEl[];
+        firstElementChild: MockEl | null;
+        parent: MockEl | null;
+        remove: () => void;
+        classList: {
+          add: (c: string) => void;
+          remove: (c: string) => void;
+          toggle: (c: string, force?: boolean) => void;
+          contains: (c: string) => boolean;
+        };
+        appendChild: (child: MockEl) => MockEl;
+      };
+
+      const makeEl = (id: string): MockEl => {
+        const classes = new Set<string>();
+        const el: MockEl = {
+          id,
+          textContent: '',
+          innerHTML: '',
+          className: '',
+          dataset: {},
+          style: Object.assign({} as Record<string, string>, {
+            setProperty(k: string, v: string) {
+              (this as unknown as Record<string, string>)[k] = v;
+            },
+          }),
+          offsetWidth: 0,
+          children: [],
+          get firstElementChild() {
+            return this.children.length > 0 ? this.children[0] : null;
+          },
+          parent: null,
+          remove() {
+            if (!this.parent) return;
+            const idx = this.parent.children.indexOf(this);
+            if (idx >= 0) this.parent.children.splice(idx, 1);
+            this.parent = null;
+          },
+          classList: {
+            add: (c: string) => classes.add(c),
+            remove: (c: string) => classes.delete(c),
+            toggle: (c: string, force?: boolean) => {
+              if (force) classes.add(c);
+              else classes.delete(c);
+            },
+            contains: (c: string) => classes.has(c),
+          },
+          appendChild(child: MockEl) {
+            child.parent = this;
+            this.children.push(child);
+            return child;
+          },
+        };
+        return el;
+      };
+
+      const elements = new Map<string, MockEl>([
+        ['killfeed', makeEl('killfeed')],
+        ['cs2-radio-feed', makeEl('cs2-radio-feed')],
+        ['round-timer', makeEl('round-timer')],
+        ['cs2-tactical-toast', makeEl('cs2-tactical-toast')],
+        ['ui-overlay', makeEl('ui-overlay')],
+      ]);
+
+      const origDoc = globalThis.document;
+      const origWin = globalThis.window;
+      (globalThis as unknown as { document: unknown }).document = {
+        getElementById: (id: string) => elements.get(id) ?? null,
+        querySelectorAll: () => [],
+        createElement: () => makeEl('node'),
+        body: makeEl('body'),
+      };
+      (globalThis as unknown as { window: unknown }).window = {
+        setTimeout: () => 1,
+        clearTimeout: () => {},
+      };
+
+      try {
+        const hud = new HUDManager();
+
+        // Radio/system messages go strictly to #cs2-radio-feed (capped at 3) and NEVER enter #killfeed
+        hud.addRadioMessage('Kestrel: "Enemy spotted A Long"');
+        hud.addRadioMessage('Tactical Smoke Deployed');
+        hud.addRadioMessage('Purchased Kevlar Vest ($650)');
+        hud.addRadioMessage('Round End Payout: +$3250');
+
+        const radioFeed = elements.get('cs2-radio-feed')!;
+        const killfeed = elements.get('killfeed')!;
+        expect(radioFeed.children.length).toBe(3);
+        expect(radioFeed.children[0].textContent).toBe('Tactical Smoke Deployed');
+        expect(radioFeed.children[2].textContent).toBe('Round End Payout: +$3250');
+        expect(killfeed.children.length).toBe(0);
+
+        // Structured SVG killfeed caps at 5 rows with local-kill crimson highlight + SVG weapon/headshot/wallbang
+        for (let i = 1; i <= 6; i++) {
+          hud.addKillEntry({
+            killer: i === 6 ? 'Eldar' : `Bot${i}`,
+            killerTeam: i % 2 === 0 ? 'Vanguard' : 'Syndicate',
+            victim: `Target${i}`,
+            victimTeam: i % 2 === 0 ? 'Syndicate' : 'Vanguard',
+            weaponId: i === 6 ? 'garam-47' : 'desert-eagle',
+            isHeadshot: i === 6,
+            isWallbang: i === 6,
+            isLocalInvolved: i === 6,
+          });
+        }
+        expect(killfeed.children.length).toBe(5);
+        const latestKill = killfeed.children[4];
+        expect(latestKill.className).toBe('kill-entry local-kill');
+        expect(latestKill.innerHTML).toContain('kill-name ct');
+        expect(latestKill.innerHTML).toContain('kill-name t');
+        expect(latestKill.innerHTML).toContain('<svg');
+        expect(latestKill.innerHTML).toContain('kill-hs-icon');
+        expect(latestKill.innerHTML).toContain('kill-wb-icon');
+
+        // Armed bomb renders pulsing crimson C4 SVG icon in top-center timer + toast
+        hud.updateRoundTimer(38, true);
+        expect(elements.get('round-timer')!.innerHTML).toContain('c4-timer-icon');
+        expect(elements.get('round-timer')!.innerHTML).toContain('00:38');
+        expect(elements.get('cs2-tactical-toast')!.textContent).toContain('40 seconds');
+
+        // Horizontal CS2 round-win ribbon includes winning faction and MVP callsign
+        hud.showRoundWinRibbon('Vanguard', 'All Syndicate Operators Eliminated', 'Eldar');
+        const overlay = elements.get('ui-overlay')!;
+        expect(overlay.children.length).toBe(1);
+        expect(overlay.children[0].className).toBe('cs2-round-ribbon');
+        expect(overlay.children[0].innerHTML).toContain('VANGUARD WINS');
+        expect(overlay.children[0].innerHTML).toContain('MVP');
+        expect(overlay.children[0].innerHTML).toContain('Eldar');
+      } finally {
+        (globalThis as unknown as { document: unknown }).document = origDoc;
+        (globalThis as unknown as { window: unknown }).window = origWin;
+      }
+    });
+
+    it('computes accurate relative attacker bearing angles across ahead, right, left, behind, and rotated yaw', async () => {
+      const { computeRelativeAttackerAngleRad } = await import('../ui/HUDManager.js');
+
+      const player = { x: 0, z: 0 };
+      // Facing -Z (yaw = 0)
+      expect(computeRelativeAttackerAngleRad(player, 0, { x: 0, z: -10 })).toBeCloseTo(0, 4);
+      expect(computeRelativeAttackerAngleRad(player, 0, { x: 10, z: 0 })).toBeCloseTo(Math.PI / 2, 4);
+      expect(computeRelativeAttackerAngleRad(player, 0, { x: -10, z: 0 })).toBeCloseTo(-Math.PI / 2, 4);
+      expect(Math.abs(computeRelativeAttackerAngleRad(player, 0, { x: 0, z: 10 }))).toBeCloseTo(Math.PI, 4);
+
+      // Facing -X (yaw = +PI/2): attacker at (-10, 0) is straight ahead (0 rad); attacker at (0, -10) is to the right (+PI/2)
+      expect(computeRelativeAttackerAngleRad(player, Math.PI / 2, { x: -10, z: 0 })).toBeCloseTo(0, 4);
+      expect(computeRelativeAttackerAngleRad(player, Math.PI / 2, { x: 0, z: -10 })).toBeCloseTo(Math.PI / 2, 4);
+    });
+
+    it('enforces >= 2.05m bot anti-clump repulsion and assigns unique Dust 2 round-start hold positions per CT bot', async () => {
+      const THREE = await import('three');
+      const { BotBrain } = await import('@garam/shared');
+      const { BotAISystem, DE_DUST2_BOT_MAP_CONFIG } = await import('../match/BotAISystem.js');
+
+      // 1. Stationary bot within 1.4m of a teammate receives non-zero repulsive separation away from teammate
+      const sep = BotBrain.computeCorridorSeparation(
+        { x: 0, y: 0, z: 0 },
+        0,
+        0,
+        0,
+        [{ x: 1.4, y: 0, z: 0 }]
+      );
+      expect(sep.dirX).toBeLessThan(-0.5);
+      expect(Math.hypot(sep.dirX, sep.dirZ)).toBeCloseTo(1, 3);
+
+      // 2. All 5 Vanguard bots on de_dust2 receive unique final hold destinations at round start
+      const botAI = new BotAISystem(
+        {
+          onBotShootPlayer: () => {},
+          onBotShootBot: () => {},
+          onBotSpawnTracer: () => {},
+          onBotSpawnDecal: () => {},
+        },
+        'Veteran',
+        DE_DUST2_BOT_MAP_CONFIG
+      );
+
+      const makeBot = (id: string, team: 'Vanguard' | 'Syndicate', x: number, z: number) => {
+        const mesh = new THREE.Group();
+        mesh.position.set(x, 0, z);
+        return {
+          id,
+          name: id,
+          team,
+          mesh,
+          health: 100,
+          maxHealth: 100,
+          armor: 100,
+          hasHelmet: true,
+          isDead: false,
+          kills: 0,
+          deaths: 0,
+          vx: 0,
+          vz: 0,
+          lastShotTime: 0,
+          patrolWaypoints: [],
+          patrolTarget: new THREE.Vector3(x, 0, z),
+          waypointIndex: 0,
+          weaponId: team === 'Vanguard' ? 'vanguard-m4' : 'garam-47',
+        };
+      };
+
+      const bots = [
+        makeBot('ct1', 'Vanguard', -18, 12),
+        makeBot('ct2', 'Vanguard', -17, 12),
+        makeBot('ct3', 'Vanguard', -16, 12),
+        makeBot('ct4', 'Vanguard', -15, 12),
+        makeBot('ct5', 'Vanguard', -14, 12),
+        makeBot('t1', 'Syndicate', 18, -12),
+        makeBot('t2', 'Syndicate', 17, -12),
+        makeBot('t3', 'Syndicate', 16, -12),
+        makeBot('t4', 'Syndicate', 15, -12),
+        makeBot('t5', 'Syndicate', 14, -12),
+      ];
+
+      botAI.startNewRound(1, bots as never, 0, 0);
+      const statesMap = (botAI as unknown as { botStates: Map<string, { path: Array<{ x: number; z: number }> }> }).botStates;
+      const ctGoalKeys = new Set<string>();
+      for (let i = 1; i <= 5; i++) {
+        const st = statesMap.get(`ct${i}`);
+        expect(st).toBeDefined();
+        const goal = st!.path[st!.path.length - 1];
+        expect(goal).toBeDefined();
+        ctGoalKeys.add(`${goal.x.toFixed(1)},${goal.z.toFixed(1)}`);
+      }
+      expect(ctGoalKeys.size).toBe(5);
+    });
   });
 });
+
 
 
 

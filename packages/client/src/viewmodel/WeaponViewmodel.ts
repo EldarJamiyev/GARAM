@@ -628,10 +628,16 @@ export function applyCS2WeaponHandPosture(params: {
   if (cfg.leftArmPoseMode === 'pistol' && handRSocket && handLSocket) {
     handRSocket.getWorldPosition(_ikA);
     handRSocket.getWorldQuaternion(_ikQ1);
-    const pistolReloadDipY = isReloading ? -0.014 : 0;
-    _ikB.set(0.088 + narrowOffsetX, -0.094 + pistolReloadDipY, -0.225);
+
+    // Level out rifle CS2_Idle upward pitch (+14 deg) so pistols aim straight forward-left toward crosshair
+    _euler.set(-0.20, 0.09, 0.03, 'YXZ');
+    _qDelta.setFromEuler(_euler);
+    _ikQ1.premultiply(_qDelta);
+
+    const pistolReloadDipY = isReloading ? -0.016 : 0;
+    _ikB.set(0.098 + narrowOffsetX, -0.098 + pistolReloadDipY, -0.236);
     meshRoot.localToWorld(_ikB);
-    _ikC.set(0.26 + narrowOffsetX, -0.48, 0.02);
+    _ikC.set(0.28 + narrowOffsetX, -0.48, 0.02);
     meshRoot.localToWorld(_ikC);
     armIKSolver.solveCS2RightHandToTarget(_ikB, _ikC);
     if (handRSocket.parent) {
@@ -643,22 +649,43 @@ export function applyCS2WeaponHandPosture(params: {
     handRSocket.getWorldPosition(_ikD);
 
     if (weaponSocket && weaponSocket.parent) {
-      _ikE.subVectors(_ikD, _ikA);
+      // Translate AND rotate weaponSocket rigidly with handRSocket so the pistol grip stays locked inside the right palm
       weaponSocket.getWorldPosition(_ikF);
-      _ikF.add(_ikE);
+      weaponSocket.getWorldQuaternion(_ikQ2);
+      _ikF.sub(_ikA).applyQuaternion(_qDelta).add(_ikD);
+      _ikQ2.premultiply(_qDelta);
       weaponSocket.parent.updateWorldMatrix(true, false);
       weaponSocket.parent.worldToLocal(_ikF);
       weaponSocket.position.copy(_ikF);
+      const parentQ = _ikQ1.clone();
+      weaponSocket.parent.getWorldQuaternion(parentQ);
+      weaponSocket.quaternion.copy(parentQ).invert().multiply(_ikQ2);
       weaponSocket.updateMatrixWorld(true);
       weaponSocket.getWorldPosition(_ikE);
     } else {
       _ikE.copy(_ikD);
     }
 
-    const reloadDropY = isReloading ? -0.032 : 0;
-    _ikF.set(_ikE.x - 0.014, _ikE.y - 0.020 + reloadDropY, _ikE.z + 0.008);
-    _ikG.set(_ikE.x - 0.22, _ikE.y - 0.48, _ikE.z + 0.08);
+    // CS2 two-handed thumbs-forward Weaver support grip: cup tightly around outside of right hand
+    const reloadDropY = isReloading ? -0.036 : 0;
+    _ikF.set(_ikD.x - 0.022, _ikD.y - 0.010 + reloadDropY, _ikD.z - 0.008);
+    _ikG.set(_ikD.x - 0.22, _ikD.y - 0.48, _ikD.z + 0.08);
     armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
+
+    // Explicitly rotate DEF-handL_233 from rifle palm-up handguard pose into vertical Weaver wrap (palm inward +X, thumbs forward -Z)
+    if (handLSocket.parent) {
+      handLSocket.updateWorldMatrix(true, false);
+      handLSocket.getWorldQuaternion(_ikQ1);
+      // Roll left wrist inward ~+72 deg around forward (-Z) and pitch slightly forward so left palm hugs right knuckles vertically
+      _euler.set(-0.18, -0.32, 1.24, 'YXZ');
+      _qDelta.setFromEuler(_euler);
+      _ikQ1.premultiply(_qDelta);
+      handLSocket.parent.updateWorldMatrix(true, false);
+      handLSocket.parent.getWorldQuaternion(_ikQ2);
+      handLSocket.quaternion.copy(_ikQ2).invert().multiply(_ikQ1);
+      handLSocket.updateMatrixWorld(true);
+    }
+
     applyCS2PhysicalFingerGrip(armsRoot, 'pistol', bindPoseSnapshot);
     return;
   }
@@ -670,7 +697,7 @@ export function applyCS2WeaponHandPosture(params: {
     handRSocket.getWorldPosition(_ikA);
     handRSocket.getWorldQuaternion(_ikQ1);
     if (inspectEnv > 0.0001) {
-      // Subtle <= 18° right-wrist showcase tilt keeping crimson blade clearly framed during ring twirl
+      // Subtle <= 18 deg right-wrist showcase tilt keeping crimson blade clearly framed during ring twirl
       _euler.set(-0.12 * inspectEnv, 0.20 * inspectEnv, 0.15 * inspectEnv, 'XYZ');
       _qDelta.setFromEuler(_euler);
       _ikQ1.premultiply(_qDelta);
@@ -702,11 +729,26 @@ export function applyCS2WeaponHandPosture(params: {
       weaponSocket.updateMatrixWorld(true);
     }
 
-    _ikF.set(-0.088 + narrowOffsetX * 0.5, -0.096, -0.265);
+    // Relaxed CS2 Karambit off-hand: lower-left guard, palm-down & angled inward (never upright stop-sign palm)
+    _ikF.set(-0.102 + narrowOffsetX * 0.5, -0.122, -0.258);
     meshRoot.localToWorld(_ikF);
-    _ikG.set(-0.24 + narrowOffsetX * 0.5, -0.48, -0.12);
+    _ikG.set(-0.26 + narrowOffsetX * 0.5, -0.50, -0.10);
     meshRoot.localToWorld(_ikG);
     armIKSolver.solveCS2LeftHandToTarget(_ikF, _ikG);
+
+    if (handLSocket.parent) {
+      handLSocket.updateWorldMatrix(true, false);
+      handLSocket.getWorldQuaternion(_ikQ1);
+      // Pronate left wrist palm-down/inward and pitch fingers slightly downward so back of glove faces camera-up-left
+      _euler.set(-0.38, -0.44, -0.82, 'YXZ');
+      _qDelta.setFromEuler(_euler);
+      _ikQ1.premultiply(_qDelta);
+      handLSocket.parent.updateWorldMatrix(true, false);
+      handLSocket.parent.getWorldQuaternion(_ikQ2);
+      handLSocket.quaternion.copy(_ikQ2).invert().multiply(_ikQ1);
+      handLSocket.updateMatrixWorld(true);
+    }
+
     applyCS2PhysicalFingerGrip(armsRoot, 'karambit', bindPoseSnapshot);
   }
 }
@@ -830,8 +872,8 @@ export class WeaponViewmodel {
     this.armsContainer.visible = false;
     this.mesh.add(this.armsContainer);
 
-    // 3. Muzzle Flash Hand-Bounce PointLight (1.4m radius), Volumetric Radial Fireball & Gunsmoke Wisp
-    this.muzzleFlashLight = new THREE.PointLight(0xffae42, 0, 1.4);
+    // 3. Muzzle Flash Hand-Bounce PointLight (1.6m fiery orange glow), Multi-Layer Star Bloom & Gunsmoke Wisp
+    this.muzzleFlashLight = new THREE.PointLight(0xff9c2a, 0, 1.6);
     this.muzzleFlashLight.position.set(0, 0.02, -0.54);
     this.mesh.add(this.muzzleFlashLight);
 
@@ -933,45 +975,45 @@ export class WeaponViewmodel {
 
     ctx.clearRect(0, 0, 256, 256);
 
-    const outer = ctx.createRadialGradient(cx, cy, 4, cx, cy, 122);
-    outer.addColorStop(0.0, 'rgba(255, 255, 240, 1.0)');
-    outer.addColorStop(0.22, 'rgba(255, 224, 128, 0.92)');
-    outer.addColorStop(0.52, 'rgba(255, 138, 32, 0.55)');
-    outer.addColorStop(0.82, 'rgba(220, 62, 10, 0.16)');
+    const outer = ctx.createRadialGradient(cx, cy, 3, cx, cy, 124);
+    outer.addColorStop(0.0, 'rgba(255, 248, 200, 1.0)');
+    outer.addColorStop(0.18, 'rgba(255, 242, 178, 0.96)');
+    outer.addColorStop(0.46, 'rgba(255, 156, 42, 0.72)');
+    outer.addColorStop(0.76, 'rgba(235, 76, 12, 0.24)');
     outer.addColorStop(1.0, 'rgba(180, 30, 0, 0.0)');
     ctx.fillStyle = outer;
     ctx.fillRect(0, 0, 256, 256);
 
     ctx.save();
     ctx.translate(cx, cy);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       ctx.save();
-      ctx.rotate((i * Math.PI) / 3 + (i % 2) * 0.18);
-      const len = i % 2 === 0 ? 118 : 92;
-      const w = i % 2 === 0 ? 22 : 16;
+      ctx.rotate((i * Math.PI) / 4 + (i % 2) * 0.14);
+      const len = i % 2 === 0 ? 124 : 96;
+      const w = i % 2 === 0 ? 24 : 15;
       const g = ctx.createLinearGradient(0, 0, len, 0);
-      g.addColorStop(0.0, 'rgba(255, 255, 245, 0.98)');
-      g.addColorStop(0.35, 'rgba(255, 212, 98, 0.85)');
-      g.addColorStop(0.75, 'rgba(255, 118, 22, 0.35)');
-      g.addColorStop(1.0, 'rgba(255, 80, 0, 0.0)');
+      g.addColorStop(0.0, 'rgba(255, 250, 215, 1.0)');
+      g.addColorStop(0.32, 'rgba(255, 212, 92, 0.92)');
+      g.addColorStop(0.68, 'rgba(255, 130, 24, 0.48)');
+      g.addColorStop(1.0, 'rgba(230, 62, 0, 0.0)');
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(0, -w * 0.5);
-      ctx.quadraticCurveTo(len * 0.55, -w * 0.32, len, 0);
-      ctx.quadraticCurveTo(len * 0.55, w * 0.32, 0, w * 0.5);
+      ctx.quadraticCurveTo(len * 0.52, -w * 0.28, len, 0);
+      ctx.quadraticCurveTo(len * 0.52, w * 0.28, 0, w * 0.5);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
     ctx.restore();
 
-    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 34);
-    core.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
-    core.addColorStop(0.65, 'rgba(255, 248, 210, 0.85)');
-    core.addColorStop(1.0, 'rgba(255, 200, 100, 0.0)');
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 38);
+    core.addColorStop(0.0, 'rgba(255, 255, 242, 1.0)');
+    core.addColorStop(0.55, 'rgba(255, 242, 178, 0.92)');
+    core.addColorStop(1.0, 'rgba(255, 156, 42, 0.0)');
     ctx.fillStyle = core;
     ctx.beginPath();
-    ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 38, 0, Math.PI * 2);
     ctx.fill();
 
     const tex = new THREE.CanvasTexture(canvas);
@@ -985,23 +1027,27 @@ export class WeaponViewmodel {
     const flashMat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
-      opacity: 0.96,
+      opacity: 0.98,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
     this.muzzleFlashMat = flashMat;
 
-    const front = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.28), flashMat);
-    const axialH = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.16), flashMat);
+    // Multi-layered fiery star bloom: front star + tilted diagonal star + axial flame fins
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(0.30, 0.30), flashMat);
+    const frontDiag = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.24), flashMat);
+    frontDiag.rotation.z = Math.PI / 6;
+    frontDiag.position.z = -0.025;
+    const axialH = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.17), flashMat);
     axialH.rotation.y = Math.PI / 2;
-    axialH.position.z = -0.10;
-    const axialV = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.16), flashMat);
+    axialH.position.z = -0.11;
+    const axialV = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.17), flashMat);
     axialV.rotation.y = Math.PI / 2;
     axialV.rotation.x = Math.PI / 2;
-    axialV.position.z = -0.10;
+    axialV.position.z = -0.11;
 
-    flashGroup.add(front, axialH, axialV);
+    flashGroup.add(front, frontDiag, axialH, axialV);
     return flashGroup;
   }
 
@@ -1834,11 +1880,12 @@ export class WeaponViewmodel {
               : 0.96;
       const jitter = 0.86 + Math.random() * 0.34;
 
-      this.flashMaxIntensity = 4.5;
-      this.muzzleFlashLight.intensity = 4.5;
+      this.flashMaxIntensity = 5.6;
+      this.muzzleFlashLight.color.setHex(0xff9c2a);
+      this.muzzleFlashLight.intensity = 5.6;
       this.muzzleFlashMesh.visible = true;
       this.muzzleFlashMesh.rotation.z = Math.random() * Math.PI * 2;
-      this.muzzleFlashMesh.scale.setScalar(baseScale * jitter);
+      this.muzzleFlashMesh.scale.setScalar(baseScale * jitter * 1.12);
 
       // Rising barrel gunsmoke wisp after unsuppressed shot
       this.smokeIsSuppressed = false;
@@ -1925,17 +1972,17 @@ export class WeaponViewmodel {
   ): void {
     const safeDt = Math.max(0.0001, Math.min(dt, 0.05));
 
-    // Muzzle flash bounce light (48ms) & crisp unsuppressed star flash (35ms)
+    // Muzzle flash bounce light (48ms) & crisp unsuppressed fiery star bloom (40ms)
     if (this.flashTimer > 0) {
       this.flashTimer -= safeDt;
       this.syncMuzzleTipPosition();
       const lightRatio = Math.max(0, this.flashTimer / Math.max(0.001, this.flashDuration));
       this.muzzleFlashLight.intensity = this.flashMaxIntensity * lightRatio;
       const elapsedFlash = this.flashDuration - this.flashTimer;
-      const showStar = !this.flashIsSuppressed && this.flashTimer > 0 && elapsedFlash <= 0.035;
+      const showStar = !this.flashIsSuppressed && this.flashTimer > 0 && elapsedFlash <= 0.04;
       if (this.muzzleFlashMat && showStar) {
-        const starRatio = Math.max(0, 1.0 - elapsedFlash / 0.035);
-        this.muzzleFlashMat.opacity = Math.min(0.96, starRatio * 1.35);
+        const starRatio = Math.max(0, 1.0 - elapsedFlash / 0.04);
+        this.muzzleFlashMat.opacity = Math.min(0.98, starRatio * 1.45);
       }
       this.muzzleFlashMesh.visible = showStar;
     } else {

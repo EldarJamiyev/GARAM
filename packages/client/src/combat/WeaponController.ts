@@ -248,7 +248,7 @@ export class WeaponController {
 
             _reverseNormal.copy(_rayDir).negate();
             this.effects.spawnBloodBurst(_hitVec, _reverseNormal, !!hit.isHeadshot);
-            // Cast short 3.0m continuation ray behind struck operator to paint CS2 wall blood splatter
+            // Cast 3.5m continuation ray behind struck operator to paint CS2 wall blood splatter (fallback to floor beneath)
             const wallHits = executeTacticalRaycast(
               {
                 origin: { x: _hitVec.x + _rayDir.x * 0.15, y: _hitVec.y + _rayDir.y * 0.15, z: _hitVec.z + _rayDir.z * 0.15 },
@@ -257,7 +257,7 @@ export class WeaponController {
               1,
               0,
               0,
-              3.0,
+              3.5,
               blocks,
               [],
               1.0,
@@ -267,6 +267,26 @@ export class WeaponController {
               _exitVec.set(wallHits[0].point.x, wallHits[0].point.y, wallHits[0].point.z);
               _hitNormal.set(wallHits[0].normal.x, wallHits[0].normal.y, wallHits[0].normal.z);
               this.effects.spawnBloodDecal(_exitVec, _hitNormal, !!hit.isHeadshot);
+            } else {
+              const floorHits = executeTacticalRaycast(
+                {
+                  origin: { x: _hitVec.x + _rayDir.x * 0.45, y: _hitVec.y, z: _hitVec.z + _rayDir.z * 0.45 },
+                  direction: { x: 0, y: -1, z: 0 },
+                },
+                1,
+                0,
+                0,
+                2.5,
+                blocks,
+                [],
+                1.0,
+                spatialGrid
+              );
+              if (floorHits.length > 0 && !floorHits[0].targetId) {
+                _exitVec.set(floorHits[0].point.x, floorHits[0].point.y, floorHits[0].point.z);
+                _hitNormal.set(floorHits[0].normal.x, floorHits[0].normal.y, floorHits[0].normal.z);
+                this.effects.spawnBloodDecal(_exitVec, _hitNormal, !!hit.isHeadshot);
+              }
             }
             victim.rig?.triggerFlinch();
             this.callbacks.onHitmarker?.(!!hit.isHeadshot);

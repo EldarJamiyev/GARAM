@@ -187,6 +187,21 @@
       letter-spacing: 1px;
       color: #f8fafc;
       line-height: 1.05;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .c4-timer-icon {
+      width: 14px;
+      height: 14px;
+      color: #ff3b4a;
+      filter: drop-shadow(0 0 6px rgba(255, 59, 74, 0.8));
+      animation: c4TimerPulse 0.72s ease-in-out infinite;
+    }
+    @keyframes c4TimerPulse {
+      0%, 100% { opacity: 1; transform: scale(1.06); }
+      50% { opacity: 0.42; transform: scale(0.92); }
     }
     .header-scores {
       display: flex;
@@ -251,12 +266,12 @@
       white-space: nowrap;
     }
 
-    /* CS2 Sleek Killfeed (Top-Right) */
+    /* CS2 Sleek Killfeed (Top-Right — Pure Kills Only) */
     #killfeed {
       position: absolute;
       top: 16px;
       right: 16px;
-      max-width: min(320px, 40vw);
+      max-width: min(360px, 44vw);
       display: flex;
       flex-direction: column;
       align-items: flex-end;
@@ -265,7 +280,10 @@
       z-index: 45;
     }
     .kill-entry {
-      background: rgba(10, 14, 20, 0.76);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(10, 14, 20, 0.72);
       border: 1px solid rgba(255, 255, 255, 0.12);
       padding: 4px 10px;
       border-radius: 3px;
@@ -283,14 +301,122 @@
     .kill-entry.local-kill {
       background: rgba(18, 12, 16, 0.86);
       border: 1.5px solid #e11d48;
-      box-shadow: 0 0 12px rgba(225, 29, 72, 0.42);
+      box-shadow: 0 0 12px rgba(225, 29, 72, 0.45);
       color: #ffffff;
+    }
+    .kill-name.ct { color: #68a8e8; font-weight: 800; }
+    .kill-name.t { color: #e8b85a; font-weight: 800; }
+    .kill-weapon-icon {
+      display: inline-flex;
+      align-items: center;
+      color: #e2e8f0;
+      opacity: 0.94;
+      flex-shrink: 0;
+    }
+    .kill-hs-icon {
+      display: inline-flex;
+      align-items: center;
+      color: #ff3b4a;
+      filter: drop-shadow(0 0 4px rgba(255, 59, 74, 0.65));
+      flex-shrink: 0;
+    }
+    .kill-wb-icon {
+      display: inline-flex;
+      align-items: center;
+      color: #fbbf24;
+      flex-shrink: 0;
     }
     @keyframes fadeKill {
       0% { opacity: 0; transform: translateX(16px); }
       8% { opacity: 1; transform: translateX(0); }
       82% { opacity: 1; }
       100% { opacity: 0; transform: translateY(-6px); }
+    }
+
+    /* CS2 Minimalist Bottom-Left Radio & System Feed (Max 3 Compact Lines, No Box) */
+    #cs2-radio-feed {
+      position: absolute;
+      bottom: 74px;
+      left: 22px;
+      max-width: min(360px, 46vw);
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 3px;
+      pointer-events: none;
+      z-index: 42;
+    }
+    .radio-feed-line {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      line-height: 1.3;
+      color: rgba(241, 245, 249, 0.92);
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 8px rgba(0, 0, 0, 0.72);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      animation: fadeRadioLine 3.5s forwards;
+    }
+    @keyframes fadeRadioLine {
+      0% { opacity: 0; transform: translateY(4px); }
+      10% { opacity: 1; transform: translateY(0); }
+      80% { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-3px); }
+    }
+
+    /* CS2 Sleek Horizontal Round-End Ribbon Banner */
+    .cs2-round-ribbon {
+      position: absolute;
+      top: 23%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      min-width: 390px;
+      max-width: 86vw;
+      padding: 12px 34px 11px;
+      text-align: center;
+      background: linear-gradient(90deg, rgba(8, 12, 18, 0.05) 0%, rgba(10, 14, 22, 0.88) 18%, rgba(10, 14, 22, 0.88) 82%, rgba(8, 12, 18, 0.05) 100%);
+      border-top: 2px solid var(--ribbon-accent, #68a8e8);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+      pointer-events: none;
+      z-index: 48;
+      animation: cs2RibbonIn 0.28s cubic-bezier(0.2, 0.9, 0.25, 1) forwards;
+    }
+    .cs2-round-ribbon-title {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      color: var(--ribbon-accent, #68a8e8);
+      text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
+      line-height: 1.1;
+    }
+    .cs2-round-ribbon-sub {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2.2px;
+      text-transform: uppercase;
+      color: #e2e8f0;
+      margin-top: 5px;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+    }
+    .cs2-round-ribbon-mvp {
+      display: inline-block;
+      margin-top: 7px;
+      padding: 2px 12px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+      color: #fef08a;
+      background: rgba(250, 204, 21, 0.14);
+      border: 1px solid rgba(250, 204, 21, 0.45);
+      border-radius: 2px;
+    }
+    @keyframes cs2RibbonIn {
+      0% { opacity: 0; transform: translate(-50%, -56%) scaleX(0.88); }
+      100% { opacity: 1; transform: translate(-50%, -50%) scaleX(1); }
     }
 
     /* Floating 3D Damage Numbers */
@@ -478,12 +604,12 @@
       pointer-events: none;
     }
     #cs2-kill-flare.active {
-      animation: cs2KillBeam 0.62s ease-out forwards;
+      animation: cs2KillBeam 0.32s ease-out forwards;
     }
     @keyframes cs2KillBeam {
-      0% { opacity: 0.95; transform: translateX(-50%) scaleY(0.25) scaleX(0.8); }
-      30% { opacity: 0.85; transform: translateX(-50%) scaleY(1.0) scaleX(1.1); }
-      100% { opacity: 0; transform: translateX(-50%) scaleY(1.18) scaleX(0.45); }
+      0% { opacity: 0.98; transform: translateX(-50%) scaleY(0.28) scaleX(0.85); }
+      32% { opacity: 0.9; transform: translateX(-50%) scaleY(1.06) scaleX(1.12); }
+      100% { opacity: 0; transform: translateX(-50%) scaleY(1.24) scaleX(0.4); }
     }
     #cs2-kill-cards {
       display: flex;
@@ -494,25 +620,30 @@
       margin-bottom: 4px;
     }
     .cs2-kill-card {
-      width: 14px;
-      height: 18px;
+      width: 16px;
+      height: 20px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 11px;
       font-weight: 900;
       color: #f8fafc;
-      background: linear-gradient(180deg, rgba(248, 250, 252, 0.28), rgba(15, 23, 42, 0.88));
-      border: 1px solid rgba(255, 255, 255, 0.55);
+      background: linear-gradient(180deg, rgba(226, 232, 240, 0.34), rgba(15, 23, 42, 0.92));
+      border: 1px solid rgba(226, 232, 240, 0.72);
       border-radius: 2px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
-      animation: cs2CardPop 0.24s cubic-bezier(0.22, 1.25, 0.36, 1) forwards;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
+      animation: cs2CardPop 0.22s cubic-bezier(0.22, 1.25, 0.36, 1) forwards;
     }
     .cs2-kill-card.headshot {
       color: #fef08a;
-      background: linear-gradient(180deg, rgba(225, 29, 72, 0.88), rgba(127, 29, 29, 0.94));
+      background: linear-gradient(180deg, rgba(225, 29, 72, 0.92), rgba(127, 29, 29, 0.95));
       border-color: #fbbf24;
-      box-shadow: 0 0 10px rgba(225, 29, 72, 0.65);
+      box-shadow: 0 0 12px rgba(225, 29, 72, 0.72);
+    }
+    .cs2-kill-card svg {
+      width: 11px;
+      height: 11px;
+      display: block;
     }
     @keyframes cs2CardPop {
       0% { opacity: 0; transform: translateY(10px) scale(0.55); }
@@ -1029,8 +1160,11 @@
     <!-- CS2 Tactical Toast (Bomb Planted / Pickup) -->
     <div id="cs2-tactical-toast"></div>
 
-    <!-- Killfeed -->
+    <!-- Killfeed (Pure Kills Only) -->
     <div id="killfeed"></div>
+
+    <!-- CS2 Bottom-Left Radio & System Feed (Max 3 Compact Lines) -->
+    <div id="cs2-radio-feed"></div>
 
     <!-- Crosshair -->
     <div id="crosshair">

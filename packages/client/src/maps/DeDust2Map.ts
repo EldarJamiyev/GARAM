@@ -51,11 +51,16 @@ function tuneDust2Material(mat: THREE.Material, maxAniso: number): void {
     }
   }
 
-  mat.envMapIntensity = 0.78;
+  mat.envMapIntensity = 0.72;
   const name = mat.name || '';
-  if (/ground_/i.test(name)) {
-    mat.roughness = 0.76;
-    mat.envMapIntensity = 0.72;
+  if (/ground_|sand|dirt|floor|road/i.test(name)) {
+    mat.roughness = 0.78;
+    mat.envMapIntensity = 0.68;
+    mat.color.multiply(new THREE.Color(1.06, 1.01, 0.91));
+  } else if (/crate|wood|box|plank/i.test(name)) {
+    mat.roughness = Math.min(mat.roughness, 0.76);
+    mat.envMapIntensity = 0.65;
+    mat.color.multiply(new THREE.Color(1.08, 1.01, 0.90));
   } else if (/barrel|iron|metal/i.test(name)) {
     mat.metalness = 0.62;
     mat.roughness = Math.min(mat.roughness, 0.42);
@@ -65,7 +70,8 @@ function tuneDust2Material(mat: THREE.Material, maxAniso: number): void {
     mat.metalness = 0.35;
     mat.envMapIntensity = 1.45;
   } else {
-    mat.roughness = Math.min(mat.roughness, 0.86);
+    mat.roughness = Math.min(mat.roughness, 0.84);
+    mat.color.multiply(new THREE.Color(1.04, 1.0, 0.93));
   }
   mat.needsUpdate = true;
 }

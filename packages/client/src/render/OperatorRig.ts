@@ -287,7 +287,7 @@ export class OperatorRig {
       map: getSharedShadowTexture(),
       transparent: true,
       depthWrite: false,
-      opacity: 0.42,
+      opacity: 0.56,
     });
     this.contactShadow = new THREE.Mesh(geoShadow, shadowMat);
     this.contactShadow.position.y = 0.015;
