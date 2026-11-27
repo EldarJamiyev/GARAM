@@ -284,19 +284,19 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     },
   },
   'garam-karambit': {
-    socketBone: 'weapon_hand_r_5',
+    socketBone: 'DEF-handR_357',
     modelPath: '/models/karambit.glb',
     targetLength: 0.22,
     rotationEuler: [0, 0, 0],
-    localPos: [0.0186, -0.0680, 0.0221],
-    localRotEuler: [-2.6927, -0.1020, 2.3615],
-    localScale: 1.75,
+    localPos: [-0.0019, 0.2566, -0.0268],
+    localRotEuler: [0.9481, -0.1725, -2.1873],
+    localScale: 1.48,
     armsScale: 1.0,
     armsOffset: [0.044, -0.908, 0.014],
     muzzleLocalPos: [0, -0.050, -0.105],
     requiresPBodyRest: false,
     leftArmPoseMode: 'karambit',
-    ringPivotLocal: [0, 0.018, 0.085],
+    ringPivotLocal: [0, 0.0251, 0.0835],
     clips: {
       idle: 'CS2_Idle',
       walk: 'CS2_Walk',
@@ -305,10 +305,19 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
       altFire: 'CS2_Idle',
       reload: 'CS2_Idle',
       reloadFull: 'CS2_Idle',
-      inspect: 'CS2_Inspect',
+      inspect: 'CS2_Idle',
     },
   },
 };
+
+/**
+ * Smooth eased-in/out 360° retention-ring spin angle (radians) for Karambit [F] Inspect.
+ */
+export function computeKarambitInspectSpinAngle(inspectProgress: number): number {
+  const t = THREE.MathUtils.clamp(inspectProgress, 0, 1);
+  const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  return eased * Math.PI * 2;
+}
 
 export function getWeaponSocketConfig(weaponId: string): WeaponSocketConfig {
   return WEAPON_SOCKET_CONFIGS[weaponId] || WEAPON_SOCKET_CONFIGS['garam-47'];

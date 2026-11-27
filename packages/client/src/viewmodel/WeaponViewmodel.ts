@@ -6,6 +6,7 @@ import {
   CS2_ARMS_MODEL_PATH,
   WEAPON_SOCKET_CONFIGS,
   WeaponSocketConfig,
+  computeKarambitInspectSpinAngle,
   computeNarrowAspectOffsetX,
   getWeaponSocketConfig,
   resolveWeaponClipName,
@@ -480,6 +481,7 @@ export function applyCS2WeaponHandPosture(params: {
   leftHandLockWeight: number;
   isReloading: boolean;
   isInspecting: boolean;
+  inspectProgress?: number;
   narrowOffsetX?: number;
   bindPoseSnapshot?: Map<THREE.Object3D, BoneTransformSnapshot>;
 }): void {
@@ -494,6 +496,8 @@ export function applyCS2WeaponHandPosture(params: {
     gripAnchorWorld,
     leftHandLockWeight,
     isReloading,
+    isInspecting,
+    inspectProgress = 0,
     narrowOffsetX = 0,
     bindPoseSnapshot,
   } = params;
@@ -579,9 +583,22 @@ export function applyCS2WeaponHandPosture(params: {
   }
 
   if (cfg.leftArmPoseMode === 'karambit' && handRSocket && handLSocket) {
+    const inspectEnv = isInspecting
+      ? Math.sin(Math.PI * THREE.MathUtils.clamp(inspectProgress, 0, 1))
+      : 0;
     handRSocket.getWorldPosition(_ikA);
     handRSocket.getWorldQuaternion(_ikQ1);
-    _ikB.set(0.104 + narrowOffsetX, -0.097, -0.232);
+    if (inspectEnv > 0.0001) {
+      // Subtle <= 18° right-wrist showcase tilt keeping crimson blade clearly framed during ring twirl
+      _euler.set(-0.12 * inspectEnv, 0.20 * inspectEnv, 0.15 * inspectEnv, 'XYZ');
+      _qDelta.setFromEuler(_euler);
+      _ikQ1.premultiply(_qDelta);
+    }
+    _ikB.set(
+      0.104 + narrowOffsetX - 0.028 * inspectEnv,
+      -0.097 + 0.045 * inspectEnv,
+      -0.232 - 0.060 * inspectEnv
+    );
     meshRoot.localToWorld(_ikB);
     _ikC.set(0.28 + narrowOffsetX, -0.48, -0.02);
     meshRoot.localToWorld(_ikC);
@@ -594,7 +611,7 @@ export function applyCS2WeaponHandPosture(params: {
     handRSocket.updateMatrixWorld(true);
     handRSocket.getWorldPosition(_ikD);
 
-    if (weaponSocket && weaponSocket.parent) {
+    if (cfg.socketBone !== 'DEF-handR_357' && weaponSocket && weaponSocket.parent) {
       _ikE.subVectors(_ikD, _ikA);
       weaponSocket.getWorldPosition(_ikF);
       _ikF.add(_ikE);
@@ -1307,7 +1324,7 @@ export class WeaponViewmodel {
               }
             });
             // Dedicated spin group around actual retention ring pivot for draw/inspect ring-twirl
-            const pivot = cfg.ringPivotLocal ?? [0, 0.018, 0.085];
+            const pivot = cfg.ringPivotLocal ?? [0, 0.0251, 0.0835];
             const ringSpinGroup = new THREE.Group();
             ringSpinGroup.position.set(pivot[0], pivot[1], pivot[2]);
             loadedModel.position.set(-pivot[0], -pivot[1], -pivot[2]);
@@ -1731,6 +1748,11 @@ export class WeaponViewmodel {
     if (this.isReloading) return;
     this.isInspecting = true;
     this.inspectTime = 0;
+    if (this.currentWeaponId === 'garam-karambit') {
+      // Keep CS2_Idle active so rifle CS2_Inspect never spreads hands away from the Karambit
+      this.playWeaponAnimation('idle', 1.0);
+      return;
+    }
     const cfg = getWeaponSocketConfig(this.currentWeaponId);
     if (cfg.clips.inspect) {
       this.playWeaponAnimation('inspect', 1.15);
@@ -1859,6 +1881,9 @@ export class WeaponViewmodel {
           gripAnchor.getWorldPosition(_vA);
           gripAnchorWorld = _vA;
         }
+        const karambitInspectProgress = this.isInspecting
+          ? THREE.MathUtils.clamp(this.inspectTime / (Math.PI * 2), 0, 1)
+          : 0;
         applyCS2WeaponHandPosture({
           armsRoot: this.armsRoot,
           meshRoot: this.mesh,
@@ -1871,6 +1896,7 @@ export class WeaponViewmodel {
           leftHandLockWeight: this.leftHandLockWeight,
           isReloading: this.isReloading,
           isInspecting: this.isInspecting,
+          inspectProgress: karambitInspectProgress,
           narrowOffsetX: computeNarrowAspectOffsetX(this.viewportAspect),
           bindPoseSnapshot: this.bindPoseSnapshot,
         });
@@ -1986,11 +2012,14 @@ export class WeaponViewmodel {
 
     // CS2 Karambit Ring-Spin on Draw & Inspect (around index finger retention ring)
     if (this.currentWeaponId === 'garam-karambit') {
+      const inspectProgress = this.isInspecting
+        ? THREE.MathUtils.clamp(this.inspectTime / (Math.PI * 2), 0, 1)
+        : 0;
       const spinAngle =
         this.drawProgress < 1.0
           ? (1.0 - this.drawProgress) * Math.PI * 2
           : this.isInspecting
-            ? Math.sin(this.inspectTime * 2.0) * Math.PI * 2
+            ? computeKarambitInspectSpinAngle(inspectProgress)
             : 0;
       if (this.karambitRingSpinGroup) {
         this.karambitRingSpinGroup.rotation.x = spinAngle;
@@ -2072,9 +2101,9 @@ export class WeaponViewmodel {
       } else {
         const envelope = Math.sin((this.inspectTime / (Math.PI * 2)) * Math.PI);
         if (this.currentWeaponId === 'garam-karambit') {
-          inspectYaw = Math.sin(this.inspectTime) * 0.12 * envelope;
-          inspectPitch = Math.sin(this.inspectTime * 0.5) * 0.08 * envelope;
-          inspectRoll = Math.sin(this.inspectTime) * 0.18 * envelope;
+          inspectYaw = Math.sin(this.inspectTime) * 0.04 * envelope;
+          inspectPitch = Math.sin(this.inspectTime * 0.5) * 0.03 * envelope;
+          inspectRoll = Math.sin(this.inspectTime) * 0.05 * envelope;
         } else {
           inspectYaw = Math.sin(this.inspectTime) * 0.30 * envelope;
           inspectPitch = Math.sin(this.inspectTime * 0.5) * 0.12 * envelope;

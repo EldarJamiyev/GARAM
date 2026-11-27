@@ -12,6 +12,7 @@ import {
 import {
   WEAPON_SOCKET_CONFIGS,
   VIEWMODEL_NEAR_PLANE,
+  computeKarambitInspectSpinAngle,
   computeViewmodelFov,
   computeNarrowAspectOffsetX,
   resolveWeaponClipName,
@@ -1010,6 +1011,135 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
           }
         }
       }
+    }
+  });
+
+  it('keeps garam-karambit hard-locked to DEF-handR_357 and visible during [F] Inspect in-place ring spin (1440x900)', async () => {
+    const { clone } = await import('three/examples/jsm/utils/SkeletonUtils.js');
+    const { buildCS2AnimationClips, captureBindPose, restoreBindPose } = await import(
+      '../viewmodel/ViewmodelRig.js'
+    );
+
+    const gltf = await loadCS2ArmsInNode();
+    expect(gltf).not.toBeNull();
+
+    const cfg = WEAPON_SOCKET_CONFIGS['garam-karambit'];
+    expect(cfg.socketBone).toBe('DEF-handR_357');
+    expect(resolveWeaponClipName('garam-karambit', 'inspect')).toBe('CS2_Idle');
+
+    const slicedClips = buildCS2AnimationClips(gltf.animations);
+    const idleClip = slicedClips.find((c) => c.name === 'CS2_Idle')!;
+    expect(idleClip).toBeDefined();
+
+    const aspect = 1440 / 900;
+    const fov = computeViewmodelFov(aspect);
+    const narrowOffsetX = computeNarrowAspectOffsetX(aspect);
+    const camera = new THREE.PerspectiveCamera(fov, aspect, VIEWMODEL_NEAR_PLANE, 50);
+    camera.updateMatrixWorld(true);
+    camera.updateProjectionMatrix();
+
+    const root = clone(gltf.scene);
+    const bindSnapshot = captureBindPose(root);
+    initCS2FingerRestRig(root, bindSnapshot);
+
+    const meshRoot = new THREE.Group();
+    const container = new THREE.Group();
+    container.position.set(
+      cfg.armsOffset[0] + narrowOffsetX,
+      cfg.armsOffset[1],
+      cfg.armsOffset[2]
+    );
+    container.scale.setScalar(cfg.armsScale);
+    container.rotation.y = Math.PI;
+    container.add(root);
+    meshRoot.add(container);
+
+    const handR = root.getObjectByName('DEF-handR_357')!;
+    const handL = root.getObjectByName('DEF-handL_233')!;
+    const weaponSocket = root.getObjectByName('weapon_hand_r_5')!;
+    expect(handR).toBeDefined();
+    expect(handL).toBeDefined();
+
+    const pivot = cfg.ringPivotLocal ?? [0, 0.0251, 0.0835];
+    const holder = new THREE.Group();
+    holder.userData.isWeaponAttachment = true;
+    holder.position.set(...cfg.localPos);
+    holder.rotation.set(...cfg.localRotEuler);
+    holder.scale.setScalar(cfg.localScale);
+
+    const ringSpinGroup = new THREE.Group();
+    ringSpinGroup.position.set(pivot[0], pivot[1], pivot[2]);
+    const modelGroup = new THREE.Group();
+    modelGroup.position.set(-pivot[0], -pivot[1], -pivot[2]);
+    ringSpinGroup.add(modelGroup);
+    holder.add(ringSpinGroup);
+    handR.add(holder);
+
+    const mixer = new THREE.AnimationMixer(root);
+    const solver = new ArmIKSolver(root);
+
+    for (const inspectProgress of [0.0, 0.25, 0.5, 0.75, 1.0]) {
+      mixer.stopAllAction();
+      restoreBindPose(root, bindSnapshot);
+
+      const action = mixer.clipAction(idleClip);
+      action.reset().play();
+      mixer.update(0.05 + inspectProgress * 0.5);
+      meshRoot.updateMatrixWorld(true);
+
+      applyCS2WeaponHandPosture({
+        armsRoot: root,
+        meshRoot,
+        armIKSolver: solver,
+        cfg,
+        weaponSocket,
+        handRSocket: handR,
+        handLSocket: handL,
+        gripAnchorWorld: null,
+        leftHandLockWeight: 1.0,
+        isReloading: false,
+        isInspecting: true,
+        inspectProgress,
+        narrowOffsetX,
+        bindPoseSnapshot: bindSnapshot,
+      });
+
+      ringSpinGroup.rotation.x = computeKarambitInspectSpinAngle(inspectProgress);
+      meshRoot.updateMatrixWorld(true);
+
+      const ringWorld = ringSpinGroup.getWorldPosition(new THREE.Vector3());
+      const handRWorld = handR.getWorldPosition(new THREE.Vector3());
+      const ringDist = ringWorld.distanceTo(handRWorld);
+      expect(
+        ringDist,
+        `[inspectProgress=${inspectProgress}] Karambit ring pivot drifted away from DEF-handR_357 (${ringDist.toFixed(4)}m)`
+      ).toBeLessThanOrEqual(0.08);
+
+      const bladeTipWorld = new THREE.Vector3(...cfg.muzzleLocalPos).applyMatrix4(
+        modelGroup.matrixWorld
+      );
+      expect(
+        bladeTipWorld.z,
+        `[inspectProgress=${inspectProgress}] Karambit bladeTip clipped behind near plane`
+      ).toBeLessThan(-VIEWMODEL_NEAR_PLANE);
+
+      const tipNdc = bladeTipWorld.clone().project(camera);
+      expect(
+        tipNdc.x,
+        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcX out of [-0.85, 0.95]`
+      ).toBeGreaterThanOrEqual(-0.85);
+      expect(
+        tipNdc.x,
+        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcX out of [-0.85, 0.95]`
+      ).toBeLessThanOrEqual(0.95);
+      expect(
+        tipNdc.y,
+        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcY out of [-0.85, 0.55]`
+      ).toBeGreaterThanOrEqual(-0.85);
+      expect(
+        tipNdc.y,
+        `[inspectProgress=${inspectProgress}] Karambit bladeTip ndcY out of [-0.85, 0.55]`
+      ).toBeLessThanOrEqual(0.55);
     }
   });
 });
