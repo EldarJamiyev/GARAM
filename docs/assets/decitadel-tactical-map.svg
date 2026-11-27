@@ -1,154 +1,135 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" width="1000" height="760">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" width="1100" height="620">
   <defs>
     <linearGradient id="map-bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#070A0F"/>
       <stop offset="100%" stop-color="#0E131C"/>
     </linearGradient>
     <pattern id="tactical-blueprint-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(0, 240, 255, 0.05)" stroke-width="0.8"/>
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(0, 240, 255, 0.045)" stroke-width="0.8"/>
     </pattern>
     <pattern id="major-grid" width="100" height="100" patternUnits="userSpaceOnUse">
-      <path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(0, 240, 255, 0.12)" stroke-width="1.2"/>
+      <path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(0, 240, 255, 0.1)" stroke-width="1.1"/>
     </pattern>
-    <filter id="site-glow-a">
-      <feGaussianBlur stdDeviation="10" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
 
   <!-- Background Blueprint Card -->
-  <rect width="1000" height="760" rx="14" fill="url(#map-bg)" stroke="rgba(0, 240, 255, 0.25)" stroke-width="1.5"/>
-  <rect width="1000" height="760" rx="14" fill="url(#tactical-blueprint-grid)"/>
-  <rect width="1000" height="760" rx="14" fill="url(#major-grid)"/>
+  <rect width="1100" height="620" rx="14" fill="url(#map-bg)" stroke="rgba(0, 240, 255, 0.25)" stroke-width="1.5"/>
+  <rect width="1100" height="620" rx="14" fill="url(#tactical-blueprint-grid)"/>
+  <rect width="1100" height="620" rx="14" fill="url(#major-grid)"/>
 
-  <!-- Compass Rose -->
-  <g transform="translate(930, 70)" opacity="0.7">
-    <circle r="30" fill="none" stroke="rgba(0, 240, 255, 0.3)" stroke-width="1"/>
-    <line x1="0" y1="-38" x2="0" y2="38" stroke="#00F0FF" stroke-width="1.5"/>
-    <line x1="-38" y1="0" x2="38" y2="0" stroke="#00F0FF" stroke-width="1.5"/>
-    <polygon points="0,-38 -6,-15 6,-15" fill="#00F0FF"/>
-    <text x="0" y="-44" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="900" fill="#00F0FF">N</text>
-  </g>
-
-  <!-- Map Header Bar -->
-  <g transform="translate(50, 48)">
-    <text font-family="'Inter', sans-serif" font-size="24" font-weight="900" fill="#FFFFFF" letter-spacing="2">
-      DE_CITADEL — TACTICAL RADAR BLUEPRINT
+  <!-- Header Bar -->
+  <g transform="translate(44, 44)">
+    <text font-family="'Inter', sans-serif" font-size="23" font-weight="900" fill="#FFFFFF" letter-spacing="1.5">
+      MAPREGISTRY — COMPETITIVE 2-ARENA TACTICAL BLUEPRINT
     </text>
-    <text y="24" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#00F0FF" letter-spacing="1.5">
-      32-NODE CONNECTED NAVGRAPH • 5v5 COMPETITIVE DEFUSAL • 120m x 120m SECTOR
+    <text y="24" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#00F0FF" letter-spacing="1.2">
+      SHARED CLIENT &amp; 64-TICK SERVER COLLIDERS • LIVE ORTHO-BAKED RADAR • ZERO DESYNC
     </text>
   </g>
 
-  <!-- Map Geometry Floorplan -->
-  <g transform="translate(100, 110)">
-    <!-- Outer Citadel Perimeter Walls -->
-    <rect x="0" y="0" width="800" height="560" fill="rgba(12, 17, 25, 0.7)" stroke="rgba(255, 255, 255, 0.25)" stroke-width="2"/>
+  <!-- LEFT PANEL: DE_DUST2 (A-SITE) -->
+  <g transform="translate(44, 96)">
+    <rect width="486" height="444" rx="12" fill="rgba(16, 22, 32, 0.88)" stroke="rgba(212, 175, 55, 0.5)" stroke-width="1.5"/>
+    <rect width="486" height="38" rx="12" fill="rgba(212, 175, 55, 0.14)"/>
+    <text x="16" y="24" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="800" fill="#FFDF73">DE_DUST2 (A-SITE) — DEFAULT GLB</text>
+    <text x="470" y="24" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#00FF88">271 AABBs</text>
 
-    <!-- ZONE: CT SPAWN (Bottom Center) -->
-    <rect x="300" y="470" width="200" height="70" rx="6" fill="rgba(0, 240, 255, 0.08)" stroke="#00F0FF" stroke-width="1.5"/>
-    <text x="400" y="510" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="800" fill="#00F0FF">CT SPAWN (VANGUARD)</text>
+    <!-- T Spawn / Long Doors -->
+    <rect x="26" y="210" width="96" height="84" rx="6" fill="rgba(255, 42, 85, 0.1)" stroke="#FF2A55" stroke-width="1.5"/>
+    <text x="74" y="248" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="800" fill="#FF6B8B">T SPAWN</text>
+    <text x="74" y="264" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.6)">Long Entry</text>
 
-    <!-- ZONE: T SPAWN (Top Center) -->
-    <rect x="300" y="20" width="200" height="70" rx="6" fill="rgba(255, 42, 85, 0.08)" stroke="#FF2A55" stroke-width="1.5"/>
-    <text x="400" y="60" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="800" fill="#FF2A55">T SPAWN (SYNDICATE)</text>
+    <!-- Long Doors & A Pit -->
+    <rect x="148" y="268" width="96" height="60" rx="4" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.25)"/>
+    <text x="196" y="296" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#E2F1FF">A LONG</text>
+    <text x="196" y="311" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.55)">Doors &amp; Pit</text>
 
-    <!-- ZONE: MID COURTYARD (Center) -->
-    <rect x="330" y="190" width="140" height="180" rx="4" fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.3)" stroke-dasharray="4, 4"/>
-    <text x="400" y="275" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="800" fill="#E2F1FF">MID COURTYARD</text>
-    <rect x="375" y="145" width="50" height="30" fill="rgba(255, 200, 50, 0.15)" stroke="#FFDF73" stroke-width="1"/>
-    <text x="400" y="164" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#FFDF73">MID DOORS</text>
+    <!-- Short Catwalk -->
+    <rect x="148" y="132" width="110" height="54" rx="4" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.25)"/>
+    <text x="203" y="157" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#E2F1FF">A SHORT</text>
+    <text x="203" y="172" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.55)">Catwalk Stairs</text>
 
-    <!-- ZONE: BOMBSITE A (Right Side) -->
-    <rect x="560" y="120" width="200" height="230" rx="8" fill="rgba(212, 175, 55, 0.08)" stroke="#D4AF37" stroke-width="2"/>
-    <!-- Site A Plant Zone Marker -->
-    <circle cx="660" cy="235" r="45" fill="rgba(212, 175, 55, 0.15)" stroke="#D4AF37" stroke-width="2" stroke-dasharray="6, 4"/>
-    <text x="660" y="242" text-anchor="middle" font-family="'Inter', sans-serif" font-size="28" font-weight="900" fill="#FFDF73">A</text>
-    <text x="660" y="155" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#FFDF73">BOMBSITE A</text>
+    <!-- Bombsite A -->
+    <rect x="292" y="120" width="160" height="144" rx="8" fill="rgba(212, 175, 55, 0.1)" stroke="#FFDF73" stroke-width="2"/>
+    <circle cx="372" cy="186" r="36" fill="rgba(212, 175, 55, 0.18)" stroke="#FFDF73" stroke-width="1.5" stroke-dasharray="5, 4"/>
+    <text x="372" y="195" text-anchor="middle" font-family="'Inter', sans-serif" font-size="24" font-weight="900" fill="#FFDF73">A</text>
+    <text x="372" y="140" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#FFDF73">BOMBSITE A</text>
+    <text x="372" y="246" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.65)">Goose / Car / Barrels</text>
 
-    <!-- A Heaven Balcony / Stairs -->
-    <rect x="700" y="280" width="50" height="60" fill="rgba(0, 240, 255, 0.15)" stroke="#00F0FF" stroke-width="1"/>
-    <text x="725" y="315" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#00F0FF">A HEAVEN</text>
+    <!-- A Ramp -->
+    <rect x="292" y="284" width="160" height="46" rx="4" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.25)"/>
+    <text x="372" y="311" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#E2F1FF">A RAMP (SMOOTH STEP)</text>
 
-    <!-- A Long Entry Lane -->
-    <rect x="560" y="380" width="130" height="70" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.2)"/>
-    <text x="625" y="420" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#CCCCCC">A LONG ENTRY</text>
+    <!-- CT Spawn -->
+    <rect x="292" y="352" width="160" height="64" rx="6" fill="rgba(0, 240, 255, 0.1)" stroke="#00F0FF" stroke-width="1.5"/>
+    <text x="372" y="382" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00F0FF">CT SPAWN</text>
+    <text x="372" y="398" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.6)">Vanguard Defenders</text>
 
-    <!-- A Connector -->
-    <rect x="480" y="250" width="70" height="50" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.2)"/>
-    <text x="515" y="280" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#CCCCCC">A CONN</text>
-
-    <!-- ZONE: BOMBSITE B (Left Side) -->
-    <rect x="40" y="120" width="200" height="230" rx="8" fill="rgba(0, 255, 136, 0.08)" stroke="#00FF88" stroke-width="2"/>
-    <!-- Site B Plant Zone Marker -->
-    <circle cx="140" cy="235" r="45" fill="rgba(0, 255, 136, 0.15)" stroke="#00FF88" stroke-width="2" stroke-dasharray="6, 4"/>
-    <text x="140" y="242" text-anchor="middle" font-family="'Inter', sans-serif" font-size="28" font-weight="900" fill="#00FF88">B</text>
-    <text x="140" y="155" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="800" fill="#00FF88">BOMBSITE B</text>
-
-    <!-- B Tunnels Lane -->
-    <rect x="40" y="380" width="140" height="70" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.2)"/>
-    <text x="110" y="420" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#CCCCCC">B TUNNELS</text>
-
-    <!-- B Connector -->
-    <rect x="250" y="250" width="70" height="50" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.2)"/>
-    <text x="285" y="280" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#CCCCCC">B CONN</text>
-
-    <!-- NAVGRAPH WAYPOINT NODES & EDGES -->
-    <!-- Nav Edges (Dashed Tactical Lines) -->
-    <g stroke="rgba(0, 240, 255, 0.35)" stroke-width="1.5" stroke-dasharray="4, 4">
-      <!-- CT to A / Mid / B -->
-      <line x1="400" y1="470" x2="625" y2="450"/>
-      <line x1="400" y1="470" x2="400" y2="370"/>
-      <line x1="400" y1="470" x2="110" y2="450"/>
-      <!-- Mid connections -->
-      <line x1="400" y1="370" x2="515" y2="300"/>
-      <line x1="400" y1="370" x2="285" y2="300"/>
-      <line x1="400" y1="370" x2="400" y2="190"/>
-      <line x1="400" y1="190" x2="400" y2="90"/>
-      <!-- B Route -->
-      <line x1="110" y1="380" x2="140" y2="280"/>
-      <line x1="285" y1="250" x2="185" y2="235"/>
-      <line x1="400" y1="90" x2="140" y2="120"/>
-      <!-- A Route -->
-      <line x1="625" y1="380" x2="660" y2="280"/>
-      <line x1="515" y1="250" x2="615" y2="235"/>
-      <line x1="400" y1="90" x2="660" y2="120"/>
-      <!-- Heaven -->
-      <line x1="660" y1="280" x2="725" y2="280"/>
+    <!-- Tactial Flow Arrows -->
+    <g stroke="rgba(0, 240, 255, 0.45)" stroke-width="1.5" stroke-dasharray="4, 4">
+      <line x1="122" y1="230" x2="148" y2="160"/>
+      <line x1="122" y1="270" x2="148" y2="298"/>
+      <line x1="258" y1="159" x2="292" y2="159"/>
+      <line x1="244" y1="298" x2="292" y2="298"/>
+      <line x1="372" y1="352" x2="372" y2="330"/>
+      <line x1="372" y1="284" x2="372" y2="264"/>
     </g>
+  </g>
 
-    <!-- Nav Nodes (Glowing Dots) -->
-    <g fill="#00F0FF">
-      <!-- Spawns -->
-      <circle cx="400" cy="505" r="5" fill="#00F0FF"/>
-      <circle cx="400" cy="55" r="5" fill="#FF2A55"/>
-      <!-- Mid -->
-      <circle cx="400" cy="370" r="4"/>
-      <circle cx="400" cy="275" r="4"/>
-      <circle cx="400" cy="190" r="4"/>
-      <!-- A Site -->
-      <circle cx="625" cy="415" r="4"/>
-      <circle cx="660" cy="280" r="4"/>
-      <circle cx="660" cy="235" r="5" fill="#FFDF73"/>
-      <circle cx="725" cy="310" r="4"/>
-      <circle cx="515" cy="275" r="4"/>
-      <!-- B Site -->
-      <circle cx="110" cy="415" r="4"/>
-      <circle cx="140" cy="280" r="4"/>
-      <circle cx="140" cy="235" r="5" fill="#00FF88"/>
-      <circle cx="285" cy="275" r="4"/>
+  <!-- RIGHT PANEL: CS_OFFICE (2-SITE) -->
+  <g transform="translate(570, 96)">
+    <rect width="486" height="444" rx="12" fill="rgba(16, 22, 32, 0.88)" stroke="rgba(0, 240, 255, 0.45)" stroke-width="1.5"/>
+    <rect width="486" height="38" rx="12" fill="rgba(0, 240, 255, 0.14)"/>
+    <text x="16" y="24" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="800" fill="#00F0FF">CS_OFFICE (2-SITE ROTATION)</text>
+    <text x="470" y="24" text-anchor="end" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#00FF88">84m × 76m</text>
+
+    <!-- CT Courtyard & Garage -->
+    <rect x="26" y="346" width="210" height="70" rx="6" fill="rgba(0, 240, 255, 0.1)" stroke="#00F0FF" stroke-width="1.5"/>
+    <text x="131" y="378" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#00F0FF">FRONT COURTYARD (CT)</text>
+    <text x="131" y="395" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.6)">Snow Exterior &amp; Garage</text>
+
+    <!-- Sniper Window / Garage Overlook -->
+    <rect x="256" y="346" width="204" height="70" rx="6" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.25)"/>
+    <text x="358" y="378" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#E2F1FF">GARAGE &amp; STAIRWELL</text>
+    <text x="358" y="395" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.55)">Dual-Level Access</text>
+
+    <!-- Bombsite B (Loading Dock) -->
+    <rect x="26" y="138" width="164" height="172" rx="8" fill="rgba(0, 255, 136, 0.08)" stroke="#00FF88" stroke-width="2"/>
+    <circle cx="108" cy="224" r="34" fill="rgba(0, 255, 136, 0.15)" stroke="#00FF88" stroke-width="1.5" stroke-dasharray="5, 4"/>
+    <text x="108" y="233" text-anchor="middle" font-family="'Inter', sans-serif" font-size="24" font-weight="900" fill="#00FF88">B</text>
+    <text x="108" y="162" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="800" fill="#00FF88">BOMBSITE B</text>
+    <text x="108" y="286" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.6)">Loading Dock / Server</text>
+
+    <!-- Main Hall / Paper Storage -->
+    <rect x="206" y="168" width="76" height="114" rx="4" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.25)"/>
+    <text x="244" y="220" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9.5" font-weight="700" fill="#E2F1FF">MAIN</text>
+    <text x="244" y="234" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9.5" font-weight="700" fill="#E2F1FF">HALL</text>
+
+    <!-- Bombsite A (Boardroom) -->
+    <rect x="298" y="138" width="162" height="172" rx="8" fill="rgba(212, 175, 55, 0.1)" stroke="#FFDF73" stroke-width="2"/>
+    <circle cx="379" cy="224" r="34" fill="rgba(212, 175, 55, 0.16)" stroke="#FFDF73" stroke-width="1.5" stroke-dasharray="5, 4"/>
+    <text x="379" y="233" text-anchor="middle" font-family="'Inter', sans-serif" font-size="24" font-weight="900" fill="#FFDF73">A</text>
+    <text x="379" y="162" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="800" fill="#FFDF73">BOMBSITE A</text>
+    <text x="379" y="286" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.6)">Executive Boardroom</text>
+
+    <!-- T Spawn (Projector / Side Hall) -->
+    <rect x="130" y="56" width="226" height="58" rx="6" fill="rgba(255, 42, 85, 0.1)" stroke="#FF2A55" stroke-width="1.5"/>
+    <text x="243" y="83" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="800" fill="#FF6B8B">T SPAWN (BACK OFFICE)</text>
+    <text x="243" y="99" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="9" fill="rgba(255,255,255,0.6)">Breakroom &amp; Projector Wing</text>
+
+    <!-- Connector Lines -->
+    <g stroke="rgba(0, 240, 255, 0.45)" stroke-width="1.5" stroke-dasharray="4, 4">
+      <line x1="190" y1="224" x2="206" y2="224"/>
+      <line x1="282" y1="224" x2="298" y2="224"/>
+      <line x1="170" y1="114" x2="108" y2="138"/>
+      <line x1="315" y1="114" x2="379" y2="138"/>
+      <line x1="108" y1="346" x2="108" y2="310"/>
+      <line x1="379" y1="346" x2="379" y2="310"/>
     </g>
-
-    <!-- Sniper Sightline Indicators -->
-    <line x1="400" y1="460" x2="400" y2="100" stroke="rgba(255, 42, 85, 0.45)" stroke-width="1.2" stroke-dasharray="6, 6"/>
-    <text x="410" y="230" font-family="'JetBrains Mono', monospace" font-size="9" font-weight="700" fill="#FF2A55">MID SIGHTLINE (AWP)</text>
   </g>
 
   <!-- Legend Footer -->
-  <g transform="translate(100, 695)">
+  <g transform="translate(44, 566)">
     <circle cx="10" cy="12" r="5" fill="#00F0FF"/>
     <text x="22" y="16" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="600" fill="#E2F1FF">Vanguard (CT)</text>
 
@@ -162,6 +143,6 @@
     <text x="422" y="16" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="600" fill="#E2F1FF">Bombsite B</text>
 
     <line x1="530" y1="12" x2="560" y2="12" stroke="#00F0FF" stroke-width="1.5" stroke-dasharray="4, 4"/>
-    <text x="570" y="16" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="600" fill="#E2F1FF">A* NavGraph Lane</text>
+    <text x="570" y="16" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="600" fill="#E2F1FF">Shared MapRegistry NavGraph Lanes</text>
   </g>
 </svg>

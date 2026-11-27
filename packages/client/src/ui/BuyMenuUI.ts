@@ -141,7 +141,7 @@ export class BuyMenuUI {
       }
       if (this.economy.spendCash(650)) {
         this.economy.armor = 100;
-        this.hud.addKillfeed('Purchased Kevlar Vest ($650)');
+        this.hud.addRadioMessage('Purchased Kevlar Vest ($650)');
         this.audio.playReload();
       } else {
         this.triggerRejectionCue('INSUFFICIENT FUNDS');
@@ -157,7 +157,7 @@ export class BuyMenuUI {
       if (this.economy.spendCash(1000)) {
         this.economy.armor = 100;
         this.economy.hasHelmet = true;
-        this.hud.addKillfeed('Purchased Kevlar + Tactical Helmet ($1,000)');
+        this.hud.addRadioMessage('Purchased Kevlar + Tactical Helmet ($1,000)');
         this.audio.playReload();
       } else {
         this.triggerRejectionCue('INSUFFICIENT FUNDS');
@@ -173,7 +173,7 @@ export class BuyMenuUI {
       const kitPrice = ECONOMY.prices.defuseKit;
       if (this.economy.spendCash(kitPrice)) {
         this.economy.hasDefuseKit = true;
-        this.hud.addKillfeed(`Purchased Fast Defusal Kit ($${kitPrice})`);
+        this.hud.addRadioMessage(`Purchased Fast Defusal Kit ($${kitPrice})`);
         this.audio.playReload();
       } else {
         this.triggerRejectionCue('INSUFFICIENT FUNDS');
@@ -195,7 +195,7 @@ export class BuyMenuUI {
           currentAmmo: 1,
           reserveAmmo: 0,
         };
-        this.hud.addKillfeed(`Purchased ${utilInfo.label} ($${utilInfo.price})`);
+        this.hud.addRadioMessage(`Purchased ${utilInfo.label} ($${utilInfo.price})`);
         this.audio.playReload();
       } else {
         this.triggerRejectionCue('INSUFFICIENT FUNDS');
@@ -215,7 +215,7 @@ export class BuyMenuUI {
         };
         this.inventory.equipSlot(slot, true);
         this.callbacks.onWeaponEquipped(slot);
-        this.hud.addKillfeed(`Requisitioned ${def.name} ($${def.price})`);
+        this.hud.addRadioMessage(`Requisitioned ${def.name} ($${def.price})`);
         this.audio.playReload();
       } else {
         this.triggerRejectionCue('INSUFFICIENT FUNDS');
@@ -255,7 +255,7 @@ export class BuyMenuUI {
     if (practiceBtn) {
       practiceBtn.addEventListener('click', () => {
         this.economy.devPracticeMoney();
-        this.hud.addKillfeed('Practice Mode: $16,000 Cash + Infinite Utility Granted');
+        this.hud.addRadioMessage('Practice Mode: $16,000 Cash + Infinite Utility Granted');
       });
     }
 

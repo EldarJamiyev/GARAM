@@ -17,9 +17,12 @@ export interface RoundCallbacks {
   onMatchComplete: (winner: 'Vanguard' | 'Syndicate', ctScore: number, tScore: number) => void;
 }
 
-const _siteAPos = new THREE.Vector3(BOMBSITES.A.center.x, 0, BOMBSITES.A.center.z);
-const _siteBPos = new THREE.Vector3(BOMBSITES.B.center.x, 0, BOMBSITES.B.center.z);
 const _flatPlayerPos = new THREE.Vector3();
+
+export interface RoundBombsitesConfig {
+  A: { center: { x: number; y: number; z: number }; radius: number };
+  B: { center: { x: number; y: number; z: number }; radius: number };
+}
 
 export class RoundManager {
   public matchSim: MatchSimulation = new MatchSimulation();
@@ -45,11 +48,28 @@ export class RoundManager {
   private scene: THREE.Scene;
   private audio: ProceduralAudio;
   private callbacks: RoundCallbacks;
+  private bombsites: RoundBombsitesConfig;
+  private siteAPos: THREE.Vector3;
+  private siteBPos: THREE.Vector3;
 
-  constructor(scene: THREE.Scene, audio: ProceduralAudio, callbacks: RoundCallbacks) {
+  constructor(
+    scene: THREE.Scene,
+    audio: ProceduralAudio,
+    callbacks: RoundCallbacks,
+    bombsites: RoundBombsitesConfig = BOMBSITES
+  ) {
     this.scene = scene;
     this.audio = audio;
     this.callbacks = callbacks;
+    this.bombsites = bombsites;
+    this.siteAPos = new THREE.Vector3(bombsites.A.center.x, 0, bombsites.A.center.z);
+    this.siteBPos = new THREE.Vector3(bombsites.B.center.x, 0, bombsites.B.center.z);
+  }
+
+  public setBombsites(bombsites: RoundBombsitesConfig): void {
+    this.bombsites = bombsites;
+    this.siteAPos.set(bombsites.A.center.x, 0, bombsites.A.center.z);
+    this.siteBPos.set(bombsites.B.center.x, 0, bombsites.B.center.z);
   }
 
   public startMatch(): void {
@@ -130,16 +150,16 @@ export class RoundManager {
 
       if (isPlayerCarrier && playerHealth > 0) {
         _flatPlayerPos.set(playerFeetPos.x, 0, playerFeetPos.z);
-        const distA = _flatPlayerPos.distanceTo(_siteAPos);
-        const distB = _flatPlayerPos.distanceTo(_siteBPos);
-        const inSite = distA <= BOMBSITES.A.radius || distB <= BOMBSITES.B.radius;
+        const distA = _flatPlayerPos.distanceTo(this.siteAPos);
+        const distB = _flatPlayerPos.distanceTo(this.siteBPos);
+        const inSite = distA <= this.bombsites.A.radius || distB <= this.bombsites.B.radius;
 
         if (inSite && isInteracting) {
           this.plantProgress += dt;
           this.callbacks.onPlantProgress(this.plantProgress / ECONOMY.plantTimeSec);
 
           if (this.plantProgress >= ECONOMY.plantTimeSec) {
-            this.armBomb(playerFeetPos, distA <= BOMBSITES.A.radius ? 'A' : 'B');
+            this.armBomb(playerFeetPos, distA <= this.bombsites.A.radius ? 'A' : 'B');
           }
         } else {
           this.plantProgress = 0;

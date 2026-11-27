@@ -31,7 +31,7 @@
       GARAM: ZERO HOUR — MONOREPO &amp; NETWORKING ARCHITECTURE
     </text>
     <text y="24" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="600" fill="rgba(0, 240, 255, 0.8)" letter-spacing="1.2">
-      DETERMINISTIC 128Hz KERNEL • DUAL-PASS RENDERING • 64-TICK LAG-COMPENSATED REWIND
+      DETERMINISTIC 128Hz KERNEL • SHARED MAPREGISTRY • 64-TICK BINARY REWIND
     </text>
   </g>
 
@@ -45,25 +45,25 @@
 
     <!-- Content Items -->
     <g transform="translate(18, 65)">
-      <text font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Three.js WebGL2 / WebGPU</text>
-      <text y="18" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Dual-Pass Viewmodel (65° FOV, No Clipping)</text>
-      <text y="34" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• PMREM IBL PBR Metallic Sheen</text>
-      <text y="50" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Mesh Pooling (Decals, Tracers, Smoke)</text>
+      <text font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Three.js WebGL2 PBR Pipeline</text>
+      <text y="18" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Dual-Pass Viewmodels (60°–66° FOV)</text>
+      <text y="34" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Biomechanical Physical Finger Grips</text>
+      <text y="50" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Faction Gloves (CT Navy / T Crimson)</text>
 
-      <text y="82" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Audio &amp; Tactical Systems</text>
-      <text y="100" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Web Audio 0.38s Convolver Reverb</text>
-      <text y="116" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Spatial Raycast Obstruction Muffling</text>
-      <text y="132" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Low-Ammo (&lt;=5) Metallic Cues</text>
+      <text y="82" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">3P Operators &amp; Baked Radar</text>
+      <text y="100" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• OperatorArmIK Dual-Hand Socket Lock</text>
+      <text y="116" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Ortho-Baked Radar &amp; Spatial Audio</text>
+      <text y="132" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Adaptive AUTO Quality (Non-Sticky)</text>
 
-      <text y="164" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Match &amp; Combat UI</text>
-      <text y="182" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Teammate Spectator Camera (M1/M2)</text>
-      <text y="198" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Damage Given/Taken Combat Report</text>
-      <text y="214" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 2D Canvas Radar &amp; Audio Cues</text>
+      <text y="164" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Zero-Overlap Match &amp; HUD UI</text>
+      <text y="182" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Lobby Map Switch + [?] Controls Modal</text>
+      <text y="198" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Zero-Collision HUD (Desktop &amp; Mobile)</text>
+      <text y="214" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Teammate Spectator &amp; Combat Report</text>
       <text y="230" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Floor Weapons [G] / Walkover Looting</text>
 
       <text y="262" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Architectural Discipline</text>
-      <text y="280" font-family="'Inter', sans-serif" font-size="11" fill="rgba(0, 255, 136, 0.85)">• main.ts &lt;= 650 Lines Orchestrator</text>
-      <text y="296" font-family="'Inter', sans-serif" font-size="11" fill="rgba(0, 255, 136, 0.85)">• Single-Responsibility Subsystems</text>
+      <text y="280" font-family="'Inter', sans-serif" font-size="11" fill="rgba(0, 255, 136, 0.85)">• main.ts &lt;= 320 Lines Orchestrator</text>
+      <text y="296" font-family="'Inter', sans-serif" font-size="11" fill="rgba(0, 255, 136, 0.85)">• Clean GPU Disposal on Map Switch</text>
     </g>
   </g>
 
@@ -77,20 +77,20 @@
 
     <!-- Content Items -->
     <g transform="translate(18, 65)">
-      <text font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">128Hz Fixed Kinematics</text>
-      <text y="18" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Circle-AABB SAT Closest-Point Clip</text>
-      <text y="34" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Normal-Velocity Deflection (No Stick)</text>
-      <text y="50" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Air Strafe, Counter-Strafing, Crouch-Jump</text>
+      <text font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">128Hz Smooth Step Kinematics</text>
+      <text y="18" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Circle-AABB SAT + SpatialGrid</text>
+      <text y="34" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• CS2 Step-Up / Step-Down Grounding</text>
+      <text y="50" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Bidirectional stepOffsetY Smoothing</text>
 
-      <text y="82" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Ballistics &amp; Smoke Occlusion</text>
-      <text y="100" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 5-Zone Hitboxes (Head 4x, Neck, Chest, Legs)</text>
-      <text y="116" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Wall Penetration Material Loss</text>
-      <text y="132" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Real-time Smoke Cloud Ray Intersect</text>
+      <text y="82" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Ballistics &amp; Utility Simulation</text>
+      <text y="100" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 5 Hitboxes (Head 4x, Chest, Stom, Arm, Leg)</text>
+      <text y="116" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Pinpoint Stationary + AWP Collaterals</text>
+      <text y="132" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Sloped Ramp-Lip Grenade Deflection</text>
 
-      <text y="164" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">A* Tactical NavGraph</text>
-      <text y="182" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 32 Bidirectional Waypoints (DE_CITADEL)</text>
-      <text y="198" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Dynamic Edge Danger Weighting</text>
-      <text y="214" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 9 Tactical Round Strategies (T &amp; CT)</text>
+      <text y="164" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">MapRegistry &amp; A* NavGraph</text>
+      <text y="182" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• DE_DUST2 (271 AABBs) + CS_OFFICE</text>
+      <text y="198" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Anti-Prefire Perception &amp; Corner Slice</text>
+      <text y="214" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Binary v2 (36+29N B) &amp; 0x03 Input</text>
 
       <text y="246" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Zero DOM / Zero Three.js</text>
       <text y="264" font-family="'Inter', sans-serif" font-size="11" fill="rgba(0, 240, 255, 0.85)">• 100% Deterministic Pure TypeScript</text>
@@ -109,19 +109,19 @@
     <!-- Content Items -->
     <g transform="translate(18, 65)">
       <text font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">64-Tick Server Simulation</text>
-      <text y="18" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 15.625ms Tick Frequency</text>
-      <text y="34" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Authoritative Kinematics Verification</text>
-      <text y="50" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Match Round State Machine</text>
+      <text y="18" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• MapRegistry Colliders &amp; Spawns Sync</text>
+      <text y="34" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 128Hz Kinematic Sub-Step Parity</text>
+      <text y="50" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• MR12 Halftime &amp; Bomb Mutexes</text>
 
       <text y="82" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Lag-Compensated Rewind</text>
-      <text y="100" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 80ms Past Hitbox Ring Buffer (64 Frames)</text>
-      <text y="116" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Sub-tick Spherical Lerp Interpolation</text>
-      <text y="132" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Anti-Peekers Advantage Rewind</text>
+      <text y="100" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• 64-Slot Ring-Buffer Hitbox Rewind</text>
+      <text y="116" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Crouch &amp; Yaw-Aware Capsule Rewind</text>
+      <text y="132" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Live Smoke-Occluded PVS Visibility</text>
 
-      <text y="164" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Competitive Networking</text>
-      <text y="182" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Binary / Compact JSON Packets</text>
-      <text y="198" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Client Prediction Reconciliation</text>
-      <text y="214" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Server-Side Ballistics Validation</text>
+      <text y="164" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Security &amp; RoomRegistry</text>
+      <text y="182" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• RTT Challenge + Origin Validation</text>
+      <text y="198" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Token-Bucket Rate &amp; 2KB Cap</text>
+      <text y="214" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255,255,255,0.6)">• Authoritative Ballistics &amp; Utility</text>
 
       <text y="246" font-family="'Inter', sans-serif" font-size="13" font-weight="700" fill="#FFFFFF">Deployment Ready</text>
       <text y="264" font-family="'Inter', sans-serif" font-size="11" fill="rgba(255, 42, 85, 0.85)">• Headless Node.js Worker</text>
@@ -130,11 +130,9 @@
   </g>
 
   <!-- Data Flow Arrows -->
-  <!-- Client to Shared -->
   <path d="M 350 200 L 395 200" stroke="#00F0FF" stroke-width="2" stroke-dasharray="4, 3"/>
   <polygon points="395,200 387,196 387,204" fill="#00F0FF"/>
 
-  <!-- Server to Shared -->
   <path d="M 750 200 L 705 200" stroke="#00F0FF" stroke-width="2" stroke-dasharray="4, 3"/>
   <polygon points="705,200 713,196 713,204" fill="#00F0FF"/>
 
@@ -142,7 +140,7 @@
   <g transform="translate(200, 492)">
     <line x1="0" y1="0" x2="700" y2="0" stroke="rgba(255, 255, 255, 0.2)" stroke-width="1.5" stroke-dasharray="6, 6"/>
     <text x="350" y="-8" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#00F0FF" letter-spacing="1.5">
-      &lt;== WEBSOCKET RPC // 64-TICK STATE SYNC // CLIENT-SIDE INPUT PREDICTION ==&gt;
+      &lt;== BINARY v2 WEBSOCKET // 64-TICK STATE SYNC // MAPREGISTRY HANDSHAKE ==&gt;
     </text>
   </g>
 </svg>

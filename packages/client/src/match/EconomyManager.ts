@@ -7,12 +7,18 @@ export interface PosXZ {
   z: number;
 }
 
+export interface BuyZonesConfig {
+  VANGUARD_BUY_ZONE: { minX: number; maxX: number; minZ: number; maxZ: number };
+  SYNDICATE_BUY_ZONE: { minX: number; maxX: number; minZ: number; maxZ: number };
+}
+
 export class EconomyManager {
   public cash = ECONOMY.startingCash; // $800
   public armor = 100;
   public hasHelmet = true;
   public hasDefuseKit = false;
   public practiceInfiniteUtility = false;
+  private spawnZones: BuyZonesConfig;
 
   public ownedUtilities: Record<UtilityType, number> = {
     'smoke-grenade': 1,
@@ -21,8 +27,16 @@ export class EconomyManager {
     'molotov': 0,
   };
 
+  constructor(spawnZones: BuyZonesConfig = SPAWN_ZONES) {
+    this.spawnZones = spawnZones;
+  }
+
+  public setSpawnZones(spawnZones: BuyZonesConfig): void {
+    this.spawnZones = spawnZones;
+  }
+
   public isInsideBuyZone(playerPos: PosXZ, faction: 'Vanguard' | 'Syndicate' = settingsStore.settings.faction): boolean {
-    const bz = faction === 'Syndicate' ? SPAWN_ZONES.SYNDICATE_BUY_ZONE : SPAWN_ZONES.VANGUARD_BUY_ZONE;
+    const bz = faction === 'Syndicate' ? this.spawnZones.SYNDICATE_BUY_ZONE : this.spawnZones.VANGUARD_BUY_ZONE;
     return (
       playerPos.x >= bz.minX &&
       playerPos.x <= bz.maxX &&

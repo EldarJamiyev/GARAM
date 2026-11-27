@@ -643,7 +643,8 @@ export const DE_CITADEL_NAV_GRAPH = CS_OFFICE_NAV_GRAPH;
 export function findNearestNavNode(
   pos: Vec3,
   filter?: (node: NavNode) => boolean,
-  blocks?: MapBlockCollider[]
+  blocks?: MapBlockCollider[],
+  navGraph: Record<string, NavNode> = CS_OFFICE_NAV_GRAPH
 ): NavNode {
   let closest: NavNode | null = null;
   let minDistSq = Infinity;
@@ -652,8 +653,8 @@ export function findNearestNavNode(
 
   const eyeA = { x: pos.x, y: pos.y + 1.2, z: pos.z };
 
-  for (const key of Object.keys(CS_OFFICE_NAV_GRAPH)) {
-    const node = CS_OFFICE_NAV_GRAPH[key];
+  for (const key of Object.keys(navGraph)) {
+    const node = navGraph[key];
     if (filter && !filter(node)) continue;
 
     const dx = node.pos.x - pos.x;
@@ -677,7 +678,7 @@ export function findNearestNavNode(
     }
   }
 
-  return closestWithLOS || closest || CS_OFFICE_NAV_GRAPH['main_hall_north'];
+  return closestWithLOS || closest || navGraph['main_hall_north'] || Object.values(navGraph)[0];
 }
 
 function dist3D(a: Vec3, b: Vec3): number {
@@ -688,16 +689,17 @@ function dist3D(a: Vec3, b: Vec3): number {
 }
 
 /**
- * Fast A* pathfinding across the connected CS_OFFICE tactical navigation graph
+ * Fast A* pathfinding across any connected tactical navigation graph (defaults to CS_OFFICE_NAV_GRAPH)
  */
 export function findPathAStar(
   start: Vec3,
   goal: Vec3,
   dynamicWeights?: Record<string, number>,
-  blocks?: MapBlockCollider[]
+  blocks?: MapBlockCollider[],
+  navGraph: Record<string, NavNode> = CS_OFFICE_NAV_GRAPH
 ): Vec3[] {
-  const startNode = findNearestNavNode(start, undefined, blocks);
-  const goalNode = findNearestNavNode(goal, undefined, blocks);
+  const startNode = findNearestNavNode(start, undefined, blocks, navGraph);
+  const goalNode = findNearestNavNode(goal, undefined, blocks, navGraph);
 
   if (startNode.id === goalNode.id) {
     if (
@@ -747,22 +749,22 @@ export function findPathAStar(
       const path: Vec3[] = [{ x: goal.x, y: goal.y, z: goal.z }];
       let curr = currentId;
       while (cameFrom.has(curr)) {
-        path.unshift(CS_OFFICE_NAV_GRAPH[curr].pos);
+        path.unshift(navGraph[curr].pos);
         curr = cameFrom.get(curr)!;
       }
-      path.unshift(CS_OFFICE_NAV_GRAPH[curr].pos);
+      path.unshift(navGraph[curr].pos);
       path.unshift({ x: start.x, y: start.y, z: start.z });
       return path;
     }
 
     openSet.delete(currentId);
-    const currentNode = CS_OFFICE_NAV_GRAPH[currentId];
+    const currentNode = navGraph[currentId];
     if (!currentNode) continue;
 
     const currentG = gScore.get(currentId) ?? Infinity;
 
     for (const neighborId of currentNode.neighbors) {
-      const neighbor = CS_OFFICE_NAV_GRAPH[neighborId];
+      const neighbor = navGraph[neighborId];
       if (!neighbor) continue;
 
       const penalty = dynamicWeights?.[neighborId] ?? 0;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   MapBlockCollider,
   AABBCollider,
+  MapBounds,
   SmokeOccluder,
   SpatialGrid,
   hasLineOfSight,
@@ -117,6 +118,7 @@ export class UtilityManager {
   private sharedFireGeo: THREE.CircleGeometry;
   private dummyPuff: THREE.Object3D = new THREE.Object3D();
   private lightPool: Array<{ light: THREE.PointLight; inUse: boolean }> = [];
+  private mapBounds?: MapBounds;
 
   constructor(scene: THREE.Scene, audio: ProceduralAudio, callbacks: UtilityCallbacks) {
     this.scene = scene;
@@ -210,6 +212,10 @@ export class UtilityManager {
       slot.light.intensity = 0;
       slot.light.visible = false;
     }
+  }
+
+  public setMapBounds(bounds: MapBounds): void {
+    this.mapBounds = bounds;
   }
 
   public resetRound(): void {
@@ -314,7 +320,8 @@ export class UtilityManager {
         0.08,
         0.45,
         15.5,
-        spatialGrid
+        spatialGrid,
+        this.mapBounds
       );
 
       g.position.set(_stepPos.x, _stepPos.y, _stepPos.z);

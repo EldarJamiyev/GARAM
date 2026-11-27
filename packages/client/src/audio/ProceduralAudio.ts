@@ -7,8 +7,13 @@ const _listenerForward = new THREE.Vector3();
 const _occDir = new THREE.Vector3();
 
 const WEAPON_SAMPLE_MAP: Record<string, { url: string; volume: number }> = {
+  'garam-47': { url: '/audio/ak47_shot.mp3', volume: 0.84 },
   'vanguard-m4': { url: '/audio/m4_suppressed.mp3', volume: 0.72 },
+  'm4a4': { url: '/audio/m4a4_shot.mp3', volume: 0.80 },
+  'mp9': { url: '/audio/mp9_shot.mp3', volume: 0.76 },
   'desert-eagle': { url: '/audio/deagle_shot.mp3', volume: 0.85 },
+  'usp-s': { url: '/audio/usps_shot.mp3', volume: 0.68 },
+  'glock-18': { url: '/audio/glock18_shot.mp3', volume: 0.74 },
   'sovereign-awp': { url: '/audio/awp_shot.mp3', volume: 0.95 },
 };
 
@@ -34,11 +39,18 @@ export class ProceduralAudio {
 
   constructor() {
     // Pre-fetch ElevenLabs synthesized tactical audio bytes without creating an AudioContext before user gesture
+    this.prefetchRawAudio('/audio/ak47_shot.mp3');
+    this.prefetchRawAudio('/audio/m4_suppressed.mp3');
+    this.prefetchRawAudio('/audio/m4a4_shot.mp3');
+    this.prefetchRawAudio('/audio/mp9_shot.mp3');
+    this.prefetchRawAudio('/audio/deagle_shot.mp3');
+    this.prefetchRawAudio('/audio/usps_shot.mp3');
+    this.prefetchRawAudio('/audio/glock18_shot.mp3');
+    this.prefetchRawAudio('/audio/awp_shot.mp3');
+    this.prefetchRawAudio('/audio/headshot_dink.mp3');
+    this.prefetchRawAudio('/audio/c4_beep.mp3');
     this.prefetchRawAudio('/audio/knife_draw.mp3');
     this.prefetchRawAudio('/audio/low_ammo_click.mp3');
-    this.prefetchRawAudio('/audio/m4_suppressed.mp3');
-    this.prefetchRawAudio('/audio/deagle_shot.mp3');
-    this.prefetchRawAudio('/audio/awp_shot.mp3');
   }
 
   private async prefetchRawAudio(url: string): Promise<void> {
@@ -725,6 +737,7 @@ export class ProceduralAudio {
   public playHeadshotDink(): void {
     this.initContext();
     if (!this.ctx) return;
+    if (this.playCachedBuffer('/audio/headshot_dink.mp3', 0.82)) return;
     const t = this.ctx.currentTime;
 
     // Dual-harmonic CS2 metallic helmet dink + crunch confirm
@@ -741,6 +754,45 @@ export class ProceduralAudio {
       gain.connect(this.masterGain!);
       osc.start(t);
       osc.stop(t + 0.21);
+    }
+  }
+
+  /**
+   * CS2 ascending harmonic kill chime scaling across round kills 1..5,
+   * with a crisp upper shimmer on headshot eliminations.
+   */
+  public playKillChime(killIndex: number, isHeadshot: boolean): void {
+    this.initContext();
+    if (!this.ctx || !this.masterGain) return;
+    const t = this.ctx.currentTime;
+    const scaleHz = [523.25, 659.25, 783.99, 987.77, 1174.66];
+    const idx = Math.max(0, Math.min(scaleHz.length - 1, Math.round(killIndex) - 1));
+    const baseFreq = scaleHz[idx];
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, t);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.02, t + 0.16);
+    gain.gain.setValueAtTime(0.22, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.23);
+
+    if (isHeadshot) {
+      const shimmer = this.ctx.createOscillator();
+      const sGain = this.ctx.createGain();
+      shimmer.type = 'triangle';
+      shimmer.frequency.setValueAtTime(baseFreq * 2.0, t + 0.025);
+      shimmer.frequency.exponentialRampToValueAtTime(baseFreq * 2.5, t + 0.19);
+      sGain.gain.setValueAtTime(0.14, t + 0.025);
+      sGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      shimmer.connect(sGain);
+      sGain.connect(this.masterGain);
+      shimmer.start(t + 0.025);
+      shimmer.stop(t + 0.25);
     }
   }
 
@@ -847,11 +899,12 @@ export class ProceduralAudio {
   public playBombBeep(worldPos?: THREE.Vector3, listenerPos?: THREE.Vector3, blocks: MapBlockCollider[] = []): void {
     this.initContext();
     if (!this.ctx) return;
-    const t = this.ctx.currentTime;
     const dest = worldPos
       ? this.createSpatialRoute(worldPos, listenerPos, blocks).input
       : this.masterGain!;
+    if (this.playCachedBuffer('/audio/c4_beep.mp3', 0.58, dest)) return;
 
+    const t = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = 'sine';

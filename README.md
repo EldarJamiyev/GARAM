@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-153%20Passing-00FF88?style=for-the-badge" alt="153 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-171%20Passing-00FF88?style=for-the-badge" alt="171 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -21,13 +21,14 @@
 - **Lead Operator:** Eldar Garamov (Callsign: Sovereign-1), Supreme Commander of the GARAM Vanguard.
 - **The Conflict:** **GARAM Vanguard** (Defenders / CT) vs. **The Obsidian Syndicate** (Attackers / T).
 - **Core Directives:**
-  1. **Strict 128Hz Kinematic Determinism & Parity:** Pure mathematical kinematics with `STOP_SPEED` Source friction, `SpatialGrid` broadphase acceleration, Circle-AABB Separating Axis Theorem (SAT) wall deflection, overhead ceiling clearance verification, air-strafe speed capping, and clamped smooth stair stepping (`stepOffsetY`). Discrete 1/128s server sub-stepping and full `KinematicSnapshot` reconciliation guarantee zero Euler drift between client prediction and authoritative server.
+  1. **Strict 128Hz Kinematic Determinism & CS2 Smooth Step Traversal:** Pure mathematical kinematics with `STOP_SPEED` Source friction, `SpatialGrid` broadphase acceleration, Circle-AABB Separating Axis Theorem (SAT) wall deflection, overhead ceiling clearance verification, air-strafe speed capping, lowest-riser CS2 step-up / downhill step-down grounding, and bidirectional `stepOffsetY` camera smoothing. Discrete 1/128s server sub-stepping and full `KinematicSnapshot` reconciliation guarantee zero Euler drift between client prediction and authoritative server.
   2. **Authoritative Anti-Cheat & Input Hardening:** Ray origin, deterministic PRNG spread (`BallisticsSpread`), per-weapon fire cooldowns, 180ms weapon-deploy lockouts, and bomb plant/defuse ownership mutexes are strictly enforced server-side. Includes atomic IP connection caps, smooth token-bucket rate limiting, trusted proxy hop parsing, strict production `Origin` validation, 2KB payload caps, full-RTT `ping_challenge`/`pong_challenge` verification, and recursive prototype-pollution defenses.
-  3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All firearms (`garam-47`, `vanguard-m4`, `desert-eagle`, `sovereign-awp`) enforce `sprayPattern[0] = [0.0, 0.0]` with full magazine-length recoil arrays. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy, and scoped Sovereign AWP shots support high-penetration collateral hits (`penetrationPower >= 250`).
-  4. **Human-Perception Tactical Bot AI (Zero Prefires & Counter-Strafe Footwork):** 100% verified collision-free 51-waypoint 3-tier tactical navigation graph (>= 0.55m node clearance, >= 0.40m corridor clearance, zero dead-end nodes, bidirectional stair loops across Underpass `0.0m`, Main Deck `+2.1m`, and 4 Overlooks `+4.9m`) paired with forward-FOV visual perception, peripheral/distance/surprise reaction latencies, strict crosshair-alignment firing gates (shots fire strictly along actual slewed yaw/pitch with realistic moving-target tracking lag), counter-strafed burst-and-strafe combat footwork, cover retreats on reload/low HP, tactical choke angle-holding with corner-slicing crosshair placement, deadlock-free corridor passing, flashbang blindness & smooth anti-flash turns, live mid-match difficulty re-scaling, and smoke-occluded `hasLineOfSight`.
-  5. **Dual-Pass PBR Rendering & Unified CS2 Viewmodel Overhaul:** Depth-isolated viewmodel rendering (calibrated CS2 Pro 62° FOV, 0.005m near plane) with warm Mediterranean golden-hour lighting, `DE_MERIDIAN` three-quadrant procedural PBR architecture (warm sun-baked flagstones, Dust2/Mirage weathered limestone stucco with exposed terracotta brick, industrial slate-blue Foundry concrete with formwork seams, carved stone archways across A Main/A Connector/B Short/B Canal/CT Spawn, Mid Watchtower Nest canopy & balustrades, slatted wooden pergola beams casting parallel shadows across CT Spawn, and organic weathered wall stencils eliminating black signboards), leak-free PMREM render-target disposal, zero world-geometry clipping, unified CC-BY-4.0 rigged tactical gloved FPS arms (`fps_arms_tactical.glb` driving 28 skeletal `AnimationClip`s via `THREE.AnimationMixer` + zero-alloc 2-bone `ArmIKSolver` and forearm twist across **all 5 weapons**—including `weapon_hand_r` pistol-grip socket anchoring, left-hand forend IK lock with procedural finger curl, CS2 reverse-grip Karambit orientation with prominent visible hawkbill blade, and two-handed Weaver-grip Desert Eagle), full CS2 PBR weapon arsenal (`garam47.glb`, `m4a1s.glb`, `awp.glb`, `deagle.glb`, `karambit.glb`) with graceful procedural PBR fallback, rigged skeletal CT SAS Blue & T Balkan Dragomir operators (`operator_vanguard.glb`, `operator_syndicate.glb`) with 180° bone-parity weapon mounting, grounded contact shadows (`opacity: 0.42`), clean minimalist teammate overhead chevrons, zero-collision esports HUD (vertical right-margin weapon slots, anchored top-right killfeed, and slim translucent 46px bottom bar), world C4 & M67 grenades (`c4.glb`, `grenade.glb`), volumetric instanced 3D bullet tracers (1 draw call), barrel-tracked additive fireball muzzle flashes + rising gunsmoke wisps, pooled instanced impact sparks/dust/blood bursts, layered metallic foley & dual-harmonic titanium headshot dink Web Audio DSP, lazy-loaded `CustomizerUI`, and Vite `manualChunks` bundle splitting.
-  6. **Adaptive Clock-Skew Immune Lag Compensation & Batched Binary Netcode:** Authoritative 64-tick server simulation with 64-slot ring-buffer `O(1)` half-RTT hitbox rewind (preserving crouched posture and shortest-arc yaw interpolation), Int16-clamped Binary Protocol v2 (`36 + 29*N` bytes), and 2×128Hz batched binary inputs (`0x03`, 41 bytes) cutting upstream packet rate by 50%.
-  7. **Authoritative Utility Physics & MR12 Halftime Rules:** Shared `UtilitySimulation` steps server-side bouncing grenade arcs, LOS-occluded HE blast waves, and smoke-extinguishable 40 DPS Molotov zones alongside automatic MR12 Round 13 halftime side-swap and `$800` pistol-round resets.
+  3. **Zero Standing Spread RNG & Pinpoint First-Shot Invariant:** All primary rifles and pistols (`garam-47`, `vanguard-m4`, `m4a4`, `sovereign-awp`, `desert-eagle`, `usp-s`, `glock-18`) enforce `sprayPattern[0] = [0.0, 0.0]` with full magazine-length recoil arrays. Stationary shooting (`speed <= 0.38 m/s`) provides 100% deterministic, laser-precise first-shot accuracy, and scoped Sovereign AWP shots support high-penetration collateral hits (`penetrationPower >= 250`).
+  4. **Human-Perception Tactical Bot AI (Zero Prefires, Anti-Clump & Counter-Strafe Footwork):** Collision-free tactical waypoint & nav-graph patrolling across both `DE_DUST2 (A-SITE)` and `CS_OFFICE (2-SITE)` with unique per-bot round-start hold destinations, `>= 2.05m` personal-space separation even while holding angles, `>= 3.0m` LOS-verified threat watch angles (eliminating wall-staring), forward-FOV visual perception, peripheral/distance/surprise reaction latencies, strict crosshair-alignment firing gates, counter-strafed burst-and-strafe combat footwork with natural mid-range tactical crouching, cover retreats on reload/low HP, flashbang blindness & smooth anti-flash turns, live mid-match difficulty re-scaling, and smoke-occluded `hasLineOfSight`.
+  5. **CS2 (Source 2) Dual-Pass PBR Rendering, Authentic Weapon Grips, Pure Combat HUD & 12 Studio Audio Samples:** Depth-isolated viewmodel rendering (`60°–66°` FOV) with dedicated `RoomEnvironment` PMREM studio reflections, 3-point viewmodel lighting, calibrated per-weapon PBR materials, golden Mediterranean `DE_DUST2` daylight with warm sandstone grading & grounded contact shadows, unified CS2 Rigify first-person arms (`cs2_fps_arms.glb`) with locked two-handed Weaver pistol grips, relaxed palm-down Karambit stance & biomechanical curled fingers, fiery 8-point orange-gold muzzle flash star, near-plane-clamped razor-thin amber tracers, pooled billboarded crimson blood-mist puffs + rear-wall/floor blood splatters, full 9-weapon CS2 arsenal, 12 studio ElevenLabs CS2 audio samples (`ak47_shot`, `m4a4_shot`, `m4_suppressed`, `mp9_shot`, `deagle_shot`, `usps_shot`, `glock18_shot`, `awp_shot`, `headshot_dink`, `c4_beep`, `knife_draw`, `low_ammo_click`) + ascending kill chimes, authentic CS2 HUD (top `ALIVE | TIMER+SCORE | ALIVE` header with pulsing crimson C4 icon, pure top-right SVG killfeed with weapon silhouettes/headshot skull/wallbang icons, separate compact bottom-left radio/system feed, crisp SVG curved directional damage arc, `320ms` kill-beam flare + skull kill-card fan, sleek horizontal MVP round-win ribbon), synchronous hard-cut round resets, and compact overflow-free Lobby.
+  6. **Shared `MapRegistry` & Adaptive Clock-Skew Immune 64-Tick Netcode:** Both client and authoritative 64-tick `GameRoom.ts` resolve map colliders, spawn points, buy zones, bombsites, and bot patrol routes through a single shared `MapRegistry` (`mapId` handshake on `join`/`welcome`), eliminating online server-client map desync alongside 64-slot ring-buffer `O(1)` half-RTT hitbox rewind, Int16-clamped Binary Protocol v2 (`36 + 29*N` bytes), and 2×128Hz batched binary inputs (`0x03`, 41 bytes).
+  7. **Authoritative Utility Physics & MR12 Halftime Rules:** Shared `UtilitySimulation` steps server-side bouncing grenade arcs with sloped voxel ramp-lip deflection, active `MapBounds`, LOS-occluded HE blast waves, and smoke-extinguishable 40 DPS Molotov zones alongside automatic MR12 Round 13 halftime side-swap and `$800` pistol-round resets.
+  8. **Zero-Quality-Loss WebGL2 Optimization & `UNLIMITED FPS` Pacing:** Static map/light matrix freezing (`matrixAutoUpdate = false`), freeze-time/throttled shadow updates (`invalidateShadows`/`updateShadows`), frustum-culled and behind-camera LOD-skipped 3P `OperatorRig` updates, blur-free HUD compositing, `TypedArray` zero-allocation `[F3]` frame-time telemetry, smart software-WebGL detection banner without overwriting saved GPU presets, and selectable Lobby frame pacing (`VSYNC`, `120 FPS`, `240 FPS`, `UNLIMITED FPS` via reusable `MessageChannel`).
 
 ---
 
@@ -39,32 +40,29 @@
 
 The project is structured as an npm workspaces monorepo enforcing strict boundaries:
 
-- **`@garam/shared`**: Pure, deterministic TypeScript kernel with **zero DOM or Three.js dependencies**. Implements 128Hz kinematics with `KinematicSnapshot`, `SpatialGrid` zero-alloc broad-phase acceleration, Circle-AABB SAT collision resolution, 5-zone raycast ballistics with AWP collaterals & `BallisticsSpread`, `UtilitySimulation` grenade/HE/Molotov physics, the 51-node 3-tier `DE_MERIDIAN` `TacticalNavGraph`, MR12 CS2 economy & halftime rules, Binary Protocol v2 + batched input (`0x03`) codecs, recursive `Validator`, and `MatchSimulation`.
-- **`@garam/client`**: Client application running Three.js (WebGL2), dual-pass viewmodels, procedural PMREM IBL materials, Web Audio DSP convolver reverb + sampled weapon acoustics, 3-tier elevation-tinted LOS-spotted 2D radar, wall-deflecting dropped weapon physics, XSS-safe spectator system, pooled DOM/GPU combat VFX, lazy-loaded `CustomizerUI`, batched binary prediction reconciliation, and lean orchestrator (`main.ts < 320 lines`).
-- **`@garam/server`**: Authoritative 64-tick Node.js server running shared physics verification, ring-buffer crouch/yaw-aware historical hitbox rewind, authoritative buy/reload/utility/plant-defuse simulation with mutexes, 5v5 bot takeover & patrolling, live smoke-occluded PVS, cryptographic `RoomRegistry`, token-bucket rate limiting, and backpressure-guarded snapshot streaming.
+- **`@garam/shared`**: Pure, deterministic TypeScript kernel with **zero DOM or Three.js dependencies**. Implements 128Hz kinematics with `KinematicSnapshot`, `SpatialGrid` zero-alloc broad-phase acceleration, Circle-AABB SAT collision resolution, 5-zone raycast ballistics with AWP collaterals & `BallisticsSpread`, `UtilitySimulation` grenade/HE/Molotov physics, shared `MapRegistry` (`de_dust2` & `cs_office` descriptors), `TacticalNavGraph`, MR12 CS2 economy & halftime rules, Binary Protocol v2 + batched input (`0x03`) codecs, recursive `Validator`, and `MatchSimulation`.
+- **`@garam/client`**: Client application running Three.js (WebGL2), dual-pass `60°–66°` CS2 viewmodels with faction-tinted gloves, procedural PMREM IBL materials, Web Audio DSP convolver reverb + sampled weapon acoustics, top-down orthographic baked 2D radar, wall-deflecting dropped weapon physics, XSS-safe spectator system, pooled DOM/GPU combat VFX, lazy-loaded `CustomizerUI`, batched binary prediction reconciliation, and lean orchestrator (`main.ts <= 320 lines`).
+- **`@garam/server`**: Authoritative 64-tick Node.js server running shared `MapRegistry` physics verification, ring-buffer crouch/yaw-aware historical hitbox rewind, authoritative buy/reload/utility/plant-defuse simulation with mutexes, 5v5 bot takeover & patrolling, live smoke-occluded PVS, cryptographic `RoomRegistry`, token-bucket rate limiting, and backpressure-guarded snapshot streaming.
 
 ---
 
-## 3. DE_MERIDIAN — 3-Tier Competitive Defusal Map
+## 3. Competitive Arena Pool (`MapRegistry`: `DE_DUST2` & `CS_OFFICE`)
 
 <p align="center">
-  <img src="docs/assets/decitadel-tactical-map.svg" alt="DE_MERIDIAN Tactical Radar Blueprint" width="100%">
+  <img src="docs/assets/decitadel-tactical-map.svg" alt="GARAM Tactical Radar Blueprint" width="100%">
 </p>
 
-`DE_MERIDIAN` is a tightly calibrated **94m × 90m** Golden Figure-8 competitive defusal map engineered natively around GARAM's 128Hz kinematics (`SPEED_KNIFE = 6.35 m/s`, `STEP_HEIGHT = 0.42m`), `y >= 0` grenade bounce invariant, 4.6m smoke / 3.4m molotov radii, and all 4 wallbang penetration materials (`CONCRETE`, `WOOD_THIN`, `DRYWALL`, `METAL_SHEET`):
+Players can switch maps live in the Lobby (`MAP` selector) or synchronize automatically via the 64-tick multiplayer `join`/`welcome` handshake:
 
-- **Engine-Safe 3-Tier Verticality:**
-  - **Tier 0 (`y = 0.0m`):** `SUNKEN AQUEDUCT` underpass trench beneath Mid linking Top Mid to B Short with smooth `0.35m` steps.
-  - **Tier 1 (`y = +2.1m`):** Main Map Deck with balanced CS2 CT setup timing leads (+4.0s–7.5s on both sites; Vanguard North `(0, 2.1, -34)`, Syndicate South `(0, 2.1, 39)`).
-  - **Tier 2 (`y = +4.9m`):** 4 interconnected bidirectional elevated overlooks — **A Palace**, **A Heaven**, **Mid CT Nest**, and **B Apartments** — eliminating dead-end vertical flanks.
-- **Bombsite A — "The Sanctum" (North-West):** Warm travertine limestone & terracotta arches featuring A Palace (`+4.9m`, wallbangable `DRYWALL` screen), A Heaven (`+4.9m`, 1.10m `METAL_SHEET` head-glitch rail), A Firebox, Triple Stack (`WOOD_THIN`), CT Ticket Booth (`DRYWALL`), and 6.2m smoke-calibrated A Main archway.
-- **Mid — "The Sunken Aqueduct" (Center):** Cool basalt slate & bronze rails featuring a razor-sharp Mid Nest (`+4.9m`, 5.8m smokeable window with 1.05m sill) vs. Top Mid duel, 6.0m A Connector, 5.8m B Short Catwalk, and the Sunken Underpass flank.
-- **Bombsite B — "The Foundry" (North-East):** Brushed industrial steel, cobalt/teal trim & amber interior lighting featuring B Apartments (`+4.9m`, wallbangable `WOOD_THIN` shutter), B Foundry Steel Core (`METAL_SHEET`), B Forklift, B Control Booth (`DRYWALL`), B Bench, and B Market Wood Door (`WOOD_THIN`).
-- **20 Elevation-Aware Callout Zones & 3-Tier Tinted Radar:** Real-time spatial tracking across `VANGUARD SPAWN`, `SYNDICATE SPAWN`, `A SITE SANCTUM`, `A HEAVEN`, `A PALACE`, `A FIREBOX`, `A MAIN`, `A CONNECTOR`, `CT TICKET`, `MID NEST`, `MID COURTYARD`, `SUNKEN AQUEDUCT`, `TOP MID`, `B SITE FOUNDRY`, `B APARTMENTS`, `B SHORT`, `B CANAL`, `B MARKET`, `T-A LOBBY`, and `T-B STAGING`.
+1. **`DE_DUST2 (A-SITE)` (`de_dust2`, Default):**
+   - High-fidelity Counter-Strike 2 Dust 2 A-Site Wing GLB (`packages/client/public/models/de_dust2.glb`) paired with **271 precomputed AABB colliders** (`DeDust2Data.ts`) and real-time Lobby progress streaming.
+   - Covers **CT Spawn**, **A Ramp**, **Bombsite A**, **A Pit**, **A Car**, **A Long Doors**, and **A Short Catwalk** for rapid 5v5 A-Site executes and retakes.
+2. **`CS_OFFICE (2-SITE)` (`cs_office`, Full 2-Site Rotation):**
+   - Full two-level snowy corporate office complex (`CsOfficeData.ts`, `84m × 76m`) with **Bombsite A (Executive Boardroom)** and **Bombsite B (Loading Dock / Server Wing)**, Front Courtyard, Garage, Main Hall, Breakroom, Side Hall, Stairwell, Paper Storage, and Sniper Window overlooks for macro 2-site rotations and fake executes.
 
 ---
 
-## 4. Competitive Arsenal & Ballistics
+## 4. Competitive Arsenal & Ballistics (9 CS2 Weapons)
 
 <p align="center">
   <img src="docs/assets/arsenal-ballistics.svg" alt="GARAM Arsenal and Ballistics Telemetry" width="100%">
@@ -75,10 +73,14 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
 | Weapon | Slot | Cost | Damage (Body / Head) | RPM | Mag / Reserve | Unique Mechanical Features |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **Garam-47** | 1 | $2,700 | 36 / 144 HP | 600 | 30 / 90 | CS2 '7' recoil spray curve, 1-shot headshot kill, authentic curved banana magazine. |
-| **Vanguard M4A1-S** | 1 | $2,750 | 33 / 132 HP | 666 | 25 / 75 | Perforated suppressor, 11m muffled gunshot radius, tight laser spray grouping. |
-| **Sovereign AWP** | 1 | $4,750 | 115 / 460 HP | 45 | 5 / 30 | 1-shot lethal torso kill, dual-stage 28°/10° optical zoom, flared scope with emerald tint. |
-| **Desert Eagle** | 2 | $700 | 53 / 212 HP | 267 | 7 / 35 | Heavy handgun pocket cannon, serrated cocking slide, lethal 1-shot headshot at close/mid. |
-| **Crimson Karambit** | 3 | $0 | 55 / 55 (180 Backstab) | — | 1 / 0 | True `ExtrudeGeometry` curved hawkbill blade, 360° ring-spin draw `[3]`/`[Q]`, `[F]` inspect twirl. |
+| **Vanguard M4A1-S** | 1 | $2,750 | 33 / 132 HP | 666 | 25 / 75 | Perforated suppressor, muffled 24m acoustic radius, tight laser spray grouping. |
+| **M4A4** | 1 | $3,100 | 33 / 132 HP | 666 | 30 / 90 | Full 30-round STANAG magazine CT rifle for sustained multi-target site anchor holds. |
+| **MP9** | 1 | $1,250 | 26 / 104 HP | 857 | 30 / 120 | High-mobility force-buy SMG (`$600` kill reward) with blistering 857 RPM CQC fire rate. |
+| **Sovereign AWP** | 1 | $4,750 | 115 / 460 HP | 45 | 5 / 30 | 1-shot lethal torso kill, dual-stage 28°/10° optical zoom, high-penetration collaterals. |
+| **Desert Eagle** | 2 | $700 | 53 / 212 HP | 267 | 7 / 35 | Heavy `.50 AE` pocket cannon, serrated cocking slide, lethal 1-shot headshot at close/mid. |
+| **USP-S** | 2 | $200 | 35 / 140 HP | 352 | 12 / 24 | Tactical suppressed CT sidearm with crisp first-shot accuracy and low recoil kick. |
+| **Glock-18** | 2 | $200 | 30 / 120 HP | 400 | 20 / 120 | High-capacity 20-round Syndicate sidearm built for fast entry pacing. |
+| **Crimson Karambit** | 3 | $0 | 55 / 55 (180 Backstab) | 120 | 1 / 0 | Curved hawkbill blade in authentic CS2 dual-hand bottom-edge CQC posture with `[F]` ring spin. |
 
 ### 5-Zone Raycast Ballistics Multipliers
 - **Head (`HEAD`):** 4.00x multiplier (Instant lethal rifle/sniper hit)
@@ -120,18 +122,19 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (153 Passing Tests Across 18 Suites)
+### Test Suite Coverage (171 Passing Tests Across 20 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
 ```
 ```text
- ✓ packages/client/src/__tests__/client-systems.test.ts       (11 tests)
- ✓ packages/client/src/__tests__/viewmodel-rig.test.ts        (13 tests)
- ✓ packages/server/src/__tests__/gameroom.integration.test.ts (8 tests)
+ ✓ packages/client/src/__tests__/client-systems.test.ts       (21 tests)
+ ✓ packages/client/src/__tests__/viewmodel-rig.test.ts        (12 tests)
+ ✓ packages/client/src/__tests__/operator-rig.test.ts         (2 tests)
+ ✓ packages/server/src/__tests__/gameroom.integration.test.ts (9 tests)
  ✓ packages/server/src/__tests__/pvs.test.ts                  (1 test)
  ✓ packages/server/src/__tests__/registry.test.ts             (6 tests)
- ✓ packages/shared/src/__tests__/botai.test.ts                (8 tests)
+ ✓ packages/shared/src/__tests__/botai.test.ts                (9 tests)
  ✓ packages/shared/src/__tests__/botprofiles.test.ts          (3 tests)
  ✓ packages/shared/src/__tests__/kinematics.test.ts           (16 tests)
  ✓ packages/shared/src/__tests__/ballistics.test.ts           (26 tests)
@@ -141,12 +144,13 @@ npm test
  ✓ packages/shared/src/__tests__/security.test.ts             (7 tests)
  ✓ packages/shared/src/__tests__/lagcomp.test.ts              (8 tests)
  ✓ packages/shared/src/__tests__/navgraph.test.ts             (12 tests)
- ✓ packages/shared/src/__tests__/callout.test.ts              (6 tests)
+ ✓ packages/shared/src/__tests__/callout.test.ts              (5 tests)
+ ✓ packages/shared/src/__tests__/dedust2.test.ts              (6 tests)
  ✓ packages/shared/src/__tests__/economy.test.ts              (5 tests)
  ✓ packages/shared/src/__tests__/docs-sync.test.ts            (3 tests)
 
- Test Files  18 passed (18)
-      Tests  153 passed (153)
+ Test Files  20 passed (20)
+      Tests  171 passed (171)
 ```
 
 ---

@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { WEAPONS, SPAWN_POINTS, KinematicPlayerController, MapBlockCollider } from '@garam/shared';
+import { WEAPONS, KinematicPlayerController, MapBlockCollider } from '@garam/shared';
 import { settingsStore } from '../core/SettingsStore.js';
 import { InventoryManager } from './InventoryManager.js';
 import { DroppedWeaponManager } from './DroppedWeaponManager.js';
 import { UtilityManager, UtilityType, ThrowMode } from '../utility/UtilityManager.js';
 import { ProceduralAudio } from '../audio/ProceduralAudio.js';
-import { HUDManager } from '../ui/HUDManager.js';
+import { HUDManager, computeRelativeAttackerAngleRad } from '../ui/HUDManager.js';
 import { CombatReportManager } from '../ui/CombatReportManager.js';
 import { SpectatorManager } from '../match/SpectatorManager.js';
 import { EconomyManager } from '../match/EconomyManager.js';
@@ -67,13 +67,8 @@ export class PlayerManager {
     this.callbacks = callbacks;
   }
 
-  public reset(spawnPos: { x: number; y: number; z: number }): void {
-    this.player.state.x = spawnPos.x;
-    this.player.state.y = spawnPos.y;
-    this.player.state.z = spawnPos.z;
-    this.player.state.vx = 0;
-    this.player.state.vy = 0;
-    this.player.state.vz = 0;
+  public reset(spawnPos: { x: number; y: number; z: number }, initialYaw = 0): void {
+    this.player.hardReset(spawnPos.x, spawnPos.y, spawnPos.z, initialYaw, 0);
     this.playerHealth = 100;
     this.economy.armor = 100;
   }
@@ -90,14 +85,20 @@ export class PlayerManager {
     inputYaw: number,
     bots: BotEntity[],
     armorAlreadyApplied = false,
-    armorDamage = 0
+    armorDamage = 0,
+    attackerInfo?: {
+      name: string;
+      team: 'Vanguard' | 'Syndicate';
+      weaponId: string;
+      isHeadshot?: boolean;
+    }
   ): void {
     if (this.playerHealth <= 0) return;
 
     this.player.applyTagging(0.58);
 
     if (attackerPos) {
-      const angle = Math.atan2(attackerPos.x - cameraPos.x, attackerPos.z - cameraPos.z) + inputYaw;
+      const angle = computeRelativeAttackerAngleRad(cameraPos, inputYaw, attackerPos);
       this.hud.triggerDamageIndicator(angle);
     }
 
@@ -116,7 +117,27 @@ export class PlayerManager {
       this.deaths++;
       const callsign = settingsStore.settings.callsign || 'Operator';
       const playerTeam = settingsStore.settings.faction;
-      this.hud.addKillfeed(`💀 ${callsign} was eliminated`);
+      const opposingTeam: 'Vanguard' | 'Syndicate' = playerTeam === 'Vanguard' ? 'Syndicate' : 'Vanguard';
+      if (attackerInfo) {
+        this.hud.addKillEntry({
+          killer: attackerInfo.name,
+          killerTeam: attackerInfo.team,
+          victim: callsign,
+          victimTeam: playerTeam,
+          weaponId: attackerInfo.weaponId,
+          isHeadshot: attackerInfo.isHeadshot,
+          isLocalInvolved: true,
+        });
+      } else {
+        this.hud.addKillEntry({
+          killer: 'Utility',
+          killerTeam: opposingTeam,
+          victim: callsign,
+          victimTeam: playerTeam,
+          weaponId: 'he-grenade',
+          isLocalInvolved: true,
+        });
+      }
       this.combatReport.show();
 
       const livingAllies = bots.filter((b) => b.team === playerTeam && !b.isDead);
@@ -148,7 +169,7 @@ export class PlayerManager {
     this.inventory.equipSlot(3);
     this.callbacks.onSyncActiveWeapon();
     this.audio.playReload();
-    this.hud.addKillfeed(`Dropped ${WEAPONS[state.weaponId]?.name || 'Weapon'}`);
+    this.hud.addRadioMessage(`Dropped ${WEAPONS[state.weaponId]?.name || 'Weapon'}`);
   }
 
   public equipDroppedWeapon(dropped: { weaponId: string; currentAmmo: number; reserveAmmo: number }): boolean {
@@ -164,7 +185,7 @@ export class PlayerManager {
     this.inventory.equipSlot(slot, true);
     this.callbacks.onSyncActiveWeapon();
     this.audio.playWeaponPickup();
-    this.hud.addKillfeed(`Looted ${def.name}`);
+    this.hud.addRadioMessage(`Looted ${def.name}`);
     return true;
   }
 
@@ -203,16 +224,42 @@ export class PlayerManager {
   }
 
   public respawnAllBots(bots: BotEntity[]): void {
+    const isDust2 = settingsStore.settings.mapId === 'de_dust2';
     for (const bot of bots) {
       bot.isDead = false;
       bot.health = bot.maxHealth;
       bot.armor = 100;
+      bot.vx = 0;
+      bot.vz = 0;
+      bot.lastShotTime = 0;
       bot.mesh.visible = true;
       if (bot.patrolWaypoints.length > 0) {
         bot.waypointIndex = 0;
         bot.patrolTarget = bot.patrolWaypoints[0];
         bot.mesh.position.set(bot.patrolTarget.x, bot.patrolTarget.y, bot.patrolTarget.z);
-        bot.mesh.rotation.y = bot.team === 'Vanguard' ? 0 : Math.PI;
+        if (bot.patrolWaypoints.length > 1) {
+          const wp1 = bot.patrolWaypoints[1];
+          const dx = wp1.x - bot.patrolTarget.x;
+          const dz = wp1.z - bot.patrolTarget.z;
+          bot.mesh.rotation.y =
+            dx * dx + dz * dz > 0.01
+              ? Math.atan2(dx, dz)
+              : isDust2
+                ? bot.team === 'Vanguard'
+                  ? Math.PI
+                  : Math.PI * 0.5
+                : bot.team === 'Vanguard'
+                  ? 0
+                  : Math.PI;
+        } else {
+          bot.mesh.rotation.y = isDust2
+            ? bot.team === 'Vanguard'
+              ? Math.PI
+              : Math.PI * 0.5
+            : bot.team === 'Vanguard'
+              ? 0
+              : Math.PI;
+        }
       }
     }
   }
@@ -221,16 +268,39 @@ export class PlayerManager {
     killerName: string,
     victimBot: BotEntity,
     headshot: boolean,
-    weaponName: string,
+    _weaponName: string,
     reward: number,
     bots: BotEntity[]
   ): void {
     this.kills++;
     this.economy.addCash(reward);
     victimBot.isDead = true;
-    this.droppedWeapons.dropWeapon('garam-47', 30, 90, victimBot.mesh.position, this._dropDir);
-    const text = CombatReportManager.formatKillfeedEntry(killerName, victimBot.name, weaponName, headshot);
-    this.hud.addKillfeed(text);
+    const dropWeaponId =
+      victimBot.weaponId && WEAPONS[victimBot.weaponId]
+        ? victimBot.weaponId
+        : victimBot.team === 'Vanguard'
+          ? 'vanguard-m4'
+          : 'garam-47';
+    const dropDef = WEAPONS[dropWeaponId] || WEAPONS['garam-47'];
+    this.droppedWeapons.dropWeapon(
+      dropDef.id,
+      dropDef.magCapacity,
+      dropDef.reserveAmmo,
+      victimBot.mesh.position,
+      this._dropDir
+    );
+    const activeWeaponId = this.inventory.getActiveWeapon().id;
+    this.hud.addKillEntry({
+      killer: killerName,
+      killerTeam: settingsStore.settings.faction,
+      victim: victimBot.name,
+      victimTeam: victimBot.team,
+      weaponId: activeWeaponId,
+      isHeadshot: headshot,
+      isLocalInvolved: true,
+    });
+    this.hud.recordRoundKill(headshot);
+    this.audio.playKillChime(this.hud.roundKillCount, headshot);
     this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, bots);
   }
 
@@ -245,7 +315,14 @@ export class PlayerManager {
     bots: BotEntity[],
     armorDamage = 0
   ): void {
-    this.audio.playGunshot('garam-47', shooter.mesh.position, cameraPos, blocks);
+    const shooterWeaponId =
+      shooter.weaponId && WEAPONS[shooter.weaponId]
+        ? shooter.weaponId
+        : shooter.team === 'Vanguard'
+          ? 'vanguard-m4'
+          : 'garam-47';
+    const shooterWeaponDef = WEAPONS[shooterWeaponId] || WEAPONS['garam-47'];
+    this.audio.playGunshot(shooterWeaponDef.id, shooter.mesh.position, cameraPos, blocks);
     // dmg from BotAISystem is already post-armor awardedDamage from executeTacticalRaycast
     victim.armor = Math.max(0, victim.armor - Math.round(armorDamage));
     victim.health = Math.max(0, victim.health - Math.round(dmg));
@@ -254,15 +331,30 @@ export class PlayerManager {
       victim.isDead = true;
       shooter.kills++;
       victim.deaths++;
-      this.droppedWeapons.dropWeapon('garam-47', 30, 90, victim.mesh.position, this._dropDir);
-      const killfeedText = CombatReportManager.formatKillfeedEntry(
-        shooter.name,
-        victim.name,
-        'Garam-47',
-        isHeadshot,
-        penetrated > 0
+      const dropWeaponId =
+        victim.weaponId && WEAPONS[victim.weaponId]
+          ? victim.weaponId
+          : victim.team === 'Vanguard'
+            ? 'vanguard-m4'
+            : 'garam-47';
+      const dropDef = WEAPONS[dropWeaponId] || WEAPONS['garam-47'];
+      this.droppedWeapons.dropWeapon(
+        dropDef.id,
+        dropDef.magCapacity,
+        dropDef.reserveAmmo,
+        victim.mesh.position,
+        this._dropDir
       );
-      this.hud.addKillfeed(killfeedText);
+      this.hud.addKillEntry({
+        killer: shooter.name,
+        killerTeam: shooter.team,
+        victim: victim.name,
+        victimTeam: victim.team,
+        weaponId: shooterWeaponDef.id,
+        isHeadshot,
+        isWallbang: penetrated > 0,
+        isLocalInvolved: false,
+      });
       this.hud.updateScoreboard(this.kills, this.deaths, this.economy.cash, bots);
     }
   }

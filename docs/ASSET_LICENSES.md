@@ -38,6 +38,7 @@ All 3D models, skeletal animation packs, textures, and audio assets bundled in *
 
 | Asset File | Creator | Source URL | Verified License | Usage & Notes |
 | :--- | :--- | :--- | :---: | :--- |
+| `packages/client/public/models/de_dust2.glb` | **StarKnightt** (Blender geometry) / **Poly Haven** (WebP PBR textures) | [StarKnightt/counter-strike-in-browser](https://github.com/StarKnightt/counter-strike-in-browser) | **MIT / CC0 1.0** | Full 3D PBR-textured competitive `de_dust2` arena (Long, A Site, Ramp, CT Spawn, Pit, Short Catwalk) with Poly Haven CC0 textures and watertight SAT AABB colliders extracted via `scripts/build-de-dust2.mjs`. |
 | `packages/client/public/textures/skybox/kloofendal_1k.hdr` | **Poly Haven** (`kloofendal_43d_clear_puresky`) | [Poly Haven HDRI](https://polyhaven.com/a/kloofendal_43d_clear_puresky) | **CC0 1.0** | Equirectangular golden-hour IBL reflection & ambient sky lighting. |
 | Procedural Canvas PBR Maps (`DeCitadelMap.ts`, `EffectsManager.ts`) | **GARAM Systems Team** | Generated in-client via HTML5 Canvas | **MIT** | Limestone flagstones, stucco masonry, cargo crates, corrugated steel, impact decals, and muzzle star textures. |
 

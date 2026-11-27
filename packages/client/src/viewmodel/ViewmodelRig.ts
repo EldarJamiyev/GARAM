@@ -1,6 +1,31 @@
 import * as THREE from 'three';
 
 export const CS2_ARMS_MODEL_PATH = '/models/cs2_fps_arms.glb';
+export const VIEWMODEL_NEAR_PLANE = 0.05;
+
+/**
+ * Authentic Counter-Strike 2 default viewmodel FOV:
+ * 60 deg on desktop (aspect >= 1.2), gently clamped up to 66 deg max on narrow/portrait screens.
+ */
+export function computeViewmodelFov(aspect: number): number {
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+  if (safeAspect < 1.2) {
+    return THREE.MathUtils.clamp(60 + (1.2 - safeAspect) * 8.1, 60, 66);
+  }
+  return 60;
+}
+
+/**
+ * Subtle inward horizontal slide on narrow/portrait viewports (aspect < 1.2) so the weapon
+ * receiver and support hand stay cleanly framed without zooming out or exposing bicep cutoffs.
+ */
+export function computeNarrowAspectOffsetX(aspect: number): number {
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
+  if (safeAspect < 1.2) {
+    return -THREE.MathUtils.clamp((1.2 - safeAspect) * 0.09, 0, 0.065);
+  }
+  return 0;
+}
 
 export type LeftArmPoseMode = 'rifle' | 'pistol' | 'karambit';
 
@@ -52,7 +77,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.058, -0.882, -0.135],
+    armsOffset: [0.082, -0.904, 0.026],
     muzzleLocalPos: [0.008, 0.058, -0.565],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
@@ -79,11 +104,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.056, -0.882, -0.135],
+    armsOffset: [0.080, -0.924, 0.040],
     muzzleLocalPos: [0.007, 0.081, -0.6525],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
-    leftHandAnchorLocal: [0.002, 0.028, -0.24],
+    leftHandAnchorLocal: [0.002, 0.024, -0.228],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     leftFingerCurl: 0.9,
     clips: {
@@ -106,11 +131,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.056, -0.882, -0.135],
-    muzzleLocalPos: [0.006, 0.075, -0.58],
+    armsOffset: [0.080, -0.930, 0.044],
+    muzzleLocalPos: [0.006, 0.080, -0.62],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
-    leftHandAnchorLocal: [0.002, 0.026, -0.24],
+    leftHandAnchorLocal: [0.002, 0.018, -0.236],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     leftFingerCurl: 0.9,
     clips: {
@@ -133,11 +158,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.054, -0.880, -0.135],
-    muzzleLocalPos: [0.004, 0.055, -0.34],
+    armsOffset: [0.076, -0.904, 0.022],
+    muzzleLocalPos: [0.004, 0.076, -0.325],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
-    leftHandAnchorLocal: [0.0, -0.015, -0.16],
+    leftHandAnchorLocal: [0.0, -0.008, -0.178],
     leftHandRelRotEuler: [0.55, 0.72, -1.95],
     leftFingerCurl: 0.92,
     clips: {
@@ -160,11 +185,11 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.80,
     armsScale: 1.0,
-    armsOffset: [0.058, -0.892, -0.138],
+    armsOffset: [0.084, -0.926, 0.044],
     muzzleLocalPos: [0.0114, 0.114, -0.8357],
     requiresPBodyRest: false,
     leftArmPoseMode: 'rifle',
-    leftHandAnchorLocal: [0.0, 0.02, -0.25],
+    leftHandAnchorLocal: [0.0, 0.018, -0.236],
     leftHandRelRotEuler: [0.6216, 0.8027, -2.1408],
     leftFingerCurl: 0.9,
     clips: {
@@ -187,7 +212,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.048, -0.880, -0.135],
+    armsOffset: [0.064, -0.926, 0.022],
     muzzleLocalPos: [0.0001, 0.064, -0.2348],
     requiresPBodyRest: false,
     leftArmPoseMode: 'pistol',
@@ -197,7 +222,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     clips: {
       idle: 'CS2_Idle',
       walk: 'CS2_Walk',
-      draw: 'CS2_Draw',
+      draw: 'CS2_Idle',
       fire: 'CS2_Fire',
       reload: 'CS2_Reload',
       reloadFull: 'CS2_Reload',
@@ -214,7 +239,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.048, -0.880, -0.135],
+    armsOffset: [0.072, -0.930, 0.028],
     muzzleLocalPos: [0.0, 0.062, -0.32],
     requiresPBodyRest: false,
     leftArmPoseMode: 'pistol',
@@ -224,7 +249,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     clips: {
       idle: 'CS2_Idle',
       walk: 'CS2_Walk',
-      draw: 'CS2_Draw',
+      draw: 'CS2_Idle',
       fire: 'CS2_Fire',
       reload: 'CS2_Reload',
       reloadFull: 'CS2_Reload',
@@ -241,7 +266,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     localRotEuler: [-Math.PI / 2, 0, Math.PI],
     localScale: 1.85,
     armsScale: 1.0,
-    armsOffset: [0.048, -0.880, -0.135],
+    armsOffset: [0.064, -0.924, 0.022],
     muzzleLocalPos: [0.0, 0.060, -0.195],
     requiresPBodyRest: false,
     leftArmPoseMode: 'pistol',
@@ -251,7 +276,7 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     clips: {
       idle: 'CS2_Idle',
       walk: 'CS2_Walk',
-      draw: 'CS2_Draw',
+      draw: 'CS2_Idle',
       fire: 'CS2_Fire',
       reload: 'CS2_Reload',
       reloadFull: 'CS2_Reload',
@@ -259,31 +284,40 @@ export const WEAPON_SOCKET_CONFIGS: Record<string, WeaponSocketConfig> = {
     },
   },
   'garam-karambit': {
-    socketBone: 'weapon_hand_r_5',
+    socketBone: 'DEF-handR_357',
     modelPath: '/models/karambit.glb',
     targetLength: 0.22,
     rotationEuler: [0, 0, 0],
-    localPos: [-0.015, -0.055, 0.035],
-    localRotEuler: [-Math.PI / 2 + 0.28, 0.32, Math.PI - 0.42],
-    localScale: 1.85,
+    localPos: [0.0405, 0.1425, -0.0067],
+    localRotEuler: [2.2364, -0.7336, -0.6379],
+    localScale: 1.24,
     armsScale: 1.0,
-    armsOffset: [0.052, -0.880, -0.135],
-    muzzleLocalPos: [0, -0.0427, -0.115],
+    armsOffset: [0.044, -0.928, -0.006],
+    muzzleLocalPos: [0, -0.050, -0.097],
     requiresPBodyRest: false,
     leftArmPoseMode: 'karambit',
-    ringPivotLocal: [0, 0.02, 0.085],
+    ringPivotLocal: [0, 0.022, 0.081],
     clips: {
       idle: 'CS2_Idle',
       walk: 'CS2_Walk',
-      draw: 'CS2_Draw',
+      draw: 'CS2_Idle',
       fire: 'CS2_Idle',
       altFire: 'CS2_Idle',
       reload: 'CS2_Idle',
       reloadFull: 'CS2_Idle',
-      inspect: 'CS2_Inspect',
+      inspect: 'CS2_Idle',
     },
   },
 };
+
+/**
+ * Smooth eased-in/out 360° retention-ring spin angle (radians) for Karambit [F] Inspect.
+ */
+export function computeKarambitInspectSpinAngle(inspectProgress: number): number {
+  const t = THREE.MathUtils.clamp(inspectProgress, 0, 1);
+  const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  return eased * Math.PI * 2;
+}
 
 export function getWeaponSocketConfig(weaponId: string): WeaponSocketConfig {
   return WEAPON_SOCKET_CONFIGS[weaponId] || WEAPON_SOCKET_CONFIGS['garam-47'];
@@ -314,10 +348,140 @@ export function resolveWeaponClipName(
   }
 }
 
+const FINGER_OR_PALM_TRACK_RE =
+  /(?:^|[./])(DEF-f_|DEF-thumb|DEF-palm|ORG-f_|ORG-thumb|ORG-palm|MCH-f_|MCH-thumb|MCH-palm|f_index|f_middle|f_ring|f_pinky|thumb0|palm0|Bone_L|Bone_R)/i;
+const HAND_SCALE_TRACK_RE =
+  /(?:^|[./])(DEF-hand|ORG-hand|DEF-forearm|ORG-forearm|DEF-upper_arm|ORG-upper_arm).+\.scale$/i;
+
+export function isFingerOrPalmTrack(trackName: string): boolean {
+  return FINGER_OR_PALM_TRACK_RE.test(trackName);
+}
+
+function stripFingerTracks(
+  clip: THREE.AnimationClip,
+  stripRotations: boolean
+): THREE.AnimationClip {
+  const filtered = clip.tracks.filter((track) => {
+    if (HAND_SCALE_TRACK_RE.test(track.name)) return false;
+    if (!isFingerOrPalmTrack(track.name)) return true;
+    if (track.name.endsWith('.position') || track.name.endsWith('.scale')) {
+      return false;
+    }
+    return !stripRotations;
+  });
+  return new THREE.AnimationClip(clip.name, clip.duration, filtered);
+}
+
+function stabilizeCS2ClipToShoulderPocket(
+  clip: THREE.AnimationClip,
+  idleClip: THREE.AnimationClip,
+  pocketBlendWeight: number,
+  stripFingerRotations = true
+): THREE.AnimationClip {
+  const dur = Math.max(0.1, clip.duration);
+  const clipTracksByName = new Map<string, THREE.KeyframeTrack>();
+  for (const t of clip.tracks) {
+    if (HAND_SCALE_TRACK_RE.test(t.name)) continue;
+    if (isFingerOrPalmTrack(t.name)) {
+      if (t.name.endsWith('.position') || t.name.endsWith('.scale') || stripFingerRotations) {
+        continue;
+      }
+    }
+    clipTracksByName.set(t.name, t);
+  }
+
+  const stabilizedTracks: THREE.KeyframeTrack[] = [];
+  const isAnimatedSubPart = (trackName: string): boolean =>
+    /v_weapon_|clip|bolt|slide/i.test(trackName);
+  const isBlendedSocketTrack = (trackName: string): boolean =>
+    /weapon_hand_r_5|DEF-handR_357/i.test(trackName);
+
+  const blendW = THREE.MathUtils.clamp(pocketBlendWeight, 0, 0.35);
+  const qIdle = new THREE.Quaternion();
+  const qClip = new THREE.Quaternion();
+  const qOut = new THREE.Quaternion();
+
+  for (const idleTrack of idleClip.tracks) {
+    if (isAnimatedSubPart(idleTrack.name) || isFingerOrPalmTrack(idleTrack.name)) {
+      continue;
+    }
+
+    const srcTrack = clipTracksByName.get(idleTrack.name);
+    if (srcTrack && isBlendedSocketTrack(idleTrack.name) && blendW > 0.001) {
+      if (idleTrack.name.endsWith('.position') && idleTrack.values.length >= 3 && srcTrack.values.length >= 3) {
+        const b0 = idleTrack.values[0];
+        const b1 = idleTrack.values[1];
+        const b2 = idleTrack.values[2];
+        const times = Array.from(srcTrack.times);
+        const vals = new Float32Array(srcTrack.values.length);
+        for (let i = 0; i < srcTrack.values.length; i += 3) {
+          vals[i] = b0 + (srcTrack.values[i] - b0) * blendW;
+          vals[i + 1] = b1 + (srcTrack.values[i + 1] - b1) * blendW;
+          vals[i + 2] = b2 + (srcTrack.values[i + 2] - b2) * blendW;
+        }
+        stabilizedTracks.push(new THREE.VectorKeyframeTrack(idleTrack.name, times, vals));
+        continue;
+      }
+      if (idleTrack.name.endsWith('.quaternion') && idleTrack.values.length >= 4 && srcTrack.values.length >= 4) {
+        qIdle.set(idleTrack.values[0], idleTrack.values[1], idleTrack.values[2], idleTrack.values[3]).normalize();
+        const times = Array.from(srcTrack.times);
+        const vals = new Float32Array(srcTrack.values.length);
+        for (let i = 0; i < srcTrack.values.length; i += 4) {
+          qClip.set(srcTrack.values[i], srcTrack.values[i + 1], srcTrack.values[i + 2], srcTrack.values[i + 3]).normalize();
+          qOut.copy(qIdle).slerp(qClip, blendW);
+          vals[i] = qOut.x;
+          vals[i + 1] = qOut.y;
+          vals[i + 2] = qOut.z;
+          vals[i + 3] = qOut.w;
+        }
+        stabilizedTracks.push(new THREE.QuaternionKeyframeTrack(idleTrack.name, times, vals));
+        continue;
+      }
+    }
+
+    if (idleTrack.name.endsWith('.position') && idleTrack.values.length >= 3) {
+      const p0 = idleTrack.values[0];
+      const p1 = idleTrack.values[1];
+      const p2 = idleTrack.values[2];
+      stabilizedTracks.push(
+        new THREE.VectorKeyframeTrack(idleTrack.name, [0, dur], [p0, p1, p2, p0, p1, p2])
+      );
+    } else if (idleTrack.name.endsWith('.quaternion') && idleTrack.values.length >= 4) {
+      const q = new THREE.Quaternion(
+        idleTrack.values[0],
+        idleTrack.values[1],
+        idleTrack.values[2],
+        idleTrack.values[3]
+      ).normalize();
+      stabilizedTracks.push(
+        new THREE.QuaternionKeyframeTrack(
+          idleTrack.name,
+          [0, dur],
+          [q.x, q.y, q.z, q.w, q.x, q.y, q.z, q.w]
+        )
+      );
+    }
+  }
+
+  for (const [name, track] of clipTracksByName.entries()) {
+    if (!isAnimatedSubPart(name)) {
+      if (!stripFingerRotations && isFingerOrPalmTrack(name) && name.endsWith('.quaternion')) {
+        stabilizedTracks.push(track.clone());
+      }
+      continue;
+    }
+    stabilizedTracks.push(track.clone());
+  }
+
+  return new THREE.AnimationClip(clip.name, dur, stabilizedTracks);
+}
+
 /**
  * Slices the CS2 First-Person Arms Sketchfab GLB clips (Equip, Shots, Reload, Inspect)
  * into clean, responsive game-ready clips (CS2_Idle, CS2_Walk, CS2_Draw, CS2_Fire,
- * CS2_Reload, CS2_Inspect) at 30 FPS.
+ * CS2_Reload, CS2_Inspect) at 30 FPS while anchoring upper arms to the authentic CS2
+ * 60-66 deg FOV shoulder pocket, stripping all finger/palm tracks to prevent swimming
+ * or detachment, and preserving lively receiver/bolt/magazine motion.
  */
 export function buildCS2AnimationClips(
   sourceClips: THREE.AnimationClip[]
@@ -328,36 +492,60 @@ export function buildCS2AnimationClips(
   const reload = sourceClips.find((c) => c.name === 'Reload');
   const inspect = sourceClips.find((c) => c.name === 'Inspect');
 
+  let idleClip: THREE.AnimationClip | null = null;
+
   if (shots) {
     // Calm breathing idle window (0.80s .. 1.80s = frames 24..54 at 30fps)
-    const idleClip = THREE.AnimationUtils.subclip(shots, 'CS2_Idle', 24, 54, 30);
+    idleClip = stripFingerTracks(
+      THREE.AnimationUtils.subclip(shots, 'CS2_Idle', 24, 54, 30),
+      true
+    );
     out.push(idleClip);
 
     // Subtle walk sway loop (0.80s .. 1.80s)
-    const walkClip = THREE.AnimationUtils.subclip(shots, 'CS2_Walk', 24, 54, 30);
+    const walkClip = stripFingerTracks(
+      THREE.AnimationUtils.subclip(shots, 'CS2_Walk', 24, 54, 30),
+      true
+    );
     out.push(walkClip);
 
     // Crisp single-shot recoil impulse (0.03s .. 0.43s = frames 1..13 at 30fps)
     const fireClip = THREE.AnimationUtils.subclip(shots, 'CS2_Fire', 1, 13, 30);
-    out.push(fireClip);
+    out.push(
+      idleClip
+        ? stabilizeCS2ClipToShoulderPocket(fireClip, idleClip, 0.20, true)
+        : stripFingerTracks(fireClip, true)
+    );
   }
 
   if (equip) {
     // Snappy CS2 tactical raise into firing stance (2.53s .. 3.10s = frames 76..93 at 30fps)
     const drawClip = THREE.AnimationUtils.subclip(equip, 'CS2_Draw', 76, 93, 30);
-    out.push(drawClip);
+    out.push(
+      idleClip
+        ? stabilizeCS2ClipToShoulderPocket(drawClip, idleClip, 0.16, true)
+        : stripFingerTracks(drawClip, true)
+    );
   }
 
   if (reload) {
     // Full CS2 mag-swap & bolt-release reload (0.00s .. 4.40s = frames 0..132 at 30fps)
     const reloadClip = THREE.AnimationUtils.subclip(reload, 'CS2_Reload', 0, 132, 30);
-    out.push(reloadClip);
+    out.push(
+      idleClip
+        ? stabilizeCS2ClipToShoulderPocket(reloadClip, idleClip, 0.06, false)
+        : stripFingerTracks(reloadClip, false)
+    );
   }
 
   if (inspect) {
     // Full CS2 weapon inspection sweep (0.00s .. 7.60s = frames 0..228 at 30fps)
     const inspectClip = THREE.AnimationUtils.subclip(inspect, 'CS2_Inspect', 0, 228, 30);
-    out.push(inspectClip);
+    out.push(
+      idleClip
+        ? stabilizeCS2ClipToShoulderPocket(inspectClip, idleClip, 0.24, true)
+        : stripFingerTracks(inspectClip, true)
+    );
   }
 
   return out;

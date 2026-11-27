@@ -160,4 +160,90 @@ describe('3P OperatorRig & OperatorArmIK (Vanguard + Syndicate)', () => {
       }
     }
   });
+
+  it('skips secondary twist/finger bone updates at LOD1 (>18m) and skips 2-bone IK at LOD2 (>=38m or behind camera)', () => {
+    const root = new THREE.Group();
+    const spine2 = new THREE.Group();
+    spine2.position.set(0, 1.35, 0);
+    root.add(spine2);
+
+    const armUpperR = new THREE.Group();
+    armUpperR.position.set(-0.2, 1.4, 0);
+    const armLowerR = new THREE.Group();
+    armLowerR.position.set(0, -0.28, 0);
+    const handR = new THREE.Group();
+    handR.position.set(0, -0.26, 0);
+    const twistR = new THREE.Group();
+    const fingerR = new THREE.Group();
+    armUpperR.add(armLowerR);
+    armLowerR.add(handR);
+    armLowerR.add(twistR);
+    handR.add(fingerR);
+    root.add(armUpperR);
+
+    const armUpperL = new THREE.Group();
+    armUpperL.position.set(0.2, 1.4, 0);
+    const armLowerL = new THREE.Group();
+    armLowerL.position.set(0, -0.28, 0);
+    const handL = new THREE.Group();
+    handL.position.set(0, -0.26, 0);
+    armUpperL.add(armLowerL);
+    armLowerL.add(handL);
+    root.add(armUpperL);
+
+    const ik = new OperatorArmIK({
+      root,
+      spineAnchor: spine2,
+      armUpperL,
+      armLowerL,
+      handL,
+      armUpperR,
+      armLowerR,
+      handR,
+      armLowerTwistL: [],
+      armLowerTwistR: [twistR],
+      fingersL: [],
+      fingersR: [{ bone: fingerR, baseQuat: fingerR.quaternion.clone() }],
+    });
+
+    // LOD 2 (behind camera or >= 38m): skips 2-bone IK & secondary bones completely
+    const armUpperBefore = armUpperR.quaternion.clone();
+    const fingerBefore = fingerR.quaternion.clone();
+    const twistBefore = twistR.quaternion.clone();
+    ik.solve({
+      aimPitch: 0.25,
+      sprintBlend: 0,
+      recoilKick: 0,
+      reloadBlend: 0,
+      crouchBlend: 0,
+      lodLevel: 2,
+    });
+    expect(armUpperR.quaternion.equals(armUpperBefore)).toBe(true);
+    expect(fingerR.quaternion.equals(fingerBefore)).toBe(true);
+    expect(twistR.quaternion.equals(twistBefore)).toBe(true);
+
+    // LOD 1 (> 18m): solves 2-bone IK, skips secondary finger curl & twist
+    ik.solve({
+      aimPitch: 0.25,
+      sprintBlend: 0,
+      recoilKick: 0,
+      reloadBlend: 0,
+      crouchBlend: 0,
+      lodLevel: 1,
+    });
+    expect(armUpperR.quaternion.equals(armUpperBefore)).toBe(false);
+    expect(fingerR.quaternion.equals(fingerBefore)).toBe(true);
+
+    // LOD 0 (< 18m): updates fingers as well
+    ik.solve({
+      aimPitch: 0.25,
+      sprintBlend: 0,
+      recoilKick: 0,
+      reloadBlend: 0,
+      crouchBlend: 0,
+      lodLevel: 0,
+    });
+    expect(fingerR.quaternion.equals(fingerBefore)).toBe(false);
+  });
 });
+

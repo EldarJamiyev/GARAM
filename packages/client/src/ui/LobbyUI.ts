@@ -1,4 +1,13 @@
-import { settingsStore, BotDifficulty, PlayerFaction, GameMode, GraphicsQuality } from '../core/SettingsStore.js';
+import {
+  settingsStore,
+  BotDifficulty,
+  PlayerFaction,
+  GameMode,
+  ActiveMapId,
+  GraphicsQuality,
+  FpsLimit,
+} from '../core/SettingsStore.js';
+import { AssetManager } from '../render/AssetManager.js';
 
 export interface LobbyUICallbacks {
   onDeploy: () => void;
@@ -9,7 +18,9 @@ export interface LobbyUICallbacks {
   onDifficultyChanged: (diff: BotDifficulty) => void;
   onModeChanged?: (mode: GameMode) => void;
   onFactionChanged?: (faction: PlayerFaction) => void;
+  onMapChanged?: (mapId: ActiveMapId) => void;
   onQualityChanged?: (quality: GraphicsQuality) => void;
+  onFpsLimitChanged?: (limit: FpsLimit) => void;
 }
 
 export class LobbyUI {
@@ -49,6 +60,23 @@ export class LobbyUI {
         }
       });
     }
+
+    // 0. Map Selector (hydrate active button from settingsStore)
+    const mapBtns = document.querySelectorAll('#map-selector .lobby-btn');
+    mapBtns.forEach((btn) => {
+      const btnMap = btn.getAttribute('data-map') as ActiveMapId | null;
+      btn.classList.toggle('active', btnMap === settingsStore.settings.mapId);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        mapBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const nextMap = btn.getAttribute('data-map') as ActiveMapId | null;
+        if (nextMap) {
+          settingsStore.update('mapId', nextMap);
+          this.callbacks.onMapChanged?.(nextMap);
+        }
+      });
+    });
 
     // 1. Faction Selector (hydrate active button from settingsStore)
     const factionBtns = document.querySelectorAll('#faction-selector .lobby-btn');
@@ -121,6 +149,23 @@ export class LobbyUI {
         if (q) {
           settingsStore.update('graphicsQuality', q);
           this.callbacks.onQualityChanged?.(q);
+        }
+      });
+    });
+
+    // 3c. Frame Pacing Selector
+    const fpsBtns = document.querySelectorAll('#fps-selector .lobby-btn');
+    fpsBtns.forEach((btn) => {
+      const btnFps = btn.getAttribute('data-fps') as FpsLimit | null;
+      btn.classList.toggle('active', btnFps === settingsStore.settings.fpsLimit);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fpsBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        const limit = btn.getAttribute('data-fps') as FpsLimit | null;
+        if (limit) {
+          settingsStore.update('fpsLimit', limit);
+          this.callbacks.onFpsLimitChanged?.(limit);
         }
       });
     });
@@ -204,6 +249,43 @@ export class LobbyUI {
       spawnBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this.callbacks.onDeploy();
+      });
+    }
+
+    // 10. [?] CONTROLS Keybindings Modal
+    const openControlsBtn = document.getElementById('open-controls-btn');
+    const closeControlsBtn = document.getElementById('close-controls-btn');
+    const controlsModal = document.getElementById('controls-modal');
+    if (openControlsBtn && controlsModal) {
+      openControlsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        controlsModal.style.display = 'flex';
+      });
+    }
+    if (closeControlsBtn && controlsModal) {
+      closeControlsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        controlsModal.style.display = 'none';
+      });
+    }
+    if (controlsModal) {
+      controlsModal.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (e.target === controlsModal) {
+          controlsModal.style.display = 'none';
+        }
+      });
+    }
+
+    // 11. First-Load Asset Streaming Progress Bar
+    const progLabel = document.getElementById('asset-progress-label');
+    const progPct = document.getElementById('asset-progress-pct');
+    const progFill = document.getElementById('asset-progress-fill');
+    if (progLabel && progPct && progFill) {
+      AssetManager.getInstance().onProgress((pct, label) => {
+        progLabel.textContent = label;
+        progPct.textContent = `${pct}%`;
+        progFill.style.width = `${pct}%`;
       });
     }
   }

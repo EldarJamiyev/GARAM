@@ -12,6 +12,7 @@ export interface ModelNormalizationOptions {
   envMapIntensity?: number;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  frustumCulled?: boolean;
 }
 
 export interface NormalizedModelUserData {
@@ -34,6 +35,9 @@ export class AssetManager {
   private inflight: Map<string, Promise<CachedAssetEntry | null>> = new Map();
   private failedPaths: Set<string> = new Set();
   private maxAnisotropy = 8;
+  private progressListeners: Set<(pct: number, label: string) => void> = new Set();
+  private currentProgressPct = 100;
+  private currentProgressLabel = '3D ARENA & VIEWMODELS READY';
 
   private constructor() {
     this.loader = new GLTFLoader();
@@ -46,6 +50,26 @@ export class AssetManager {
     return AssetManager.instance;
   }
 
+  public onProgress(listener: (pct: number, label: string) => void): () => void {
+    this.progressListeners.add(listener);
+    listener(this.currentProgressPct, this.currentProgressLabel);
+    return () => {
+      this.progressListeners.delete(listener);
+    };
+  }
+
+  public reportProgress(pct: number, label?: string): void {
+    this.currentProgressPct = Math.max(0, Math.min(100, Math.round(pct)));
+    if (label) {
+      this.currentProgressLabel = label;
+    }
+    this.progressListeners.forEach((cb) => cb(this.currentProgressPct, this.currentProgressLabel));
+  }
+
+  public getLoadingProgress(): { pct: number; label: string } {
+    return { pct: this.currentProgressPct, label: this.currentProgressLabel };
+  }
+
   public setMaxAnisotropy(anisotropy: number): void {
     this.maxAnisotropy = Math.max(1, Math.min(16, anisotropy));
   }
@@ -54,7 +78,34 @@ export class AssetManager {
     return this.maxAnisotropy;
   }
 
-  public static disposeObject3D(obj: THREE.Object3D): void {
+  public static disposeObject3D(obj: THREE.Object3D, disposeTextures = false): void {
+    const disposedTextures = disposeTextures ? new Set<THREE.Texture>() : null;
+    const disposeMaterialTextures = (mat: THREE.Material) => {
+      if (!disposedTextures) return;
+      const std = mat as THREE.MeshStandardMaterial & {
+        bumpMap?: THREE.Texture | null;
+        alphaMap?: THREE.Texture | null;
+        lightMap?: THREE.Texture | null;
+      };
+      const maps: Array<THREE.Texture | null | undefined> = [
+        std.map,
+        std.normalMap,
+        std.roughnessMap,
+        std.metalnessMap,
+        std.aoMap,
+        std.bumpMap,
+        std.emissiveMap,
+        std.alphaMap,
+        std.lightMap,
+      ];
+      for (const tex of maps) {
+        if (tex && !disposedTextures.has(tex)) {
+          disposedTextures.add(tex);
+          tex.dispose();
+        }
+      }
+    };
+
     obj.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
@@ -64,6 +115,7 @@ export class AssetManager {
         if (mesh.material) {
           const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
           for (let i = 0; i < mats.length; i++) {
+            disposeMaterialTextures(mats[i]);
             mats[i].dispose();
           }
         }
@@ -110,7 +162,10 @@ export class AssetManager {
           const mesh = child as THREE.Mesh;
           mesh.castShadow = castShadow;
           mesh.receiveShadow = receiveShadow;
-          mesh.frustumCulled = false;
+          if (mesh.geometry && !mesh.geometry.boundingSphere) {
+            mesh.geometry.computeBoundingSphere();
+          }
+          mesh.frustumCulled = options.frustumCulled ?? false;
 
           if (mesh.material) {
             const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];

@@ -101,8 +101,8 @@ export class WeaponController {
       const scopeEl = this.scopeEl || document.getElementById('sniper-scope');
       if (scopeEl) {
         const nextFilter =
-          currentSpeed > 0.38
-            ? `blur(${Math.min(10, (currentSpeed - 0.38) * 2.8).toFixed(1)}px)`
+          currentSpeed > 1.0
+            ? `blur(${Math.min(8, (currentSpeed - 1.0) * 2.2).toFixed(1)}px)`
             : 'none';
         if (nextFilter !== this.lastScopeBlur) {
           scopeEl.style.filter = nextFilter;
@@ -153,7 +153,7 @@ export class WeaponController {
     camera.getWorldDirection(_forward);
     _right.setFromMatrixColumn(camera.matrixWorld, 0);
     _up.setFromMatrixColumn(camera.matrixWorld, 1);
-    this.effects.spawnShellCasing(camera.position, _forward, _right);
+    this.effects.spawnShellCasing(camera.position, _forward, _right, weapon.id);
     this.audio.playShellClink(0.38 + Math.random() * 0.12);
 
     const dynamicSpread = computeWeaponSpread(weapon, currentSpeed, isGrounded, isCrouching, wasScoped, this.consecutiveShots);
@@ -248,6 +248,46 @@ export class WeaponController {
 
             _reverseNormal.copy(_rayDir).negate();
             this.effects.spawnBloodBurst(_hitVec, _reverseNormal, !!hit.isHeadshot);
+            // Cast 3.5m continuation ray behind struck operator to paint CS2 wall blood splatter (fallback to floor beneath)
+            const wallHits = executeTacticalRaycast(
+              {
+                origin: { x: _hitVec.x + _rayDir.x * 0.15, y: _hitVec.y + _rayDir.y * 0.15, z: _hitVec.z + _rayDir.z * 0.15 },
+                direction: { x: _rayDir.x, y: _rayDir.y, z: _rayDir.z },
+              },
+              1,
+              0,
+              0,
+              3.5,
+              blocks,
+              [],
+              1.0,
+              spatialGrid
+            );
+            if (wallHits.length > 0 && !wallHits[0].targetId) {
+              _exitVec.set(wallHits[0].point.x, wallHits[0].point.y, wallHits[0].point.z);
+              _hitNormal.set(wallHits[0].normal.x, wallHits[0].normal.y, wallHits[0].normal.z);
+              this.effects.spawnBloodDecal(_exitVec, _hitNormal, !!hit.isHeadshot);
+            } else {
+              const floorHits = executeTacticalRaycast(
+                {
+                  origin: { x: _hitVec.x + _rayDir.x * 0.45, y: _hitVec.y, z: _hitVec.z + _rayDir.z * 0.45 },
+                  direction: { x: 0, y: -1, z: 0 },
+                },
+                1,
+                0,
+                0,
+                2.5,
+                blocks,
+                [],
+                1.0,
+                spatialGrid
+              );
+              if (floorHits.length > 0 && !floorHits[0].targetId) {
+                _exitVec.set(floorHits[0].point.x, floorHits[0].point.y, floorHits[0].point.z);
+                _hitNormal.set(floorHits[0].normal.x, floorHits[0].normal.y, floorHits[0].normal.z);
+                this.effects.spawnBloodDecal(_exitVec, _hitNormal, !!hit.isHeadshot);
+              }
+            }
             victim.rig?.triggerFlinch();
             this.callbacks.onHitmarker?.(!!hit.isHeadshot);
 
@@ -411,6 +451,20 @@ export class WeaponController {
       const baseSens = settingsStore.settings.mouseSensitivity;
       this.callbacks.onScopeChanged(0, baseFov, baseSens);
     }
+    const scopeEl = this.scopeEl || document.getElementById('sniper-scope');
+    if (scopeEl && this.lastScopeBlur !== 'none') {
+      scopeEl.style.filter = 'none';
+      this.lastScopeBlur = 'none';
+    }
+  }
+
+  public resetRoundCombatState(): void {
+    this.resetZoom();
+    this.aimPunchPitch = 0;
+    this.aimPunchYaw = 0;
+    this.consecutiveShots = 0;
+    this.lastShotTime = 0;
+    this.nextMeleeTime = 0;
   }
 
   public inspectWeapon(): void {

@@ -8,28 +8,32 @@ describe('Living Documentation & Architecture Parity (README.md)', () => {
   const readmePath = path.resolve(__dirname, '../../../../README.md');
   const readmeContent = fs.readFileSync(readmePath, 'utf-8');
 
-  it('guarantees README weapon telemetry matches shared kernel WEAPONS constants', () => {
+  it('guarantees README weapon telemetry matches shared kernel WEAPONS constants across all 9 weapons', () => {
     const headMult = HITBOX.HEAD_MULTIPLIER;
 
-    const ak = WEAPONS['garam-47'];
-    expect(readmeContent).toContain(`${ak.damage} / ${Math.round(ak.damage * headMult)} HP`);
-    expect(readmeContent).toContain(`${ak.magCapacity} / ${ak.reserveAmmo}`);
-
-    const m4 = WEAPONS['vanguard-m4'];
-    expect(readmeContent).toContain(`${m4.damage} / ${Math.round(m4.damage * headMult)} HP`);
-    expect(readmeContent).toContain(`${m4.fireRateRpm}`);
-    expect(readmeContent).toContain(`${m4.magCapacity} / ${m4.reserveAmmo}`);
-
-    const awp = WEAPONS['sovereign-awp'];
-    expect(readmeContent).toContain(`${awp.damage} / ${Math.round(awp.damage * headMult)} HP`);
-    expect(readmeContent).toContain(`${awp.magCapacity} / ${awp.reserveAmmo}`);
-
-    const deagle = WEAPONS['desert-eagle'];
-    expect(readmeContent).toContain(`${deagle.damage} / ${Math.round(deagle.damage * headMult)} HP`);
-    expect(readmeContent).toContain(`${deagle.magCapacity} / ${deagle.reserveAmmo}`);
+    for (const id of [
+      'garam-47',
+      'vanguard-m4',
+      'm4a4',
+      'mp9',
+      'sovereign-awp',
+      'desert-eagle',
+      'usp-s',
+      'glock-18',
+    ]) {
+      const wp = WEAPONS[id];
+      expect(readmeContent, `${id} damage`).toContain(
+        `${wp.damage} / ${Math.round(wp.damage * headMult)} HP`
+      );
+      expect(readmeContent, `${id} ammo`).toContain(`${wp.magCapacity} / ${wp.reserveAmmo}`);
+    }
 
     const knife = WEAPONS['garam-karambit'];
     expect(readmeContent).toContain(`${knife.damage} / ${knife.damage} (180 Backstab)`);
+    expect(readmeContent).toContain('DE_DUST2 (A-SITE)');
+    expect(readmeContent).toContain('CS_OFFICE (2-SITE)');
+    expect(readmeContent).toContain('MapRegistry');
+    expect(readmeContent).toContain('cs2_fps_arms.glb');
   });
 
   it('guarantees 5-zone hitboxes match shared kernel HITBOX constants with no phantom zones', () => {

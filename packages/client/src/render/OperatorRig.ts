@@ -23,6 +23,8 @@ export interface OperatorVisualState {
   velocity?: { x: number; z: number };
   /** Distance from active camera in meters for 3-tier OperatorRig LOD */
   cameraDistance?: number;
+  /** True when the operator sits behind the active camera frustum */
+  isBehindCamera?: boolean;
 }
 
 interface SkeletalBoneBinding {
@@ -285,7 +287,7 @@ export class OperatorRig {
       map: getSharedShadowTexture(),
       transparent: true,
       depthWrite: false,
-      opacity: 0.42,
+      opacity: 0.56,
     });
     this.contactShadow = new THREE.Mesh(geoShadow, shadowMat);
     this.contactShadow.position.y = 0.015;
@@ -321,6 +323,7 @@ export class OperatorRig {
     this.uiCanvas.height = 80;
     this.uiCtx = this.uiCanvas.getContext('2d')!;
     this.uiTexture = new THREE.CanvasTexture(this.uiCanvas);
+    this.uiTexture.colorSpace = THREE.SRGBColorSpace;
 
     const spriteMat = new THREE.SpriteMaterial({
       map: this.uiTexture,
@@ -329,7 +332,7 @@ export class OperatorRig {
     });
     this.uiBillboard = new THREE.Sprite(spriteMat);
     this.uiBillboard.position.set(0, 2.15, 0);
-    this.uiBillboard.scale.set(1.4, 0.44, 1);
+    this.uiBillboard.scale.set(1.25 * 0.85, 0.36 * 0.85, 1);
     this.uiBillboard.castShadow = false;
     this.root.add(this.uiBillboard);
 
@@ -422,6 +425,19 @@ export class OperatorRig {
     armLowerTwistR.sort(sortByLocalY);
 
     const spineAnchor = spine2?.bone ?? spine1?.bone ?? agentModel;
+    agentModel.traverse((node) => {
+      if ((node as THREE.Mesh).isMesh) {
+        const mesh = node as THREE.Mesh;
+        if (!mesh.geometry.boundingSphere) {
+          mesh.geometry.computeBoundingSphere();
+        }
+        if (mesh.geometry.boundingSphere && !mesh.geometry.userData._operatorSphereExpanded) {
+          mesh.geometry.boundingSphere.radius *= 1.6;
+          mesh.geometry.userData._operatorSphereExpanded = true;
+        }
+        mesh.frustumCulled = true;
+      }
+    });
     this.proceduralGroup.visible = false;
     this.root.add(agentModel);
 
@@ -725,9 +741,10 @@ export class OperatorRig {
     this.contactShadow.visible = true;
     if (this.glbRig) this.glbRig.armIK.chestWeaponMount.visible = true;
 
-    // 3-Tier Distance LOD for Cross-Device High-FPS
+    // 3-Tier Distance LOD & Behind-Camera Culling for Cross-Device High-FPS
     const camDist = state.cameraDistance ?? 10;
-    const lodLevel: 0 | 1 | 2 = camDist < 18 ? 0 : camDist < 38 ? 1 : 2;
+    const isBehind = !!state.isBehindCamera;
+    const lodLevel: 0 | 1 | 2 = isBehind || camDist >= 38 ? 2 : camDist >= 18 ? 1 : 0;
     this.lodTickCounter++;
 
     // Smooth locomotion & stance blends
@@ -747,6 +764,8 @@ export class OperatorRig {
     this.leftArm.position.y = targetArmY;
     this.weaponMesh.position.y = targetWeaponY;
     this.uiBillboard.position.y = 2.15 - 0.55 * this.crouchBlend;
+    const scaleFactor = THREE.MathUtils.clamp(camDist * 0.085, 0.24, 1.15);
+    this.uiBillboard.scale.set(1.25 * scaleFactor, 0.36 * scaleFactor, 1);
     this.headCollider.position.y = 1.66 - 0.61 * this.crouchBlend;
     this.bodyCollider.position.y = 0.95 - 0.40 * this.crouchBlend;
 
@@ -799,8 +818,8 @@ export class OperatorRig {
     }
 
     if (this.glbRig) {
-      // LOD1 skips every odd non-firing frame for 2x distant-bot CPU savings
-      if (lodLevel === 0 || this.fireRecoilTimer > 0 || (this.lodTickCounter & 1) === 0) {
+      // Skip skeletal IK & pose updates behind camera; LOD1 skips every odd non-firing frame
+      if (!isBehind && (lodLevel === 0 || this.fireRecoilTimer > 0 || (this.lodTickCounter & 1) === 0)) {
         this.applySkeletalPose(legSwing, state.isMoving && state.speed > 0.15, aimPitch, this.upperBodyYaw, flinchOffset, lodLevel);
       }
     } else {
@@ -812,14 +831,14 @@ export class OperatorRig {
       this.weaponMesh.rotation.x = aimPitch * 0.45;
     }
 
-    this.updateBillboard(state.healthRatio, state.team, state.name);
+    this.updateBillboard(state.healthRatio, state.team, state.name, isBehind);
   }
 
-  private updateBillboard(hpRatio: number, team: 'Vanguard' | 'Syndicate', name: string): void {
+  private updateBillboard(hpRatio: number, team: 'Vanguard' | 'Syndicate', name: string, isBehind = false): void {
     const localTeam = settingsStore.settings.faction;
     const isAlly = team === localTeam;
 
-    if (!isAlly) {
+    if (!isAlly || isBehind) {
       this.uiBillboard.visible = false;
       return;
     }
@@ -833,30 +852,34 @@ export class OperatorRig {
     const ctx = this.uiCtx;
     ctx.clearRect(0, 0, 256, 80);
 
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 2;
+    const accent = team === 'Vanguard' ? '#38bdf8' : '#f59e0b';
+    ctx.font = '800 18px "Segoe UI", Arial, sans-serif';
+    const textW = Math.min(224, Math.max(96, Math.ceil(ctx.measureText(name).width) + 22));
+    const pillX = Math.round((256 - textW) * 0.5);
 
-    ctx.fillStyle = team === 'Vanguard' ? '#38bdf8' : '#34d399';
+    ctx.fillStyle = 'rgba(8, 12, 18, 0.72)';
     ctx.beginPath();
-    ctx.moveTo(128, 62);
-    ctx.lineTo(118, 48);
-    ctx.lineTo(138, 48);
+    ctx.roundRect(pillX, 20, textW, 28, 6);
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.moveTo(128, 64);
+    ctx.lineTo(120, 52);
+    ctx.lineTo(136, 52);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '800 20px "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle = '#f8fafc';
     ctx.textAlign = 'center';
     ctx.fillText(name, 128, 40);
 
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-
     const spriteMat = this.uiBillboard.material as THREE.SpriteMaterial;
-    spriteMat.depthTest = false;
-    spriteMat.opacity = 0.85;
+    spriteMat.depthTest = true;
+    spriteMat.opacity = 0.94;
     this.uiTexture.needsUpdate = true;
   }
 }

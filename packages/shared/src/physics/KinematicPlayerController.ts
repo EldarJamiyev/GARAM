@@ -160,12 +160,40 @@ export function resolveHorizontalAABB(
 
     // 4 Iterative solver passes (handles corners, tight crevices, and multi-box intersections)
     for (let pass = 0; pass < 4; pass++) {
+      // Pass pre-scan: select the lowest valid step-up riser first so voxel stairs/ramps
+      // never deflect horizontally off an adjacent higher block before stepping up smoothly.
+      if (canStep || isAirTuck) {
+        const effectiveFeetY = curY + (isAirTuck ? tuckOffset : 0);
+        let bestStepY = Infinity;
+        let bestStepBox: AABBCollider | null = null;
+        for (const b of colliders) {
+          if (effectiveFeetY >= b.maxY || curY + height <= b.minY) continue;
+          const stepDiff = b.maxY - effectiveFeetY;
+          if (stepDiff > 0 && stepDiff <= maxStep && b.maxY < bestStepY) {
+            const cx = Math.max(b.minX, Math.min(curX, b.maxX));
+            const cz = Math.max(b.minZ, Math.min(curZ, b.maxZ));
+            const dx = curX - cx;
+            const dz = curZ - cz;
+            if ((dx * dx + dz * dz) < (radius * radius)) {
+              if (hasHeadClearance(curX, b.maxY, curZ, height, colliders, b)) {
+                bestStepY = b.maxY;
+                bestStepBox = b;
+              }
+            }
+          }
+        }
+        if (bestStepBox !== null) {
+          curY = bestStepY;
+          didStep = true;
+        }
+      }
+
       for (const b of colliders) {
         // Vertical height check with mid-air crouch-jump tuck clearance
         const effectiveFeetY = curY + (isAirTuck ? tuckOffset : 0);
         if (effectiveFeetY >= b.maxY || curY + height <= b.minY) continue;
 
-        // Check if player can step up onto obstacle (grounded OR mid-air crouch-jump tuck reaching top)
+        // Secondary step-up check in case a horizontal slide moved onto a new riser mid-pass
         const stepDiff = b.maxY - (isAirTuck ? effectiveFeetY : curY);
         const canStepNow = canStep || (isAirTuck && stepDiff <= maxStep);
         if (canStepNow && stepDiff > 0 && stepDiff <= maxStep) {
@@ -177,7 +205,6 @@ export function resolveHorizontalAABB(
             if (hasHeadClearance(curX, b.maxY, curZ, height, colliders, b)) {
               curY = b.maxY;
               didStep = true;
-              // Continue checking other colliders at the new elevation
               continue;
             }
           }
@@ -331,6 +358,39 @@ export class KinematicPlayerController {
     this.crouchStamina = snap.crouchStamina;
     this.prevCrouchInput = snap.prevCrouchInput;
     this.airEntryMaxSpeed = snap.airEntryMaxSpeed;
+  }
+
+  /**
+   * Hard-resets all kinematic state, interpolation history, crouch/landing offsets,
+   * and velocities synchronously so round transitions snap cleanly with zero camera swim or drop.
+   */
+  public hardReset(x: number, y: number, z: number, yaw = 0, pitch = 0): void {
+    this.state.x = x;
+    this.state.y = y;
+    this.state.z = z;
+    this.state.vx = 0;
+    this.state.vy = 0;
+    this.state.vz = 0;
+    this.state.yaw = yaw;
+    this.state.pitch = pitch;
+    this.state.isGrounded = true;
+    this.state.isCrouching = false;
+    this.state.isWalking = false;
+    this.state.currentEyeHeight = KINEMATICS.EYE_HEIGHT_STAND;
+
+    this.prevState.x = x;
+    this.prevState.y = y;
+    this.prevState.z = z;
+    this.prevState.currentEyeHeight = KINEMATICS.EYE_HEIGHT_STAND;
+
+    this.actualCrouching = false;
+    this.stepOffsetY = 0;
+    this.taggingFactor = 1.0;
+    this.landingSpeedFactor = 1.0;
+    this.landingCameraDip = 0;
+    this.crouchStamina = 1.0;
+    this.prevCrouchInput = false;
+    this.airEntryMaxSpeed = KINEMATICS.SPEED_RIFLE * 1.25;
   }
 
   /**
@@ -586,26 +646,26 @@ export class KinematicPlayerController {
       }
     }
 
-    // Downward floor & crate top landing
-    if (newY <= 0) {
-      newY = 0;
-      this.state.vy = 0;
-      this.state.isGrounded = true;
-    }
+    // Downward floor & crate top landing + Source-engine downhill ramp/stair grounding
+    const allowDownStepSnap = wasGrounded && !input.jump && this.state.vy <= 0;
+    const downSnapMargin = allowDownStepSnap ? KINEMATICS.STEP_HEIGHT : 0.15;
 
     let bestLandingY = -Infinity;
     for (let i = 0; i < activeColliders.length; i++) {
       const b = activeColliders[i];
-      // Must be falling or in mid-air tuck
+      // Must be falling, walking on ground, or in mid-air tuck
       const effectivePrevY = this.state.y + tuckOffset;
       const effectiveNewY = newY + tuckOffset;
-      if (this.state.vy <= 0 && effectivePrevY >= b.maxY - 0.40 && (effectiveNewY <= b.maxY + 0.15 || newY <= b.maxY)) {
+      const withinDownSnap =
+        effectiveNewY <= b.maxY + downSnapMargin &&
+        b.maxY <= effectivePrevY + (isAirTuck ? 0.40 : 0.05);
+      if (this.state.vy <= 0 && effectivePrevY >= b.maxY - 0.40 && (withinDownSnap || newY <= b.maxY)) {
         // Player's horizontal foot circle must be firmly planted on the top face
         const cx = Math.max(b.minX, Math.min(this.state.x, b.maxX));
         const cz = Math.max(b.minZ, Math.min(this.state.z, b.maxZ));
         const dx = this.state.x - cx;
         const dz = this.state.z - cz;
-        if ((dx * dx + dz * dz) <= (this.radius * this.radius * 0.75)) {
+        if ((dx * dx + dz * dz) <= (this.radius * this.radius)) {
           if (b.maxY > bestLandingY) {
             bestLandingY = b.maxY;
           }
@@ -613,12 +673,24 @@ export class KinematicPlayerController {
       }
     }
 
+    // Floor plane (y = 0) fallback or smooth step-down onto y = 0
+    if (newY <= 0 || (allowDownStepSnap && bestLandingY === -Infinity && newY <= KINEMATICS.STEP_HEIGHT)) {
+      if (0 > bestLandingY) {
+        bestLandingY = 0;
+      }
+    }
+
     if (bestLandingY > -Infinity) {
       // Guard upward crouch-tuck snap against overhead ceilings so head never clips through roofs
-      const canSnap = bestLandingY <= this.state.y || hasHeadClearance(this.state.x, bestLandingY, this.state.z, currentHeight, activeColliders);
+      const canSnap =
+        bestLandingY <= this.state.y ||
+        hasHeadClearance(this.state.x, bestLandingY, this.state.z, currentHeight, activeColliders);
       if (canSnap) {
         if (bestLandingY > newY + 0.05) {
           this.stepOffsetY = Math.max(-0.5, Math.min(0.5, this.stepOffsetY - (bestLandingY - newY)));
+        } else if (allowDownStepSnap && bestLandingY < prevY - 0.02) {
+          // Smooth camera glide when descending voxel stairs/ramps (CS2 Source-style step-down)
+          this.stepOffsetY = Math.max(-0.5, Math.min(0.5, this.stepOffsetY + (prevY - bestLandingY)));
         }
         newY = bestLandingY;
         this.state.vy = 0;

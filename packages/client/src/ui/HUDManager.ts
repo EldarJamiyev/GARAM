@@ -14,6 +14,86 @@ export interface ScoreboardPlayer {
   ping: number;
 }
 
+export interface KillFeedEntryData {
+  killer: string;
+  killerTeam: 'Vanguard' | 'Syndicate';
+  victim: string;
+  victimTeam: 'Vanguard' | 'Syndicate';
+  weaponId: string;
+  isHeadshot?: boolean;
+  isWallbang?: boolean;
+  isLocalInvolved?: boolean;
+}
+
+/**
+ * Computes attacker bearing relative to the local player's forward view axis.
+ * Returns radians where 0 = straight ahead, +PI/2 = right, -PI/2 = left, +/-PI = behind.
+ */
+export function computeRelativeAttackerAngleRad(
+  playerPos: { x: number; z: number },
+  playerYaw: number,
+  attackerPos: { x: number; z: number }
+): number {
+  const dx = attackerPos.x - playerPos.x;
+  const dz = attackerPos.z - playerPos.z;
+  const fwdDot = dx * -Math.sin(playerYaw) + dz * -Math.cos(playerYaw);
+  const rightDot = dx * Math.cos(playerYaw) + dz * -Math.sin(playerYaw);
+  return Math.atan2(rightDot, fwdDot);
+}
+
+const HEADSHOT_SKULL_SVG =
+  '<svg viewBox="0 0 18 18" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">' +
+  '<circle cx="9" cy="9" r="6.8" stroke-opacity="0.72"/>' +
+  '<line x1="9" y1="0.8" x2="9" y2="3.4"/><line x1="9" y1="14.6" x2="9" y2="17.2"/>' +
+  '<line x1="0.8" y1="9" x2="3.4" y2="9"/><line x1="14.6" y1="9" x2="17.2" y2="9"/>' +
+  '<path d="M6.4 8.5a2.6 2.6 0 1 1 5.2 0c0 1.2-.6 2-1.1 2.5v1.3h-3V11c-.5-.5-1.1-1.3-1.1-2.5Z" fill="currentColor" stroke="none"/>' +
+  '<circle cx="7.9" cy="8.4" r="0.65" fill="#180a0d" stroke="none"/><circle cx="10.1" cy="8.4" r="0.65" fill="#180a0d" stroke="none"/>' +
+  '</svg>';
+
+const BODY_KILL_CARD_SVG =
+  '<svg viewBox="0 0 14 14" width="10" height="10" fill="currentColor" aria-hidden="true">' +
+  '<polygon points="7,1.4 12.2,7 7,12.6 1.8,7"/>' +
+  '</svg>';
+
+const WALLBANG_SVG =
+  '<svg viewBox="0 0 18 14" width="14" height="12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">' +
+  '<rect x="7.5" y="1.5" width="3" height="11" rx="0.5" fill="currentColor" fill-opacity="0.3"/>' +
+  '<line x1="1" y1="7" x2="15" y2="7"/><polyline points="12,4 15.8,7 12,10"/>' +
+  '</svg>';
+
+const C4_TIMER_SVG =
+  '<svg class="c4-timer-icon" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">' +
+  '<rect x="2.5" y="4" width="13" height="10" rx="1.6" fill="currentColor" fill-opacity="0.22"/>' +
+  '<rect x="5" y="6.2" width="8" height="3.2" rx="0.5" fill="currentColor"/>' +
+  '<circle cx="9" cy="11.6" r="1.1" fill="#fff" stroke="none"/>' +
+  '<path d="M5.5 4V2.4M12.5 4V2.4" stroke-linecap="round"/>' +
+  '</svg>';
+
+function getWeaponSilhouetteSvg(weaponId: string): string {
+  switch (weaponId) {
+    case 'garam-47':
+      return '<svg viewBox="0 0 42 14" width="34" height="12" fill="currentColor" aria-hidden="true"><path d="M1 8.5h8l2-2h11l1.5 1.2h12.5v1.3H27.5l-1 1.4h-2.2l.8 2.8h-2.3l-1.3-3.2h-5.8l-.8 2.6h-2.1l.4-2.6H9.8L3.5 12H1V8.5zm14.5-3.2h5.2v1h-5.2v-1z"/></svg>';
+    case 'vanguard-m4':
+      return '<svg viewBox="0 0 46 14" width="36" height="12" fill="currentColor" aria-hidden="true"><path d="M1 7.6h7.2l1.6-1.4h11.5v1h6.8v-.4h15.5v2H28.1v-.4H23l-.8 3.6h-2.1l.5-3.2h-4.6l-.8 2.8H13l.5-2.8H9.2L3.5 11.4H1V7.6zm10.8-2.4h6.4v1h-6.4v-1z"/></svg>';
+    case 'm4a4':
+      return '<svg viewBox="0 0 42 14" width="34" height="12" fill="currentColor" aria-hidden="true"><path d="M1 7.6h7.4l1.6-1.5h12.2v1h14.4v1.6H24.6l-.8 3.6h-2.2l.5-3.2h-4.6l-.8 2.7h-2.2l.5-2.7H9.4L3.6 11.4H1V7.6zm11.2-2.4h6.2v1h-6.2v-1z"/></svg>';
+    case 'mp9':
+      return '<svg viewBox="0 0 32 14" width="26" height="12" fill="currentColor" aria-hidden="true"><path d="M2 6.8h5.2V5.4h13.5v1.4h8.2v1.6h-8.2v1.2h-2.4l.7 3.6h-2.2l-.9-3.6h-4.4l-.8 2.8H8.6l.5-2.8H2V6.8z"/></svg>';
+    case 'sovereign-awp':
+      return '<svg viewBox="0 0 48 14" width="38" height="12" fill="currentColor" aria-hidden="true"><path d="M1 8.2h8.8l2-1.8h12.4v.8h22v1.4H24.6l-1.2 1.6h-6.2l-.9 2.4h-2.3l.6-2.4H10.2L4.2 12H1V8.2zm12.4-4.2h9.4v1.7h-9.4V4z"/></svg>';
+    case 'desert-eagle':
+      return '<svg viewBox="0 0 28 14" width="22" height="12" fill="currentColor" aria-hidden="true"><path d="M4 4.2h19.5v2.6H16l-1.2 1.2H11l-1.6 4.6H6.2l1.6-5.2H4V4.2z"/></svg>';
+    case 'usp-s':
+      return '<svg viewBox="0 0 32 14" width="26" height="12" fill="currentColor" aria-hidden="true"><path d="M3 4.6h13.2v.6h13.2v1.8H16.2v.8h-4.6L10 12.2H7.2l1.4-4.8H3V4.6z"/></svg>';
+    case 'glock-18':
+      return '<svg viewBox="0 0 26 14" width="20" height="12" fill="currentColor" aria-hidden="true"><path d="M4.5 4.4h16.5v2.4h-8.4L11 12H8l1.4-5.2H4.5V4.4z"/></svg>';
+    case 'garam-karambit':
+      return '<svg viewBox="0 0 28 14" width="22" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="6.2" cy="8.5" r="2.2"/><path d="M8.4 7.8c3.2-2.8 8.4-4.6 15.2-3.4-3.8 2.4-7.4 3.6-11.2 4.1" fill="currentColor"/></svg>';
+    default:
+      return '<svg viewBox="0 0 34 14" width="28" height="12" fill="currentColor" aria-hidden="true"><path d="M2 7h28v2H19l-1 3h-2l.6-3H9L4 11H2V7z"/></svg>';
+  }
+}
+
 function escapeHtml(str: string): string {
   return str.replace(/[&<>'"]/g, (tag) => ({
     '&': '&amp;',
@@ -27,7 +107,9 @@ function escapeHtml(str: string): string {
 export class HUDManager {
   // Cached static DOM elements
   private hpEl = document.getElementById('hud-hp');
+  private hpFillEl = document.getElementById('hud-hp-fill');
   private armorEl = document.getElementById('hud-armor');
+  private armorFillEl = document.getElementById('hud-armor-fill');
   private speedEl = document.getElementById('hud-speed');
   private cashEl = document.getElementById('hud-cash');
   private weaponNameEl = document.getElementById('hud-weapon-name');
@@ -37,11 +119,18 @@ export class HUDManager {
   private reloadFill = document.getElementById('reload-fill');
   private scoreCtEl = document.getElementById('score-ct');
   private scoreTEl = document.getElementById('score-t');
+  private aliveCtEl = document.getElementById('alive-ct');
+  private aliveTEl = document.getElementById('alive-t');
   private roundTimerEl = document.getElementById('round-timer');
   private killfeedEl = document.getElementById('killfeed');
+  private radioFeedEl = document.getElementById('cs2-radio-feed');
   private sniperScopeEl = document.getElementById('sniper-scope');
   private calloutEl = document.getElementById('hud-callout');
   private scoreboardTbody = document.getElementById('score-tbody');
+  private killCardsEl = document.getElementById('cs2-kill-cards');
+  private killFlareEl = document.getElementById('cs2-kill-flare');
+  private factionEmblemEl = document.getElementById('cs2-faction-emblem');
+  private tacticalToastEl = document.getElementById('cs2-tactical-toast');
   private slotEls: (HTMLElement | null)[] = [
     null,
     document.getElementById('slot-1'),
@@ -87,11 +176,18 @@ export class HUDManager {
   private lastScopeVisible: boolean | null = null;
   private lastTimerText = '';
   private lastTimerColor = '';
+  private wasBombArmed = false;
   private lastCtScore = -1;
   private lastTScore = -1;
+  private lastCtAlive = -1;
+  private lastTAlive = -1;
   private lastInteractionVisible = false;
   private lastInteractionPct = -1;
   private lastInteractionLabel = '';
+  public roundKillCount = 0;
+  private toastTimeout: number | null = null;
+  private flareTimeout: number | null = null;
+  private damageArcTimeout: number | null = null;
 
   constructor() {}
 
@@ -125,11 +221,22 @@ export class HUDManager {
 
     if (roundedHp !== this.lastHp) {
       this.lastHp = roundedHp;
-      if (this.hpEl) this.hpEl.textContent = roundedHp.toString();
+      const clampedHp = Math.max(0, Math.min(100, roundedHp));
+      const isLowHp = clampedHp <= 25;
+      if (this.hpEl) {
+        this.hpEl.textContent = roundedHp.toString();
+        this.hpEl.style.color = isLowHp ? '#ff3b4a' : '#f8fafc';
+      }
+      if (this.hpFillEl) {
+        this.hpFillEl.style.width = `${clampedHp}%`;
+        this.hpFillEl.style.background = isLowHp ? '#ff3b4a' : '#f1f5f9';
+      }
     }
     if (roundedArmor !== this.lastArmor) {
       this.lastArmor = roundedArmor;
+      const clampedArmor = Math.max(0, Math.min(100, roundedArmor));
       if (this.armorEl) this.armorEl.textContent = roundedArmor.toString();
+      if (this.armorFillEl) this.armorFillEl.style.width = `${clampedArmor}%`;
     }
     if (roundedCash !== this.lastCash) {
       this.lastCash = roundedCash;
@@ -244,23 +351,33 @@ export class HUDManager {
   }
 
   public updateRoundTimer(secondsRemaining: number, isBombArmed: boolean): void {
+    if (isBombArmed && !this.wasBombArmed) {
+      this.showTacticalToast('The bomb has been planted — 40 seconds till detonation', 3000);
+    }
+    this.wasBombArmed = isBombArmed;
+
+    if (!this.roundTimerEl) this.roundTimerEl = document.getElementById('round-timer');
     if (!this.roundTimerEl) return;
     const clamped = Math.max(0, Math.floor(secondsRemaining));
-    let text: string;
+    let key: string;
     let color: string;
     if (isBombArmed) {
-      text = `BOMB 00:${clamped.toString().padStart(2, '0')}`;
-      color = '#ff2233';
+      key = `C4:00:${clamped.toString().padStart(2, '0')}`;
+      color = '#ff3b4a';
     } else {
       const mins = Math.floor(clamped / 60);
       const secs = clamped % 60;
-      text = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-      color = '#fff';
+      key = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      color = '#f8fafc';
     }
 
-    if (text !== this.lastTimerText) {
-      this.lastTimerText = text;
-      this.roundTimerEl.textContent = text;
+    if (key !== this.lastTimerText) {
+      this.lastTimerText = key;
+      if (isBombArmed) {
+        this.roundTimerEl.innerHTML = `${C4_TIMER_SVG}<span>00:${clamped.toString().padStart(2, '0')}</span>`;
+      } else {
+        this.roundTimerEl.textContent = key;
+      }
     }
     if (color !== this.lastTimerColor) {
       this.lastTimerColor = color;
@@ -279,13 +396,164 @@ export class HUDManager {
     }
   }
 
-  public addKillfeed(text: string): void {
+  public updateAliveCounts(ctAlive: number, tAlive: number): void {
+    if (ctAlive !== this.lastCtAlive) {
+      this.lastCtAlive = ctAlive;
+      if (!this.aliveCtEl) this.aliveCtEl = document.getElementById('alive-ct');
+      if (this.aliveCtEl) this.aliveCtEl.textContent = ctAlive.toString();
+    }
+    if (tAlive !== this.lastTAlive) {
+      this.lastTAlive = tAlive;
+      if (!this.aliveTEl) this.aliveTEl = document.getElementById('alive-t');
+      if (this.aliveTEl) this.aliveTEl.textContent = tAlive.toString();
+    }
+  }
+
+  public setFactionTheme(faction: 'Vanguard' | 'Syndicate'): void {
+    if (!this.factionEmblemEl) this.factionEmblemEl = document.getElementById('cs2-faction-emblem');
+    if (this.factionEmblemEl) {
+      this.factionEmblemEl.dataset.faction = faction.toLowerCase();
+      this.factionEmblemEl.style.borderColor =
+        faction === 'Syndicate' ? 'rgba(232, 184, 90, 0.72)' : 'rgba(104, 168, 232, 0.72)';
+      this.factionEmblemEl.style.color = faction === 'Syndicate' ? '#e8b85a' : '#68a8e8';
+    }
+  }
+
+  public recordRoundKill(isHeadshot: boolean): void {
+    this.roundKillCount = Math.min(5, this.roundKillCount + 1);
+    if (!this.killCardsEl) this.killCardsEl = document.getElementById('cs2-kill-cards');
+    if (this.killCardsEl) {
+      const card = document.createElement('div');
+      card.className = `cs2-kill-card${isHeadshot ? ' headshot' : ''}`;
+      card.innerHTML = isHeadshot ? HEADSHOT_SKULL_SVG : BODY_KILL_CARD_SVG;
+      this.killCardsEl.appendChild(card);
+    }
+
+    if (!this.killFlareEl) this.killFlareEl = document.getElementById('cs2-kill-flare');
+    if (this.killFlareEl) {
+      this.killFlareEl.style.background = isHeadshot
+        ? 'linear-gradient(180deg, rgba(255, 224, 130, 0) 0%, rgba(255, 198, 92, 0.84) 48%, rgba(255, 250, 225, 0.98) 100%)'
+        : 'linear-gradient(180deg, rgba(186, 230, 253, 0) 0%, rgba(125, 211, 252, 0.72) 52%, rgba(248, 250, 252, 0.96) 100%)';
+      this.killFlareEl.classList.remove('active');
+      void this.killFlareEl.offsetWidth;
+      this.killFlareEl.classList.add('active');
+      if (this.flareTimeout !== null) window.clearTimeout(this.flareTimeout);
+      this.flareTimeout = window.setTimeout(() => {
+        this.killFlareEl?.classList.remove('active');
+      }, 340);
+    }
+  }
+
+  public resetRoundKills(): void {
+    this.roundKillCount = 0;
+    this.wasBombArmed = false;
+    if (!this.killCardsEl) this.killCardsEl = document.getElementById('cs2-kill-cards');
+    if (this.killCardsEl) {
+      this.killCardsEl.innerHTML = '';
+    }
+    this.killFlareEl?.classList.remove('active');
+  }
+
+  public showTacticalToast(message: string, durationMs = 3000): void {
+    if (!this.tacticalToastEl) this.tacticalToastEl = document.getElementById('cs2-tactical-toast');
+    if (!this.tacticalToastEl) return;
+    this.tacticalToastEl.textContent = message;
+    this.tacticalToastEl.style.display = 'block';
+    this.tacticalToastEl.style.opacity = '1';
+    if (this.toastTimeout !== null) window.clearTimeout(this.toastTimeout);
+    this.toastTimeout = window.setTimeout(() => {
+      if (this.tacticalToastEl) {
+        this.tacticalToastEl.style.opacity = '0';
+        window.setTimeout(() => {
+          if (this.tacticalToastEl && this.tacticalToastEl.style.opacity === '0') {
+            this.tacticalToastEl.style.display = 'none';
+          }
+        }, 220);
+      }
+    }, durationMs);
+  }
+
+  public addRadioMessage(text: string): void {
+    if (!this.radioFeedEl) this.radioFeedEl = document.getElementById('cs2-radio-feed');
+    if (!this.radioFeedEl) return;
+    while (this.radioFeedEl.children.length >= 3) {
+      this.radioFeedEl.firstElementChild?.remove();
+    }
+    const line = document.createElement('div');
+    line.className = 'radio-feed-line';
+    line.textContent = text;
+    this.radioFeedEl.appendChild(line);
+    setTimeout(() => line.remove(), 3500);
+  }
+
+  public addKillEntry(data: KillFeedEntryData): void {
+    if (!this.killfeedEl) this.killfeedEl = document.getElementById('killfeed');
     if (!this.killfeedEl) return;
+    while (this.killfeedEl.children.length >= 5) {
+      this.killfeedEl.firstElementChild?.remove();
+    }
+
     const entry = document.createElement('div');
-    entry.className = 'kill-entry';
+    entry.className = data.isLocalInvolved ? 'kill-entry local-kill' : 'kill-entry';
+    const killerClass = data.killerTeam === 'Vanguard' ? 'ct' : 't';
+    const victimClass = data.victimTeam === 'Vanguard' ? 'ct' : 't';
+    const weaponSvg = getWeaponSilhouetteSvg(data.weaponId);
+    const wbHtml = data.isWallbang ? `<span class="kill-wb-icon">${WALLBANG_SVG}</span>` : '';
+    const hsHtml = data.isHeadshot ? `<span class="kill-hs-icon">${HEADSHOT_SKULL_SVG}</span>` : '';
+
+    entry.innerHTML =
+      `<span class="kill-name ${killerClass}">${escapeHtml(data.killer)}</span>` +
+      `<span class="kill-weapon-icon">${weaponSvg}</span>` +
+      wbHtml +
+      hsHtml +
+      `<span class="kill-name ${victimClass}">${escapeHtml(data.victim)}</span>`;
+
+    this.killfeedEl.appendChild(entry);
+    setTimeout(() => entry.remove(), 5000);
+  }
+
+  public addKillfeed(text: string, isLocalKill = false): void {
+    if (!this.killfeedEl) this.killfeedEl = document.getElementById('killfeed');
+    if (!this.killfeedEl) return;
+    while (this.killfeedEl.children.length >= 5) {
+      this.killfeedEl.firstElementChild?.remove();
+    }
+    const entry = document.createElement('div');
+    entry.className = isLocalKill ? 'kill-entry local-kill' : 'kill-entry';
     entry.textContent = text;
     this.killfeedEl.appendChild(entry);
     setTimeout(() => entry.remove(), 5000);
+  }
+
+  public showRoundWinRibbon(
+    winner: 'Vanguard' | 'Syndicate',
+    reason: string,
+    mvpName?: string,
+    durationMs = 4500
+  ): void {
+    const existing = document.getElementById('round-banner');
+    if (existing) existing.remove();
+
+    const accent = winner === 'Vanguard' ? '#68a8e8' : '#e8b85a';
+    const label = winner === 'Vanguard' ? 'VANGUARD WINS' : 'SYNDICATE WINS';
+
+    const ribbon = document.createElement('div');
+    ribbon.id = 'round-banner';
+    ribbon.className = 'cs2-round-ribbon';
+    ribbon.style.setProperty('--ribbon-accent', accent);
+    ribbon.innerHTML =
+      `<div class="cs2-round-ribbon-title">${escapeHtml(label)}</div>` +
+      `<div class="cs2-round-ribbon-sub">${escapeHtml(reason)}</div>` +
+      (mvpName ? `<div class="cs2-round-ribbon-mvp">MVP &bull; ${escapeHtml(mvpName)}</div>` : '');
+
+    const overlay = document.getElementById('ui-overlay');
+    if (overlay) {
+      overlay.appendChild(ribbon);
+    } else {
+      document.body.appendChild(ribbon);
+    }
+
+    setTimeout(() => ribbon.remove(), durationMs);
   }
 
   public showCenterBanner(title: string, subtitle: string, durationMs = 3500): void {
@@ -536,15 +804,21 @@ export class HUDManager {
         ind.style.position = 'absolute';
         ind.style.top = '50%';
         ind.style.left = '50%';
-        ind.style.width = '280px';
-        ind.style.height = '280px';
+        ind.style.width = '320px';
+        ind.style.height = '320px';
         ind.style.transform = 'translate(-50%, -50%)';
         ind.style.pointerEvents = 'none';
-        ind.style.zIndex = '45';
-        ind.style.borderRadius = '50%';
-        ind.style.border = '5px solid transparent';
-        ind.style.borderTopColor = 'rgba(255, 30, 50, 0.9)';
-        ind.style.filter = 'drop-shadow(0 0 10px rgba(255, 30, 50, 0.8))';
+        ind.style.zIndex = '46';
+        ind.innerHTML =
+          '<svg viewBox="0 0 320 320" width="320" height="320" aria-hidden="true">' +
+          '<defs><linearGradient id="cs2DmgArcGrad" x1="0" y1="0" x2="1" y2="0">' +
+          '<stop offset="0%" stop-color="#ef2030" stop-opacity="0"/>' +
+          '<stop offset="50%" stop-color="#ff2438" stop-opacity="0.96"/>' +
+          '<stop offset="100%" stop-color="#ef2030" stop-opacity="0"/>' +
+          '</linearGradient></defs>' +
+          '<path d="M 96 38 A 138 138 0 0 1 224 38" fill="none" stroke="url(#cs2DmgArcGrad)" stroke-width="10" stroke-linecap="round"/>' +
+          '<path d="M 114 48 A 126 126 0 0 1 206 48" fill="none" stroke="rgba(255, 170, 178, 0.72)" stroke-width="2.2" stroke-linecap="round"/>' +
+          '</svg>';
         document.body.appendChild(ind);
       }
       this.damageIndicatorEl = ind;
@@ -552,12 +826,13 @@ export class HUDManager {
 
     const ind = this.damageIndicatorEl;
     const deg = (angleRad * 180) / Math.PI;
-    ind.style.transform = `translate(-50%, -50%) rotate(${deg}deg)`;
+    ind.style.transform = `translate(-50%, -50%) rotate(${deg.toFixed(1)}deg)`;
     ind.style.opacity = '1';
     ind.style.transition = 'none';
 
-    setTimeout(() => {
-      ind.style.transition = 'opacity 0.4s ease-out';
+    if (this.damageArcTimeout !== null) window.clearTimeout(this.damageArcTimeout);
+    this.damageArcTimeout = window.setTimeout(() => {
+      ind.style.transition = 'opacity 0.57s ease-out';
       ind.style.opacity = '0';
     }, 80);
   }
