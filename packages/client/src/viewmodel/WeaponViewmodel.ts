@@ -166,6 +166,22 @@ export function calibrateWeaponPBRMaterials(model: THREE.Object3D, weaponId: str
         std.metalness = 0.04;
         std.roughness = 0.52;
         std.envMapIntensity = 0.55;
+      } else if (weaponId === 'glock-18') {
+        // Authentic CS2 Tenifer matte-black steel slide & olive-charcoal polymer frame (neutralize purple arcade skin)
+        if (std.map) {
+          std.map = null;
+        }
+        if (/polymer|plastic|grip|rubber|stock|body|chassis|handguard|forend|rail|silencer_wrap|mag|clip/i.test(tag)) {
+          std.color.setHex(0x22272c);
+          std.metalness = 0.08;
+          std.roughness = 0.62;
+          std.envMapIntensity = 0.65;
+        } else {
+          std.color.setHex(0x2c323a);
+          std.metalness = 0.78;
+          std.roughness = 0.30;
+          std.envMapIntensity = 1.35;
+        }
       } else if (
         (isPolymerPrimary || isAwp) &&
         /polymer|plastic|grip|rubber|stock|body|chassis|handguard|forend|rail|silencer_wrap|mag|clip/i.test(tag)
@@ -175,13 +191,15 @@ export function calibrateWeaponPBRMaterials(model: THREE.Object3D, weaponId: str
         std.envMapIntensity = 0.65;
       } else if (isChromePistol) {
         if (/grip|rubber|panel/i.test(tag)) {
+          std.color.setHex(0x1e2226);
           std.metalness = 0.08;
           std.roughness = 0.64;
           std.envMapIntensity = 0.6;
         } else {
+          std.color.setHex(0xb8c2cc);
           std.metalness = Math.max(0.84, Math.min(0.95, std.metalness || 0.88));
           std.roughness = THREE.MathUtils.clamp(std.roughness || 0.24, 0.18, 0.34);
-          std.envMapIntensity = 1.55;
+          std.envMapIntensity = 1.38;
         }
       } else {
         // Default steel receiver / barrel / slide / suppressor tube
@@ -460,13 +478,13 @@ const FINGER_GRIP_PRESETS: Record<
     },
   },
   pistol: {
-    // Tight right-hand pistol grip + index ~35° on trigger + thumb forward along frame
+    // Tight right-hand pistol grip + index curled cleanly onto trigger + thumb forward along frame
     R: {
-      index: [22, 35, 24],
+      index: [38, 62, 44],
       middle: [45, 78, 54],
       ring: [54, 84, 56],
       pinky: [54, 84, 56],
-      thumb: [14, 16, 12],
+      thumb: [18, 22, 16],
     },
     // Tight two-handed support wrap over right knuckles + thumb parallel to slide
     L: {
@@ -474,7 +492,7 @@ const FINGER_GRIP_PRESETS: Record<
       middle: [48, 78, 54],
       ring: [50, 80, 56],
       pinky: [50, 80, 56],
-      thumb: [12, 14, 10],
+      thumb: [16, 20, 14],
     },
   },
   karambit: {
@@ -738,12 +756,22 @@ export function applyCS2WeaponHandPosture(params: {
 
     if (handLSocket.parent) {
       // Exact anatomical basis for relaxed palm-down/inward off-hand (+X palm down-inward, +Y fingers forward-inward-down)
-      _vA.set(0.45, -0.28, -0.85).normalize(); // +Y fingers forward-inward-down
-      _vB.set(0.55, -0.78, 0.28).normalize();  // +X palm hint down & inward (back of glove faces camera-up-left)
+      // Distribute half the pronation roll across DEF-forearmL001_234 so the glove cuff meets the wrist seamlessly with zero gap
+      _vA.set(0.42, -0.26, -0.87).normalize(); // +Y fingers forward-inward-down
+      _vB.set(0.52, -0.80, 0.28).normalize();  // +X palm hint down & inward (back of glove faces camera-up-left)
       _vD.crossVectors(_vB, _vA).normalize();  // +Z thumb axis
       _vC.crossVectors(_vA, _vD).normalize();  // +X orthonormal palm axis
       const basisM = new THREE.Matrix4().makeBasis(_vC, _vA, _vD);
       _ikQ1.setFromRotationMatrix(basisM);
+      const forearmUpperL = handLSocket.parent.parent;
+      if (forearmUpperL && handLSocket.parent.name.includes('forearmL001')) {
+        forearmUpperL.updateWorldMatrix(true, false);
+        forearmUpperL.getWorldQuaternion(_ikQ2);
+        const relToForearm = _ikQ2.clone().invert().multiply(_ikQ1);
+        const yTwist = new THREE.Quaternion(0, relToForearm.y, 0, relToForearm.w).normalize();
+        handLSocket.parent.quaternion.set(0, 0, 0, 1).slerp(yTwist, 0.55);
+        handLSocket.parent.updateWorldMatrix(false, false);
+      }
       handLSocket.parent.updateWorldMatrix(true, false);
       handLSocket.parent.getWorldQuaternion(_ikQ2);
       handLSocket.quaternion.copy(_ikQ2).invert().multiply(_ikQ1);
@@ -1353,6 +1381,11 @@ export class WeaponViewmodel {
       xm1014: 'xm1014',
       'dual-elites': 'dual_elites',
       'tactical-shield': 'tactical_shield',
+      'smoke-grenade': 'smoke_grenade',
+      flashbang: 'flashbang',
+      'he-grenade': 'he_grenade',
+      molotov: 'molotov',
+      'pulse-core': 'pulse_core_c4',
     };
 
     // 3. Load All 9 CS2 Weapons in parallel and bind them to calibrated skeletal socket bones

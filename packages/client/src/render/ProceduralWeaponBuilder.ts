@@ -424,6 +424,110 @@ export function buildProceduralCS2Weapon(weaponId: string): THREE.Group {
     addCyl(0.014, 0.014, 0.18, 0, 0.0, 0.16, gripRubber, 10);
     muzzleZ = 0.30;
     muzzleY = 0.08;
+  } else if (weaponId === 'smoke-grenade') {
+    // CS2 M18 Tactical Smoke Grenade — Olive-slate cylindrical canister, red hazard band, steel fuze head & spoon lever
+    const smokeCanMat = new THREE.MeshStandardMaterial({ color: 0x4b584d, roughness: 0.48, metalness: 0.38 });
+    const hazardBandMat = new THREE.MeshStandardMaterial({ color: 0xb8382c, roughness: 0.45, metalness: 0.2 });
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.029, 0.125, 18), smokeCanMat);
+    body.position.set(0, 0.018, 0.006);
+    root.add(body);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0298, 0.0298, 0.022, 18), hazardBandMat);
+    band.position.set(0, 0.044, 0.006);
+    root.add(band);
+    const topCap = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.029, 0.012, 18), brushedSteel);
+    topCap.position.set(0, 0.084, 0.006);
+    root.add(topCap);
+    const fuze = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, 0.024, 14), matteSteel);
+    fuze.position.set(0, 0.100, 0.006);
+    root.add(fuze);
+    addBox(0.010, 0.088, 0.006, 0, 0.048, -0.026, brushedSteel, -0.08); // Spoon lever
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.0022, 8, 16), brushedSteel);
+    ring.position.set(0.014, 0.102, 0.012);
+    ring.rotation.y = Math.PI * 0.35;
+    root.add(ring);
+    muzzleZ = 0.14;
+    muzzleY = 0.04;
+  } else if (weaponId === 'flashbang') {
+    // CS2 M84 Stun Grenade (Flashbang) — Perforated steel hexagonal body with cobalt-blue tactical identification band
+    const flashBandMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.4, metalness: 0.35 });
+    const core = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.115, 14), brushedSteel);
+    core.position.set(0, 0.018, 0.006);
+    root.add(core);
+    const outerShell = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.088, 8), gunmetal);
+    outerShell.position.set(0, 0.018, 0.006);
+    root.add(outerShell);
+    const blueBand = new THREE.Mesh(new THREE.CylinderGeometry(0.0278, 0.0278, 0.014, 8), flashBandMat);
+    blueBand.position.set(0, 0.036, 0.006);
+    root.add(blueBand);
+    const fuze = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.024, 12), matteSteel);
+    fuze.position.set(0, 0.086, 0.006);
+    root.add(fuze);
+    addBox(0.010, 0.082, 0.005, 0, 0.042, -0.025, brushedSteel, -0.08);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.002, 8, 16), brushedSteel);
+    ring.position.set(0.013, 0.090, 0.010);
+    root.add(ring);
+    muzzleZ = 0.14;
+    muzzleY = 0.04;
+  } else if (weaponId === 'he-grenade') {
+    // CS2 M67 High-Explosive Frag Grenade — Olive-drab spherical fragmentation body, yellow marking ring & M213 fuze spoon
+    const fragBodyMat = new THREE.MeshStandardMaterial({ color: 0x3b4932, roughness: 0.55, metalness: 0.35 });
+    const yellowRingMat = new THREE.MeshStandardMaterial({ color: 0xd99b26, roughness: 0.4, metalness: 0.25 });
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.034, 18, 14), fragBodyMat);
+    sphere.scale.set(1.0, 1.12, 1.0);
+    sphere.position.set(0, 0.016, 0.006);
+    root.add(sphere);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, 0.014, 14), yellowRingMat);
+    collar.position.set(0, 0.056, 0.006);
+    root.add(collar);
+    const fuze = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.013, 0.022, 14), brushedSteel);
+    fuze.position.set(0, 0.072, 0.006);
+    root.add(fuze);
+    addBox(0.010, 0.070, 0.005, 0, 0.038, -0.027, matteSteel, -0.14);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.002, 8, 16), brushedSteel);
+    ring.position.set(0.013, 0.075, 0.010);
+    root.add(ring);
+    muzzleZ = 0.14;
+    muzzleY = 0.04;
+  } else if (weaponId === 'molotov') {
+    // CS2 Incendiary / Molotov Cocktail — Dark amber glass bottle, fuel liquid level, taped grip & cloth rag wick
+    const bottleGlassMat = new THREE.MeshStandardMaterial({ color: 0x5c2e14, roughness: 0.18, metalness: 0.15 });
+    const clothWickMat = new THREE.MeshStandardMaterial({ color: 0xd6c7b2, roughness: 0.85, metalness: 0.05 });
+    const emberMat = new THREE.MeshStandardMaterial({ color: 0xff5500, emissive: 0xff3b00, emissiveIntensity: 2.2, roughness: 0.4 });
+    const bottleBody = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.030, 0.115, 16), bottleGlassMat);
+    bottleBody.position.set(0, 0.005, 0.006);
+    root.add(bottleBody);
+    const gripTape = new THREE.Mesh(new THREE.CylinderGeometry(0.0308, 0.0308, 0.042, 16), gripRubber);
+    gripTape.position.set(0, 0.005, 0.006);
+    root.add(gripTape);
+    const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.028, 0.036, 16), bottleGlassMat);
+    shoulder.position.set(0, 0.080, 0.006);
+    root.add(shoulder);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.013, 0.045, 14), bottleGlassMat);
+    neck.position.set(0, 0.118, 0.006);
+    root.add(neck);
+    addBox(0.018, 0.042, 0.014, 0.004, 0.148, 0.012, clothWickMat, 0.25, 0.15);
+    addBox(0.008, 0.012, 0.008, 0.008, 0.166, 0.018, emberMat);
+    muzzleZ = 0.16;
+    muzzleY = 0.05;
+  } else if (weaponId === 'pulse-core') {
+    // CS2 C4 IED Explosive Pack — Dual olive C4 plastique bricks, electrical tape straps, digital keypad & glowing red LED
+    const c4BrickMat = new THREE.MeshStandardMaterial({ color: 0x7c745c, roughness: 0.65, metalness: 0.12 });
+    const ledRedMat = new THREE.MeshStandardMaterial({ color: 0xff1e27, emissive: 0xff1e27, emissiveIntensity: 2.5 });
+    const screenMat = new THREE.MeshStandardMaterial({ color: 0x0a1c12, emissive: 0x166534, emissiveIntensity: 0.8, roughness: 0.2 });
+    addBox(0.048, 0.155, 0.038, -0.026, 0.022, 0.014, c4BrickMat);
+    addBox(0.048, 0.155, 0.038, 0.026, 0.022, 0.014, c4BrickMat);
+    addBox(0.104, 0.018, 0.042, 0, 0.068, 0.014, gripRubber); // Upper tape strap
+    addBox(0.104, 0.018, 0.042, 0, -0.024, 0.014, gripRubber); // Lower tape strap
+    addBox(0.068, 0.092, 0.018, 0, 0.024, -0.012, darkPolymer); // Keypad housing facing operator
+    addBox(0.048, 0.024, 0.004, 0, 0.052, -0.021, screenMat); // Digital LCD readout
+    addBox(0.008, 0.008, 0.006, 0.022, 0.064, -0.022, ledRedMat); // Armed status LED
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) {
+        addBox(0.010, 0.010, 0.004, (c - 1) * 0.015, 0.022 - r * 0.015, -0.021, brushedSteel);
+      }
+    }
+    muzzleZ = 0.18;
+    muzzleY = 0.05;
   } else {
     // Tactical B&T MP9 SMG (default fallback) — Compact olive-charcoal polymer chassis, pistol grip at (0,0,0),
     // extended 30-rd translucent/gunmetal stick mag, integrated angled vertical foregrip, micro reflex optic, side-folded stock

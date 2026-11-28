@@ -28,16 +28,8 @@ import {
   BotAISystemCallbacks,
   BotMapConfig,
   DE_DUST2_BOT_MAP_CONFIG,
-  CS_OFFICE_BOT_MAP_CONFIG,
-  DE_NUKE_BOT_MAP_CONFIG,
-  DE_INFERNO_BOT_MAP_CONFIG,
-  FY_SNOW_BOT_MAP_CONFIG,
 } from '../match/BotAISystem.js';
 import { buildDeDust2Map } from '../maps/DeDust2Map.js';
-import { buildCsOfficeMap } from '../maps/CsOfficeMap.js';
-import { buildDeNukeMap } from '../maps/DeNukeMap.js';
-import { buildDeInfernoMap } from '../maps/DeInfernoMap.js';
-import { buildFySnowMap } from '../maps/FySnowMap.js';
 import { BreakablePropManager } from '../maps/BreakablePropManager.js';
 import { SprayManager, SprayEmblemId } from '../combat/SprayManager.js';
 import { RadioCommsManager } from '../match/RadioCommsManager.js';
@@ -119,32 +111,16 @@ const _playerFeetScratch = new THREE.Vector3();
 
 const customizerPromises = new WeakMap<GameContext, Promise<CustomizerUI>>();
 
-export function getBotMapConfigForMap(mapId: ActiveMapId): BotMapConfig {
-  switch (mapId) {
-    case 'cs_office':
-      return CS_OFFICE_BOT_MAP_CONFIG;
-    case 'de_nuke':
-      return DE_NUKE_BOT_MAP_CONFIG;
-    case 'de_inferno':
-      return DE_INFERNO_BOT_MAP_CONFIG;
-    case 'fy_snow':
-      return FY_SNOW_BOT_MAP_CONFIG;
-    case 'de_dust2':
-    default:
-      return DE_DUST2_BOT_MAP_CONFIG;
-  }
+export function getBotMapConfigForMap(_mapId: ActiveMapId): BotMapConfig {
+  return DE_DUST2_BOT_MAP_CONFIG;
 }
 
 export function buildArenaMap(
-  mapId: ActiveMapId,
+  _mapId: ActiveMapId,
   worldScene: THREE.Scene,
-  droppedWeapons: DroppedWeaponManager,
+  _droppedWeapons: DroppedWeaponManager,
   onDust2Ready?: () => void
 ): { blocks: MapBlockCollider[]; colliders: AABBCollider[]; bots: BotEntity[] } {
-  if (mapId === 'cs_office') return buildCsOfficeMap(worldScene);
-  if (mapId === 'de_nuke') return buildDeNukeMap(worldScene);
-  if (mapId === 'de_inferno') return buildDeInfernoMap(worldScene);
-  if (mapId === 'fy_snow') return buildFySnowMap(worldScene, droppedWeapons);
   return buildDeDust2Map(worldScene, onDust2Ready);
 }
 
@@ -161,11 +137,8 @@ export function initCS16Systems(ctx: GameContext, mapDesc: MapDescriptor): void 
   ctx.colliders = mutableColliders;
   ctx.networkClient?.setMapColliders(ctx.colliders, ctx.spatialGrid);
 
-  const useHostages = mapDesc.id === 'cs_office' && settingsStore.settings.csOfficeObjective === 'hostage';
-  ctx.hostageManager.configure(useHostages, mapDesc.hostageSpawns, mapDesc.rescueZones);
-  ctx.roundManager?.setObjectiveType(
-    useHostages ? 'hostage' : mapDesc.id === 'fy_snow' ? 'elimination' : 'bomb'
-  );
+  ctx.hostageManager.configure(false, mapDesc.hostageSpawns, mapDesc.rescueZones);
+  ctx.roundManager?.setObjectiveType('bomb');
 }
 
 export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
@@ -215,11 +188,8 @@ export function switchActiveMap(ctx: GameContext, mapId: ActiveMapId): void {
   ctx.economy.setSpawnZones(desc.spawnZones);
   ctx.utilityManager.setMapBounds(desc.bounds);
   ctx.roundManager?.setBombsites(desc.bombsites);
-  const useHostages = mapId === 'cs_office' && settingsStore.settings.csOfficeObjective === 'hostage';
-  ctx.hostageManager?.configure(useHostages, desc.hostageSpawns, desc.rescueZones);
-  ctx.roundManager?.setObjectiveType(
-    useHostages ? 'hostage' : mapId === 'fy_snow' ? 'elimination' : 'bomb'
-  );
+  ctx.hostageManager?.configure(false, desc.hostageSpawns, desc.rescueZones);
+  ctx.roundManager?.setObjectiveType('bomb');
   ctx.botAI?.setMapConfig(getBotMapConfigForMap(mapId));
   ctx.networkClient?.setMapColliders(ctx.colliders, ctx.spatialGrid);
 
@@ -1046,14 +1016,8 @@ export function buildLobbyCallbacks(ctx: GameContext): LobbyUICallbacks {
       );
     },
     onOfficeObjectiveChanged: (mode: 'bomb' | 'hostage') => {
-      if (settingsStore.settings.mapId === 'cs_office') {
-        const desc = getMapDescriptor('cs_office');
-        const useHostages = mode === 'hostage';
-        ctx.hostageManager?.configure(useHostages, desc.hostageSpawns, desc.rescueZones);
-        ctx.roundManager?.setObjectiveType(useHostages ? 'hostage' : 'bomb');
-      }
       ctx.hud.addRadioMessage(
-        mode === 'hostage' ? 'CS_OFFICE Objective: Hostage Rescue' : 'CS_OFFICE Objective: Bomb Defusal'
+        mode === 'hostage' ? 'Objective: Hostage Rescue' : 'Objective: Bomb Defusal'
       );
     },
   };

@@ -34,16 +34,14 @@ describe('CS 1.6 Master Integration Pack Verification', () => {
     expect(WEAPONS['schmidt-scout'].movementSpeed).toBeGreaterThanOrEqual(6.5);
   });
 
-  it('registers de_nuke, de_inferno, fy_snow in MapRegistry with valid nav graphs & ladders', () => {
-    for (const id of ['de_dust2', 'cs_office', 'de_nuke', 'de_inferno', 'fy_snow']) {
-      expect(isValidMapId(id)).toBe(true);
-      const desc = getMapDescriptor(id);
-      expect(desc.colliders.length).toBeGreaterThan(5);
+  it('registers exclusively de_dust2 in MapRegistry and rejects removed maps', () => {
+    expect(isValidMapId('de_dust2')).toBe(true);
+    for (const removed of ['cs_office', 'de_nuke', 'de_inferno', 'fy_snow']) {
+      expect(isValidMapId(removed)).toBe(false);
     }
-    expect(DE_NUKE_LADDERS.length).toBe(4);
-    expect(Object.keys(DE_NUKE_NAV_GRAPH).length).toBeGreaterThan(10);
-    expect(Object.keys(DE_INFERNO_NAV_GRAPH).length).toBeGreaterThan(10);
-    expect(Object.keys(FY_SNOW_NAV_GRAPH).length).toBeGreaterThanOrEqual(5);
+    const desc = getMapDescriptor('de_dust2');
+    expect(desc.id).toBe('de_dust2');
+    expect(desc.colliders.length).toBeGreaterThan(5);
   });
 
   it('computes multi-pellet shotgun fan and blocks frontal Tactical Shield hits except legs', () => {

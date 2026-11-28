@@ -3,7 +3,7 @@ import type { SprayEmblemId } from '../combat/SprayManager.js';
 export type BotDifficulty = 'Recruit' | 'Veteran' | 'Elite' | 'Sovereign';
 export type PlayerFaction = 'Vanguard' | 'Syndicate';
 export type GameMode = 'offline' | 'multiplayer';
-export type ActiveMapId = 'de_dust2' | 'cs_office' | 'de_nuke' | 'de_inferno' | 'fy_snow';
+export type ActiveMapId = 'de_dust2';
 export type GraphicsQuality = 'AUTO' | 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH';
 export type QualityTier = 'POTATO' | 'LOW' | 'MEDIUM' | 'HIGH';
 export type FpsLimit = 'VSYNC' | '120' | '240' | 'UNLIMITED';
@@ -87,10 +87,6 @@ const VALID_FPS_LIMITS: ReadonlySet<FpsLimit> = new Set([
 ]);
 const VALID_MAP_IDS: ReadonlySet<ActiveMapId> = new Set([
   'de_dust2',
-  'cs_office',
-  'de_nuke',
-  'de_inferno',
-  'fy_snow',
 ]);
 
 export class SettingsStore {

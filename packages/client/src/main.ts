@@ -301,7 +301,7 @@ export class GaramGame {
     net.updateBandwidthTelemetry();
     this.perfMonitor.recordFrame(frameDelta * 1000, net.isConnected ? net.ping : -1, net.rxKbps, net.txKbps);
 
-    const showVm = !ctx.spectator.isSpectating && ctx.hasMatchStarted.value && document.body.dataset.state === 'playing';
+    const showVm = !ctx.spectator.isSpectating && !ctx.viewmodel.isScoped && ctx.hasMatchStarted.value && document.body.dataset.state === 'playing';
     ctx.viewmodel.mesh.visible = showVm;
     this.sceneManager.updateShadows(frameDelta, isFreezeTime);
     this.sceneManager.render(showVm);

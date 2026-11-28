@@ -46,25 +46,17 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
 
 ---
 
-## 3. Competitive Arena Pool (`MapRegistry`: 5 Classic Arenas)
+## 3. Competitive Arena (`MapRegistry`: `DE_DUST2`)
 
 <p align="center">
   <img src="docs/assets/decitadel-tactical-map.svg" alt="GARAM Tactical Radar Blueprint" width="100%">
 </p>
 
-Players can switch maps live in the Lobby (`MAP` selector) or synchronize automatically via the 64-tick multiplayer `join`/`welcome` handshake:
+The arena pool is dedicated exclusively to **`DE_DUST2 (A-SITE)` (`de_dust2`)**, synchronized between client and authoritative 64-tick server via `MapRegistry`:
 
-1. **`DE_DUST2 (A-SITE)` (`de_dust2`, Default):**
-   - High-fidelity Counter-Strike 2 Dust 2 A-Site Wing GLB (`packages/client/public/models/de_dust2.glb`) paired with **precomputed AABB colliders** (`DeDust2Data.ts`) and real-time Lobby progress streaming.
-   - Covers **CT Spawn**, **A Ramp**, **Bombsite A**, **A Pit**, **A Car**, **A Long Doors**, and **A Short Catwalk** for rapid 5v5 A-Site executes and retakes.
-2. **`CS_OFFICE (2-SITE)` (`cs_office`, Hostage Rescue & 2-Site Defusal):**
-   - Full two-level snowy corporate office complex (`CsOfficeData.ts`, `84m × 76m`) featuring selectable **Hostage Rescue** (`4` interactive escorted hostages + CT Courtyard Rescue Zone) or **2-Site Bomb Defusal**, plus destructible glass windows and ceiling vents.
-3. **`DE_NUKE (VERTICAL 2-SITE)` (`de_nuke`, Dual-Level Facility):**
-   - Multi-level industrial reactor arena (`DeNukeData.ts`) with Upper A-Site rafters, climbable **vertical ladders**, breakable vent shafts dropping into Lower B-Site, Outside yard, and Ramp room.
-4. **`DE_INFERNO (BANANA & MID)` (`de_inferno`, Mediterranean Chokepoints):**
-   - Classic cobblestone village arena (`DeInfernoData.ts`) featuring Banana, B-Site Fountain, Mid, Apartments, Boiler, Arch, and A-Site Pit with close-quarters utility duels.
-5. **`FY_SNOW (CLASSIC 1.6 ARENA)` (`fy_snow`, Fast Elimination):**
-   - Iconic symmetrical Counter-Strike 1.6 snow courtyard (`FySnowData.ts`) with four central pillars, floor-spawned rifles/shotguns/AWPs that refresh each round, and pure elimination pacing.
+1. **`DE_DUST2 (A-SITE)` (`de_dust2`, Active Competitive Arena):**
+   - Full Counter-Strike 2 Dust 2 GLB (`packages/client/public/models/de_dust_2_with_real_light.glb`) with embedded real lighting, paired with **precomputed AABB colliders** (`DeDust2Data.ts`), walkable doorway clearances, and real-time Lobby progress streaming.
+   - Covers **CT Spawn**, **A Ramp**, **Bombsite A**, **A Pit**, **A Car**, **A Long Doors**, **A Short Catwalk**, **Mid Doors**, **B Tunnels**, and **Bombsite B** for authentic 5v5 executes and retakes.
 
 ---
 

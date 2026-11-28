@@ -31,7 +31,6 @@ describe('Living Documentation & Architecture Parity (README.md)', () => {
     const knife = WEAPONS['garam-karambit'];
     expect(readmeContent).toContain(`${knife.damage} / ${knife.damage} (180 Backstab)`);
     expect(readmeContent).toContain('DE_DUST2 (A-SITE)');
-    expect(readmeContent).toContain('CS_OFFICE (2-SITE)');
     expect(readmeContent).toContain('MapRegistry');
     expect(readmeContent).toContain('cs2_fps_arms.glb');
   });

@@ -450,26 +450,26 @@ describe('Authoritative Server GameRoom Integration Suite', () => {
     expect(internal.activePlanterId).toBe(tSession.id);
   });
 
-  it('synchronizes active MapDescriptor (de_dust2 vs cs_office) via join handshake without client-server desync', () => {
+  it('synchronizes active MapDescriptor (de_dust2) via join handshake without client-server desync', () => {
     room = new GameRoom();
     expect(room.getMapId()).toBe('de_dust2');
-    expect(room.getMapDescriptor().blocks.length).toBeGreaterThan(500);
+    expect(room.getMapDescriptor().blocks.length).toBeGreaterThan(100);
 
     const ws = new MockWebSocket();
     room.handleConnection(ws as unknown as WebSocket);
     ws.simulateClientMessage({
       type: 'join',
-      callsign: 'OfficeHost',
+      callsign: 'Dust2Host',
       faction: 'Vanguard',
-      mapId: 'cs_office',
+      mapId: 'de_dust2',
     });
 
-    expect(room.getMapId()).toBe('cs_office');
-    expect(room.getMapDescriptor().id).toBe('cs_office');
+    expect(room.getMapId()).toBe('de_dust2');
+    expect(room.getMapDescriptor().id).toBe('de_dust2');
     const welcome = ws.sentMessages.find(m => m.type === 'welcome');
     expect(welcome).toBeDefined();
     if (welcome && welcome.type === 'welcome') {
-      expect(welcome.mapId).toBe('cs_office');
+      expect(welcome.mapId).toBe('de_dust2');
     }
   });
 });

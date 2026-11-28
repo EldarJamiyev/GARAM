@@ -732,7 +732,7 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       const origFaction = settingsStore.settings.faction;
 
       try {
-        const maps: Array<'de_dust2' | 'cs_office'> = ['de_dust2', 'cs_office'];
+        const maps: Array<'de_dust2'> = ['de_dust2'];
         const scenarios: Array<'midair' | 'dead_spectating'> = ['midair', 'dead_spectating'];
 
         for (const mapId of maps) {
@@ -960,7 +960,7 @@ describe('@garam/client Pure Gameplay & Prediction Systems', () => {
       deagleGroup.add(deagleSlide.mesh);
       calibrateWeaponPBRMaterials(deagleGroup, 'desert-eagle');
       expect(deagleSlide.mat.metalness).toBeGreaterThanOrEqual(0.84);
-      expect(deagleSlide.mat.envMapIntensity).toBeCloseTo(1.55, 2);
+      expect(deagleSlide.mat.envMapIntensity).toBeCloseTo(1.38, 2);
     });
 
     it('tracks round kill cards (capped at 5 with headshot styling), resets on new round, and updates team alive counters', async () => {
