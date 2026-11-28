@@ -17,7 +17,7 @@ const OUT_TS = path.resolve(process.cwd(), 'packages/shared/src/maps/DeDust2Data
 
 const WORLD_SCALE = 1.48;
 const Y_OFF = +(3.3 * WORLD_SCALE).toFixed(3); // 4.884m so CT underpass ~1.67m, Long/Mid/T ~5.0m, A Site ~7.4m
-const CELL_XZ = 0.32;
+const CELL_XZ = 0.24;
 const CELL_Y = 0.125;
 const MIN_X = Math.floor(-45 * WORLD_SCALE);
 const MAX_X = Math.ceil(34 * WORLD_SCALE);
@@ -199,7 +199,10 @@ function classifyVoxelMaterial(cx, cy, cz) {
 }
 
 let triCount = 0;
-const hy = CELL_Y * 0.5;
+// Watertight overlap half-extents (0.501x cell size) eliminate blind bands between adjacent cells on thin walls
+const hx = +(CELL_XZ * 0.501).toFixed(4);
+const hy = +(CELL_Y * 0.501).toFixed(4);
+const hz = +(CELL_XZ * 0.501).toFixed(4);
 
 for (let ni = 0; ni < gltf.nodes.length; ni++) {
   const n = gltf.nodes[ni];
@@ -232,24 +235,12 @@ for (let ni = 0; ni < gltf.nodes.length; ni++) {
       if (tMaxX < MIN_X || tMinX > MAX_X || tMaxY < MIN_Y || tMinY > MAX_Y || tMaxZ < MIN_Z || tMinZ > MAX_Z) continue;
       triCount++;
 
-      // Keep watertight full XZ half-extent on floors/ramps (|ny| >= 0.45),
-      // but use tight half-extent on near-vertical walls/door leaves so thin angled doors never bloat shut!
-      const ux = x1 - x0, uy = y1 - y0, uz = z1 - z0;
-      const vx = x2 - x0, vy = y2 - y0, vz = z2 - z0;
-      const cnx = uy * vz - uz * vy;
-      const cny = uz * vx - ux * vz;
-      const cnz = ux * vy - uy * vx;
-      const cnLen = Math.hypot(cnx, cny, cnz) || 1;
-      const isVerticalWall = Math.abs(cny / cnLen) < 0.45;
-      const hx = isVerticalWall ? CELL_XZ * 0.28 : CELL_XZ * 0.5;
-      const hz = isVerticalWall ? CELL_XZ * 0.28 : CELL_XZ * 0.5;
-
-      const ix0 = Math.max(0, Math.floor((tMinX - MIN_X) / CELL_XZ));
-      const ix1 = Math.min(NX - 1, Math.floor((tMaxX - MIN_X) / CELL_XZ));
-      const iy0 = Math.max(0, Math.floor((tMinY - MIN_Y) / CELL_Y));
-      const iy1 = Math.min(NY - 1, Math.floor((tMaxY - MIN_Y) / CELL_Y));
-      const iz0 = Math.max(0, Math.floor((tMinZ - MIN_Z) / CELL_XZ));
-      const iz1 = Math.min(NZ - 1, Math.floor((tMaxZ - MIN_Z) / CELL_XZ));
+      const ix0 = Math.max(0, Math.floor((tMinX - MIN_X - 0.002) / CELL_XZ));
+      const ix1 = Math.min(NX - 1, Math.floor((tMaxX - MIN_X + 0.002) / CELL_XZ));
+      const iy0 = Math.max(0, Math.floor((tMinY - MIN_Y - 0.002) / CELL_Y));
+      const iy1 = Math.min(NY - 1, Math.floor((tMaxY - MIN_Y + 0.002) / CELL_Y));
+      const iz0 = Math.max(0, Math.floor((tMinZ - MIN_Z - 0.002) / CELL_XZ));
+      const iz1 = Math.min(NZ - 1, Math.floor((tMaxZ - MIN_Z + 0.002) / CELL_XZ));
 
       for (let iy = iy0; iy <= iy1; iy++) {
         const cy = MIN_Y + (iy + 0.5) * CELL_Y;
@@ -269,31 +260,46 @@ for (let ni = 0; ni < gltf.nodes.length; ni++) {
   }
 }
 
-// Smooth Short Stairs risers at 1.48x scale so every step stays strictly <= 0.25m (well below STEP_HEIGHT = 0.42m)
-{
-  const sx0 = Math.max(0, Math.floor((6.0 - MIN_X) / CELL_XZ));
-  const sx1 = Math.min(NX - 1, Math.floor((10.6 - MIN_X) / CELL_XZ));
-  const sz0 = Math.max(0, Math.floor((-46.8 - MIN_Z) / CELL_XZ));
-  const sz1 = Math.min(NZ - 1, Math.floor((-40.2 - MIN_Z) / CELL_XZ));
+// Smooth steep 0.50m–0.75m stair/threshold risers (caused by 1.48x scaling) so every step stays <= STEP_HEIGHT (0.42m)
+function smoothRisers(minX, maxX, minZ, maxZ, minY, maxY) {
+  const sx0 = Math.max(0, Math.floor((minX - MIN_X) / CELL_XZ));
+  const sx1 = Math.min(NX - 1, Math.floor((maxX - MIN_X) / CELL_XZ));
+  const sz0 = Math.max(0, Math.floor((minZ - MIN_Z) / CELL_XZ));
+  const sz1 = Math.min(NZ - 1, Math.floor((maxZ - MIN_Z) / CELL_XZ));
+  const iyBot = Math.max(0, Math.floor((minY - MIN_Y) / CELL_Y));
+  const iyTop = Math.min(NY - 1, Math.floor((maxY - MIN_Y) / CELL_Y));
   const topFloorIy = (ix, iz) => {
-    for (let iy = Math.floor((7.6 - MIN_Y) / CELL_Y); iy >= Math.floor((4.5 - MIN_Y) / CELL_Y); iy--) {
+    for (let iy = iyTop; iy >= iyBot; iy--) {
       if (grid[idx3(ix, iy, iz)]) return iy;
     }
     return -1;
   };
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   for (let ix = sx0; ix <= sx1; ix++) {
-    for (let iz = sz1; iz > sz0; iz--) {
+    for (let iz = sz0; iz <= sz1; iz++) {
       const lo = topFloorIy(ix, iz);
-      const hi = topFloorIy(ix, iz - 1);
-      if (lo > 0 && hi > lo && hi - lo >= 4 && hi - lo <= 6) {
-        const mid = lo + Math.floor((hi - lo) / 2);
-        for (let iy = lo + 1; iy <= mid; iy++) {
-          if (grid[idx3(ix, iy, iz)] === 0) grid[idx3(ix, iy, iz)] = 1;
+      if (lo < 0) continue;
+      for (const [dx, dz] of dirs) {
+        const nx = ix + dx;
+        const nz = iz + dz;
+        if (nx < 0 || nx >= NX || nz < 0 || nz >= NZ) continue;
+        const hi = topFloorIy(nx, nz);
+        if (hi > lo && hi - lo >= 4 && hi - lo <= 6) {
+          const mid = lo + Math.floor((hi - lo) / 2);
+          for (let iy = lo + 1; iy <= mid; iy++) {
+            if (grid[idx3(ix, iy, iz)] === 0) grid[idx3(ix, iy, iz)] = 1;
+          }
         }
       }
     }
   }
 }
+
+smoothRisers(6.0, 10.6, -46.8, -40.2, 4.5, 7.6);       // Short Stairs
+smoothRisers(-48.0, -37.0, -15.0, -11.5, 4.5, 6.2);   // T-Outside -> Upper Tunnel stairs
+smoothRisers(-31.0, -26.0, -34.0, -26.5, 2.0, 6.0);   // Upper <-> Lower Tunnel L-turn stairs
+smoothRisers(-14.5, -11.5, -39.0, -35.0, 1.4, 2.5);   // Mid -> Lower Tunnel threshold
+smoothRisers(-53.0, -48.0, -48.5, -45.0, 4.5, 6.2);   // B Site -> Upper Tunnel threshold
 
 // Greedy 3D box merge
 const visited = new Uint8Array(grid.length);
@@ -348,6 +354,13 @@ for (let iy = 0; iy < NY; iy++) {
     }
   }
 }
+
+// Perimeter player-clip AABBs preventing crouch-jump climbs onto skybox rooftops/ledges while preserving overhead utility arcs
+boxes.push(
+  [-33.5, -22.0, 6.0, 11.5, -70.0, -66.8, 1],  // Mid-to-B rock slope north perimeter clip
+  [-46.8, -44.2, 8.85, 11.5, 6.0, 17.5, 1],    // T-Outside ramp east parapet clip
+  [-57.0, -51.4, 8.85, 11.5, 6.0, 17.5, 1],    // T-Outside ramp west parapet clip
+);
 
 console.log(`[DE_DUST2] Exact SAT voxelized ${triCount} tris -> ${boxes.length} watertight greedy AABB colliders`);
 

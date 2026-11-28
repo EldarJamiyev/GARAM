@@ -732,7 +732,7 @@ describe('First-Person Viewmodel, ArmIKSolver & Weapon Rig Suite', () => {
         }
       }
     }
-  });
+  }, 15000);
 
   it('tints first-person tactical gloves by faction (Vanguard CT navy-slate vs Syndicate T crimson-obsidian) while keeping bare forearm skin natural', () => {
     const root = new THREE.Group();

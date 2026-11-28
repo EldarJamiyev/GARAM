@@ -254,4 +254,221 @@ describe('DE_DUST2 Real GLB Watertight Colliders & Tactical Navigation', () => {
     expect(vel.x).toBeGreaterThan(0); // Continues up the ramp instead of bouncing backward
     expect(vel.y).toBeGreaterThan(0); // Deflected cleanly upward along the ramp slope
   });
+
+  it('allows smooth 128Hz traversal through Lower Tunnel, Upper Tunnel, and B Doors while keeping all tunnel walls solid', () => {
+    const grid = new SpatialGrid(DE_DUST2_BLOCKS, 6);
+    const dt = 1 / 128;
+
+    const walkPath = (pts: Array<{ x: number; y: number; z: number }>, ticks = 1800) => {
+      const c = new KinematicPlayerController(pts[0].x, pts[0].y, pts[0].z);
+      let pi = 1;
+      let minY = pts[0].y;
+      for (let i = 0; i < ticks && pi < pts.length; i++) {
+        const t = pts[pi];
+        const rx = t.x - c.state.x;
+        const rz = t.z - c.state.z;
+        if (Math.hypot(rx, rz) < 0.6) {
+          pi++;
+          continue;
+        }
+        const yaw = Math.atan2(-rx, -rz);
+        c.update(
+          createIdleInput({ forward: true, yaw }),
+          dt,
+          5.45,
+          DE_DUST2_COLLIDERS,
+          DE_DUST2_BOUNDS,
+          grid
+        );
+        if (c.state.y < minY) minY = c.state.y;
+      }
+      return { c, minY, reachedEnd: pi >= pts.length };
+    };
+
+    const ramWall = (
+      start: { x: number; y: number; z: number },
+      yaw: number,
+      crouch: boolean,
+      jump: boolean,
+      ticks = 320
+    ) => {
+      const c = new KinematicPlayerController(start.x, start.y, start.z);
+      let minY = start.y;
+      for (let i = 0; i < ticks; i++) {
+        c.update(
+          createIdleInput({ forward: true, yaw, crouch, jump: jump && i % 45 === 5 }),
+          dt,
+          5.45,
+          DE_DUST2_COLLIDERS,
+          DE_DUST2_BOUNDS,
+          grid
+        );
+        if (c.state.y < minY) minY = c.state.y;
+      }
+      return { x: c.state.x, y: c.state.y, z: c.state.z, minY };
+    };
+
+    // 1. T-Outside -> Upper Tunnel -> B Site
+    const upperToB = walkPath(
+      [
+        { x: -42.5, y: 4.875, z: -6.0 },
+        { x: -42.5, y: 4.875, z: -15.5 },
+        { x: -42.5, y: 5.75, z: -28.0 },
+        { x: -50.5, y: 5.75, z: -32.0 },
+        { x: -50.5, y: 5.75, z: -43.0 },
+        { x: -50.5, y: 4.875, z: -49.0 },
+        { x: -45.5, y: 4.875, z: -52.0 },
+      ],
+      2200
+    );
+    expect(upperToB.reachedEnd).toBe(true);
+    expect(upperToB.c.state.z).toBeLessThan(-50.5);
+    expect(upperToB.minY).toBeGreaterThanOrEqual(4.8);
+
+    // 2. Mid -> Lower Tunnel -> Upper Tunnel
+    const lowerToUpper = walkPath(
+      [
+        { x: -12.0, y: 1.625, z: -36.5 },
+        { x: -16.5, y: 2.125, z: -36.5 },
+        { x: -25.0, y: 2.125, z: -36.5 },
+        { x: -27.5, y: 2.125, z: -35.0 },
+        { x: -27.5, y: 3.5, z: -27.5 },
+        { x: -35.0, y: 5.75, z: -28.0 },
+        { x: -44.0, y: 5.75, z: -30.5 },
+      ],
+      2000
+    );
+    expect(lowerToUpper.reachedEnd).toBe(true);
+    expect(lowerToUpper.c.state.x).toBeLessThan(-42.0);
+    expect(lowerToUpper.c.state.y).toBeGreaterThanOrEqual(5.6);
+
+    // 3. Mid-to-B -> B Doors -> B Site
+    const bDoors = walkPath(
+      [
+        { x: -31.5, y: 4.875, z: -57.5 },
+        { x: -32.5, y: 4.875, z: -56.0 },
+        { x: -33.5, y: 4.875, z: -55.4 },
+        { x: -35.5, y: 4.875, z: -55.0 },
+        { x: -39.0, y: 4.875, z: -55.0 },
+      ],
+      1000
+    );
+    expect(bDoors.reachedEnd).toBe(true);
+    expect(bDoors.c.state.x).toBeLessThan(-37.5);
+
+    // 4. Lower & Upper Tunnel walls strictly block standing and crouch-jump breaches
+    const lowerNorth = ramWall({ x: -21.0, y: 2.125, z: -36.5 }, 0, true, true);
+    expect(lowerNorth.z).toBeGreaterThan(-39.1);
+    expect(lowerNorth.minY).toBeGreaterThanOrEqual(2.1);
+
+    const lowerNW = ramWall({ x: -27.0, y: 2.125, z: -36.5 }, Math.PI * 0.25, true, true);
+    expect(lowerNW.z).toBeGreaterThan(-39.1);
+    expect(lowerNW.minY).toBeGreaterThanOrEqual(2.1);
+
+    const upperWest = ramWall({ x: -44.0, y: 5.75, z: -30.5 }, Math.PI * 0.5, true, true);
+    expect(upperWest.x).toBeGreaterThan(-47.0);
+    expect(upperWest.minY).toBeGreaterThanOrEqual(5.7);
+
+    const upperSouth = ramWall({ x: -35.0, y: 5.75, z: -28.0 }, Math.PI, true, true);
+    expect(upperSouth.z).toBeLessThan(-25.8);
+    expect(upperSouth.minY).toBeGreaterThanOrEqual(5.7);
+
+    const upperBExitWest = ramWall({ x: -50.5, y: 5.75, z: -40.0 }, Math.PI * 0.5, true, true);
+    expect(upperBExitWest.x).toBeGreaterThan(-52.2);
+    expect(upperBExitWest.minY).toBeGreaterThanOrEqual(5.7);
+
+    const upperBExitEast = ramWall({ x: -50.5, y: 5.75, z: -40.0 }, -Math.PI * 0.5, true, true);
+    expect(upperBExitEast.x).toBeLessThan(-48.8);
+    expect(upperBExitEast.minY).toBeGreaterThanOrEqual(5.7);
+  });
+
+  it('guarantees zero void-fall leaks or skybox rooftop climbs across all Walk, Crouch, and Jump-Tuck reachable space', () => {
+    const grid = new SpatialGrid(DE_DUST2_BLOCKS, 6);
+    const STEP = 0.5;
+    const R = KINEMATICS.CAPSULE_RADIUS;
+
+    const findFloor = (x: number, y: number, z: number, maxUp: number) => {
+      let best = -99;
+      grid.queryAABB(x - R, x + R, z - R, z + R, (bi) => {
+        const b = DE_DUST2_BLOCKS[bi];
+        const cx = Math.max(b.minX, Math.min(x, b.maxX));
+        const cz = Math.max(b.minZ, Math.min(z, b.maxZ));
+        if ((x - cx) * (x - cx) + (z - cz) * (z - cz) > R * R) return;
+        if (b.maxY <= y + maxUp + 0.01 && b.maxY > best) best = b.maxY;
+      });
+      return best;
+    };
+
+    const hasClear = (x: number, y: number, z: number, h: number) => {
+      let blocked = false;
+      const rInner = R - 0.02;
+      grid.queryAABB(x - rInner, x + rInner, z - rInner, z + rInner, (bi) => {
+        const b = DE_DUST2_BLOCKS[bi];
+        const cx = Math.max(b.minX, Math.min(x, b.maxX));
+        const cz = Math.max(b.minZ, Math.min(z, b.maxZ));
+        if ((x - cx) * (x - cx) + (z - cz) * (z - cz) >= rInner * rInner) return;
+        if (b.maxY > y + 0.05 && b.minY < y + h - 0.02) blocked = true;
+      });
+      return !blocked;
+    };
+
+    const runContainmentBfs = (maxUp: number, bodyH: number) => {
+      const seeds = [DE_DUST2_SPAWN_POINTS.VANGUARD_CT, DE_DUST2_SPAWN_POINTS.OBSIDIAN_T];
+      const visited = new Set<string>();
+      const queue: Array<[number, number, number]> = [];
+      for (const s of seeds) {
+        const f = findFloor(s.x, s.y, s.z, maxUp);
+        if (f > -50 && hasClear(s.x, f, s.z, bodyH)) {
+          visited.add(`${Math.round(s.x / STEP)},${Math.round(f * 8)},${Math.round(s.z / STEP)}`);
+          queue.push([s.x, f, s.z]);
+        }
+      }
+      const dirs: ReadonlyArray<[number, number]> = [
+        [STEP, 0],
+        [-STEP, 0],
+        [0, STEP],
+        [0, -STEP],
+      ];
+      let voidFalls = 0;
+      let highClimbs = 0;
+      let head = 0;
+      while (head < queue.length) {
+        const [cx, cy, cz] = queue[head++];
+        for (const [dx, dz] of dirs) {
+          const nx = cx + dx;
+          const nz = cz + dz;
+          const nf = findFloor(nx, cy, nz, maxUp);
+          if (nf < -0.5) {
+            voidFalls++;
+            continue;
+          }
+          if (nf - cy > maxUp) continue;
+          if (!hasClear(nx, nf, nz, bodyH)) continue;
+          const key = `${Math.round(nx / STEP)},${Math.round(nf * 8)},${Math.round(nz / STEP)}`;
+          if (!visited.has(key)) {
+            visited.add(key);
+            queue.push([nx, nf, nz]);
+            if (nf > 9.1 && cy <= 9.1) highClimbs++;
+          }
+        }
+      }
+      return { visited: visited.size, voidFalls, highClimbs };
+    };
+
+    const walk = runContainmentBfs(KINEMATICS.STEP_HEIGHT, KINEMATICS.CAPSULE_HEIGHT_STAND);
+    expect(walk.visited).toBeGreaterThan(15000);
+    expect(walk.voidFalls).toBe(0);
+    expect(walk.highClimbs).toBe(0);
+
+    const crouch = runContainmentBfs(KINEMATICS.STEP_HEIGHT, KINEMATICS.CAPSULE_HEIGHT_CROUCH);
+    expect(crouch.visited).toBeGreaterThan(15000);
+    expect(crouch.voidFalls).toBe(0);
+    expect(crouch.highClimbs).toBe(0);
+
+    const jumpTuck = runContainmentBfs(1.45, KINEMATICS.CAPSULE_HEIGHT_CROUCH);
+    expect(jumpTuck.visited).toBeGreaterThan(15000);
+    expect(jumpTuck.voidFalls).toBe(0);
+    expect(jumpTuck.highClimbs).toBe(0);
+  });
 });
+

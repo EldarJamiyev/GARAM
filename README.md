@@ -8,7 +8,7 @@
   <a href="https://github.com/EldarJamiyev/GARAM"><img src="https://img.shields.io/badge/GitHub-EldarJamiyev%2FGARAM-00F0FF?style=for-the-badge&logo=github" alt="GitHub Repository"></a>
   <img src="https://img.shields.io/badge/Tickrate-128Hz%20Parity%20Kinematics-00FF88?style=for-the-badge" alt="128Hz Physics">
   <img src="https://img.shields.io/badge/Netcode-64--Tick%20Clock--Synced-FF2A55?style=for-the-badge" alt="64-Tick Rewind">
-  <img src="https://img.shields.io/badge/Tests-176%20Passing-00FF88?style=for-the-badge" alt="176 Vitest Tests">
+  <img src="https://img.shields.io/badge/Tests-178%20Passing-00FF88?style=for-the-badge" alt="178 Vitest Tests">
   <img src="https://img.shields.io/badge/TypeScript-Strict%20Zero--Any-blue?style=for-the-badge&logo=typescript" alt="Strict TypeScript">
 </p>
 
@@ -55,7 +55,7 @@ The project is structured as an npm workspaces monorepo enforcing strict boundar
 The arena pool is dedicated exclusively to **`DE_DUST2 (A-SITE)` (`de_dust2`)**, synchronized between client and authoritative 64-tick server via `MapRegistry`:
 
 1. **`DE_DUST2 (A-SITE)` (`de_dust2`, Active Competitive Arena):**
-   - Full Counter-Strike 2 Dust 2 GLB (`packages/client/public/models/de_dust_2_with_real_light.glb`) with embedded real lighting, paired with **precomputed AABB colliders** (`DeDust2Data.ts`), walkable doorway clearances, and real-time Lobby progress streaming.
+   - Full Counter-Strike 2 Dust 2 GLB (`packages/client/public/models/de_dust_2_with_real_light.glb`) with embedded real lighting, paired with **watertight 0.24m precomputed AABB colliders** (`DeDust2Data.ts`), walkable doorway/stair clearances, and real-time Lobby progress streaming.
    - Covers **CT Spawn**, **A Ramp**, **Bombsite A**, **A Pit**, **A Car**, **A Long Doors**, **A Short Catwalk**, **Mid Doors**, **B Tunnels**, and **Bombsite B** for authentic 5v5 executes and retakes.
 
 ---
@@ -132,7 +132,7 @@ The arena pool is dedicated exclusively to **`DE_DUST2 (A-SITE)` (`de_dust2`)**,
   <img src="docs/assets/roadmap-progress.svg" alt="GARAM Development Roadmap Progress" width="100%">
 </p>
 
-### Test Suite Coverage (176 Passing Tests Across 21 Suites)
+### Test Suite Coverage (178 Passing Tests Across 21 Suites)
 Run the automated test suite across all packages:
 ```bash
 npm test
@@ -155,13 +155,13 @@ npm test
  ✓ packages/shared/src/__tests__/lagcomp.test.ts              (8 tests)
  ✓ packages/shared/src/__tests__/navgraph.test.ts             (12 tests)
  ✓ packages/shared/src/__tests__/callout.test.ts              (5 tests)
- ✓ packages/shared/src/__tests__/dedust2.test.ts              (6 tests)
+ ✓ packages/shared/src/__tests__/dedust2.test.ts              (8 tests)
  ✓ packages/shared/src/__tests__/economy.test.ts              (5 tests)
  ✓ packages/shared/src/__tests__/cs16-pack.test.ts            (5 tests)
  ✓ packages/shared/src/__tests__/docs-sync.test.ts            (3 tests)
 
  Test Files  21 passed (21)
-      Tests  176 passed (176)
+      Tests  178 passed (178)
 ```
 
 ---
